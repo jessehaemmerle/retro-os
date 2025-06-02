@@ -630,3 +630,595 @@ textarea:focus {
   outline: 1px dotted #000;
   outline-offset: -1px;
 }
+
+/* Window Animations */
+.window-animating {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Start Menu */
+.start-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+}
+
+.start-menu {
+  position: fixed;
+  bottom: 40px;
+  left: 4px;
+  background: #c0c0c0;
+  border: 2px outset #c0c0c0;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  z-index: 10001;
+}
+
+.start-menu-header {
+  background: linear-gradient(90deg, #000080, #1010a0);
+  color: white;
+  padding: 8px;
+  font-weight: bold;
+}
+
+.start-menu-user {
+  font-size: 12px;
+}
+
+.start-menu-items {
+  padding: 2px;
+}
+
+.start-menu-item {
+  position: relative;
+}
+
+.start-menu-item-main {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  border: 1px solid transparent;
+}
+
+.start-menu-item-main:hover {
+  background: #0080ff;
+  color: white;
+  border: 1px solid #0060df;
+}
+
+.start-menu-icon {
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+.start-menu-label {
+  flex: 1;
+}
+
+.start-menu-arrow {
+  margin-left: 8px;
+  font-size: 8px;
+}
+
+.start-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: #c0c0c0;
+  border: 2px outset #c0c0c0;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  min-width: 150px;
+  z-index: 10002;
+}
+
+.start-submenu-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  border: 1px solid transparent;
+}
+
+.start-submenu-item:hover {
+  background: #0080ff;
+  color: white;
+  border: 1px solid #0060df;
+}
+
+/* Context Menu */
+.context-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9998;
+}
+
+.context-menu {
+  position: fixed;
+  background: #c0c0c0;
+  border: 2px outset #c0c0c0;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  min-width: 150px;
+  z-index: 9999;
+}
+
+.context-menu-item {
+  position: relative;
+}
+
+.context-menu-item-main {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  border: 1px solid transparent;
+}
+
+.context-menu-item-main:hover {
+  background: #0080ff;
+  color: white;
+  border: 1px solid #0060df;
+}
+
+.context-menu-icon {
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+.context-menu-label {
+  flex: 1;
+}
+
+.context-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: #c0c0c0;
+  border: 2px outset #c0c0c0;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  min-width: 120px;
+  z-index: 10000;
+}
+
+.context-submenu-item {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  border: 1px solid transparent;
+}
+
+.context-submenu-item:hover {
+  background: #0080ff;
+  color: white;
+  border: 1px solid #0060df;
+}
+
+/* Paint Program */
+.paint-app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #c0c0c0;
+}
+
+.paint-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-bottom: 2px inset #c0c0c0;
+  background: #c0c0c0;
+}
+
+.paint-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.paint-tool {
+  width: 32px;
+  height: 32px;
+  border: 2px outset #c0c0c0;
+  background: #c0c0c0;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.paint-tool:active,
+.paint-tool.active {
+  border: 2px inset #c0c0c0;
+}
+
+.paint-colors {
+  display: flex;
+  gap: 2px;
+}
+
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #000;
+  cursor: pointer;
+  position: relative;
+}
+
+.color-swatch.active {
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #000;
+}
+
+.paint-brush-size {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.paint-brush-size input {
+  width: 60px;
+}
+
+.paint-canvas {
+  flex: 1;
+  border: 2px inset #c0c0c0;
+  background: white;
+  cursor: crosshair;
+}
+
+/* Control Panel */
+.control-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #c0c0c0;
+}
+
+.control-panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #808080;
+}
+
+.control-panel-tab {
+  padding: 8px 16px;
+  border: 1px outset #c0c0c0;
+  background: #c0c0c0;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.control-panel-tab.active {
+  border-bottom: 1px solid #c0c0c0;
+  background: #ffffff;
+}
+
+.control-panel-content {
+  flex: 1;
+  padding: 16px;
+  background: white;
+}
+
+.control-panel-content h3 {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #000;
+}
+
+.wallpaper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.wallpaper-option {
+  border: 2px solid #c0c0c0;
+  cursor: pointer;
+  text-align: center;
+}
+
+.wallpaper-option.selected {
+  border: 2px solid #0080ff;
+}
+
+.wallpaper-preview {
+  width: 80px;
+  height: 60px;
+  margin: 4px auto;
+  border: 1px solid #808080;
+}
+
+.wallpaper-preview.wallpaper-classic_clouds {
+  background: linear-gradient(45deg, #87CEEB 0%, #98D8E8 50%, #87CEEB 100%);
+}
+
+.wallpaper-preview.wallpaper-teal_solid {
+  background: #008080;
+}
+
+.wallpaper-preview.wallpaper-green_circuit {
+  background: #001100;
+  background-image: 
+    linear-gradient(90deg, #00FF00 1px, transparent 1px),
+    linear-gradient(180deg, #00FF00 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+.wallpaper-preview.wallpaper-blue_space {
+  background: radial-gradient(ellipse at center, #0F0F23 0%, #000000 100%);
+}
+
+.wallpaper-preview.wallpaper-pattern_maze {
+  background: #c0c0c0;
+  background-image: 
+    linear-gradient(45deg, #808080 25%, transparent 25%),
+    linear-gradient(-45deg, #808080 25%, transparent 25%);
+  background-size: 8px 8px;
+}
+
+.wallpaper-preview.wallpaper-gradient_sunset {
+  background: linear-gradient(45deg, #FF6B35 0%, #F7931E 50%, #FFD23F 100%);
+}
+
+.wallpaper-name {
+  font-size: 10px;
+  padding: 4px;
+  color: #000;
+}
+
+.apply-btn {
+  padding: 6px 16px;
+  border: 2px outset #c0c0c0;
+  background: #c0c0c0;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.apply-btn:active {
+  border: 2px inset #c0c0c0;
+}
+
+/* System Information */
+.system-info {
+  padding: 16px;
+  background: white;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.system-info-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #c0c0c0;
+}
+
+.system-logo {
+  font-size: 32px;
+  margin-right: 12px;
+}
+
+.system-title h2 {
+  margin: 0;
+  font-size: 16px;
+  color: #000080;
+}
+
+.system-title p {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #666;
+}
+
+.system-details {
+  margin-bottom: 16px;
+}
+
+.detail-row {
+  display: flex;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.detail-label {
+  font-weight: bold;
+  width: 80px;
+  color: #000;
+}
+
+.detail-value {
+  color: #333;
+}
+
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feature-item {
+  font-size: 10px;
+  color: #333;
+}
+
+.system-info-footer {
+  border-top: 1px solid #c0c0c0;
+  padding-top: 8px;
+  font-size: 10px;
+  color: #666;
+  text-align: center;
+}
+
+/* Run Dialog */
+.run-dialog {
+  padding: 16px;
+  background: #c0c0c0;
+  height: 100%;
+}
+
+.run-dialog h3 {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #000;
+}
+
+.run-dialog p {
+  margin-bottom: 16px;
+  font-size: 11px;
+  color: #333;
+  line-height: 1.4;
+}
+
+.run-input-group {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 8px;
+}
+
+.run-input-group label {
+  font-size: 11px;
+  color: #000;
+}
+
+.run-input {
+  flex: 1;
+  padding: 4px;
+  border: 2px inset #c0c0c0;
+  background: white;
+  font-size: 11px;
+}
+
+.run-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.run-buttons button {
+  padding: 4px 16px;
+  border: 2px outset #c0c0c0;
+  background: #c0c0c0;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.run-buttons button:active {
+  border: 2px inset #c0c0c0;
+}
+
+/* Recycle Bin */
+.recycle-bin {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #c0c0c0;
+}
+
+.recycle-bin-toolbar {
+  padding: 8px;
+  border-bottom: 1px solid #808080;
+}
+
+.empty-bin-btn {
+  padding: 4px 8px;
+  border: 2px outset #c0c0c0;
+  background: #c0c0c0;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.empty-bin-btn:active {
+  border: 2px inset #c0c0c0;
+}
+
+.empty-bin-btn:disabled {
+  background: #a0a0a0;
+  color: #666;
+  cursor: default;
+}
+
+.deleted-files-list {
+  flex: 1;
+  overflow-y: auto;
+  background: white;
+  padding: 4px;
+}
+
+.empty-message {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-size: 12px;
+}
+
+.deleted-file-item {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.deleted-file-item:hover {
+  background: #f0f0f0;
+}
+
+.deleted-file-item .file-icon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.deleted-file-item .file-info {
+  flex: 1;
+}
+
+.deleted-file-item .file-name {
+  font-weight: bold;
+  font-size: 11px;
+  color: #000;
+}
+
+.deleted-file-item .file-details {
+  font-size: 9px;
+  color: #666;
+}
+
+.file-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.restore-btn,
+.delete-permanent-btn {
+  padding: 2px 6px;
+  border: 1px outset #c0c0c0;
+  background: #c0c0c0;
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.restore-btn:active,
+.delete-permanent-btn:active {
+  border: 1px inset #c0c0c0;
+}
+
+.delete-permanent-btn {
+  background: #ff6666;
+  color: white;
+}
+
+.delete-permanent-btn:hover {
+  background: #ff4444;
+}
