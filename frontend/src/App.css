@@ -80,6 +80,47 @@ body {
   overflow: hidden;
 }
 
+/* Desktop Wallpapers */
+.wallpaper-classic_clouds {
+  background: linear-gradient(45deg, #87CEEB 0%, #98D8E8 50%, #87CEEB 100%);
+  background-image: 
+    radial-gradient(ellipse at 20% 20%, rgba(255,255,255,0.8) 20%, transparent 21%),
+    radial-gradient(ellipse at 80% 30%, rgba(255,255,255,0.6) 15%, transparent 16%),
+    radial-gradient(ellipse at 40% 70%, rgba(255,255,255,0.7) 18%, transparent 19%);
+}
+
+.wallpaper-teal_solid {
+  background: #008080;
+}
+
+.wallpaper-green_circuit {
+  background: #001100;
+  background-image: 
+    linear-gradient(90deg, #00FF00 1px, transparent 1px),
+    linear-gradient(180deg, #00FF00 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.wallpaper-blue_space {
+  background: radial-gradient(ellipse at center, #0F0F23 0%, #000000 100%);
+  background-image: 
+    radial-gradient(1px 1px at 20px 30px, white, transparent),
+    radial-gradient(1px 1px at 40px 70px, white, transparent),
+    radial-gradient(2px 2px at 90px 40px, white, transparent);
+}
+
+.wallpaper-pattern_maze {
+  background: #c0c0c0;
+  background-image: 
+    linear-gradient(45deg, #808080 25%, transparent 25%),
+    linear-gradient(-45deg, #808080 25%, transparent 25%);
+  background-size: 20px 20px;
+}
+
+.wallpaper-gradient_sunset {
+  background: linear-gradient(45deg, #FF6B35 0%, #F7931E 50%, #FFD23F 100%);
+}
+
 .desktop-icons {
   position: absolute;
   top: 10px;
