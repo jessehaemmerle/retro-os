@@ -29,6 +29,15 @@ test_results = {
     "tests": []
 }
 
+# Global variables to store test data
+test_user_id = None
+test_username = None
+test_password = None
+test_file_id = None
+test_folder_id = None
+test_nested_file_id = None
+test_recycled_file_id = None
+
 def run_test(test_name, test_func):
     """Run a test and track results"""
     test_results["total"] += 1
@@ -69,6 +78,57 @@ def test_system_info():
             "os_name" in data and 
             "version" in data and 
             "build" in data)
+
+def test_enhanced_system_info():
+    """Test the enhanced system info endpoint"""
+    response = requests.get(f"{API_URL}/system/info")
+    print(f"Response: {response.status_code} - {response.text}")
+    
+    if response.status_code != 200:
+        return False
+    
+    data = response.json()
+    
+    # Check if we have the basic fields
+    required_fields = ["os_name", "version", "build", "features"]
+    for field in required_fields:
+        if field not in data:
+            print(f"System info missing required field: {field}")
+            return False
+    
+    # Check if features list includes the new features
+    required_features = ["Recycle Bin", "Control Panel"]
+    for feature in required_features:
+        if feature not in data["features"]:
+            print(f"System info features missing: {feature}")
+            return False
+    
+    return True
+
+def test_wallpapers_api():
+    """Test the wallpapers API"""
+    response = requests.get(f"{API_URL}/wallpapers")
+    print(f"Response: {response.status_code} - {response.text}")
+    
+    if response.status_code != 200:
+        return False
+    
+    wallpapers = response.json()
+    
+    # Check if we have the expected structure
+    if not isinstance(wallpapers, list) or len(wallpapers) == 0:
+        print("Wallpapers API did not return a list or returned an empty list")
+        return False
+    
+    # Check if each wallpaper has the required fields
+    required_fields = ["id", "name", "description"]
+    for wallpaper in wallpapers:
+        for field in required_fields:
+            if field not in wallpaper:
+                print(f"Wallpaper missing required field: {field}")
+                return False
+    
+    return True
 
 def test_user_registration():
     """Test user registration"""
@@ -192,6 +252,34 @@ def test_default_folders():
     # Check if all default folders exist
     required_folders = ["Documents", "Desktop", "Downloads", "Programs"]
     return all(folder in folder_names for folder in required_folders)
+
+def test_recycle_bin_folder_creation():
+    """Test that Recycle Bin folder is created during registration"""
+    # Create a new user
+    username = f"recycletest_{uuid.uuid4().hex[:8]}"
+    password = "testpassword123"
+    
+    response = requests.post(
+        f"{API_URL}/register",
+        json={"username": username, "password": password}
+    )
+    
+    if response.status_code != 200:
+        print(f"Failed to create user for recycle bin folder test: {response.text}")
+        return False
+    
+    user_id = response.json()["user_id"]
+    
+    # Check if Recycle Bin folder exists
+    response = requests.get(f"{API_URL}/files/{user_id}")
+    if response.status_code != 200:
+        print(f"Failed to get files for new user: {response.text}")
+        return False
+    
+    folders = response.json()
+    folder_names = [folder["name"] for folder in folders]
+    
+    return "Recycle Bin" in folder_names
 
 def test_create_file():
     """Test creating a new file"""
@@ -348,19 +436,213 @@ def test_list_files_by_path():
     # Check if our path is in the results
     return any("/test_folder" in path for path in paths)
 
-def test_delete_file():
-    """Test deleting a file"""
-    response = requests.delete(f"{API_URL}/files/{test_user_id}/{test_file_id}")
+def test_file_extension_tracking():
+    """Test file extension tracking"""
+    # Create files with different extensions
+    extensions = ["txt", "md", "js", "py", "json"]
+    file_ids = []
+    
+    for ext in extensions:
+        file_data = {
+            "name": f"test_file.{ext}",
+            "type": "file",
+            "content": f"Test content for {ext} file",
+            "parent_id": None,
+            "path": f"/test_file.{ext}"
+        }
+        
+        response = requests.post(
+            f"{API_URL}/files/{test_user_id}",
+            json=file_data
+        )
+        
+        if response.status_code != 200:
+            print(f"Failed to create file with extension {ext}: {response.text}")
+            return False
+        
+        file_ids.append(response.json()["id"])
+    
+    # Verify each file has the correct extension
+    for i, ext in enumerate(extensions):
+        response = requests.get(f"{API_URL}/files/{test_user_id}/{file_ids[i]}")
+        if response.status_code != 200:
+            print(f"Failed to get file with extension {ext}: {response.text}")
+            return False
+        
+        file_data = response.json()
+        if file_data.get("file_extension") != ext:
+            print(f"Expected extension {ext}, got {file_data.get('file_extension')}")
+            return False
+    
+    return True
+
+def test_delete_file_to_recycle_bin():
+    """Test moving a file to recycle bin"""
+    # First create a file to delete
+    file_data = {
+        "name": "file_to_recycle.txt",
+        "type": "file",
+        "content": "This file will be moved to recycle bin",
+        "parent_id": None,
+        "path": "/file_to_recycle.txt"
+    }
+    
+    response = requests.post(
+        f"{API_URL}/files/{test_user_id}",
+        json=file_data
+    )
+    
+    if response.status_code != 200:
+        print(f"Failed to create file for recycle bin test: {response.text}")
+        return False
+    
+    recycle_file_id = response.json()["id"]
+    
+    # Now delete it (move to recycle bin)
+    response = requests.delete(f"{API_URL}/files/{test_user_id}/{recycle_file_id}")
     print(f"Response: {response.status_code} - {response.text}")
     
     if response.status_code != 200:
         return False
     
-    # Verify file was deleted
-    response = requests.get(f"{API_URL}/files/{test_user_id}/{test_file_id}")
+    # Verify file is not in regular file listing
+    response = requests.get(f"{API_URL}/files/{test_user_id}")
+    files = response.json()
+    file_ids = [file["id"] for file in files]
     
-    # Should return 404 Not Found
-    return response.status_code == 404
+    if recycle_file_id in file_ids:
+        print("File still appears in regular file listing after deletion")
+        return False
+    
+    # Verify file is in recycle bin
+    response = requests.get(f"{API_URL}/files/{test_user_id}/recycle-bin")
+    recycle_bin = response.json()
+    recycle_ids = [file["id"] for file in recycle_bin]
+    
+    # Store the recycle_file_id for later tests
+    global test_recycled_file_id
+    test_recycled_file_id = recycle_file_id
+    
+    return recycle_file_id in recycle_ids
+
+def test_restore_from_recycle_bin():
+    """Test restoring a file from recycle bin"""
+    # Use the file we moved to recycle bin earlier
+    response = requests.post(f"{API_URL}/files/{test_user_id}/{test_recycled_file_id}/restore")
+    print(f"Response: {response.status_code} - {response.text}")
+    
+    if response.status_code != 200:
+        return False
+    
+    # Verify file is now in regular file listing
+    response = requests.get(f"{API_URL}/files/{test_user_id}")
+    files = response.json()
+    file_ids = [file["id"] for file in files]
+    
+    if test_recycled_file_id not in file_ids:
+        print("File not found in regular file listing after restoration")
+        return False
+    
+    # Verify file is no longer in recycle bin
+    response = requests.get(f"{API_URL}/files/{test_user_id}/recycle-bin")
+    recycle_bin = response.json()
+    recycle_ids = [file["id"] for file in recycle_bin]
+    
+    return test_recycled_file_id not in recycle_ids
+
+def test_permanent_delete():
+    """Test permanently deleting a file"""
+    # First create a file to delete permanently
+    file_data = {
+        "name": "file_to_delete_permanently.txt",
+        "type": "file",
+        "content": "This file will be deleted permanently",
+        "parent_id": None,
+        "path": "/file_to_delete_permanently.txt"
+    }
+    
+    response = requests.post(
+        f"{API_URL}/files/{test_user_id}",
+        json=file_data
+    )
+    
+    if response.status_code != 200:
+        print(f"Failed to create file for permanent deletion test: {response.text}")
+        return False
+    
+    perm_delete_file_id = response.json()["id"]
+    
+    # Now delete it permanently
+    response = requests.delete(f"{API_URL}/files/{test_user_id}/{perm_delete_file_id}?permanent=true")
+    print(f"Response: {response.status_code} - {response.text}")
+    
+    if response.status_code != 200:
+        return False
+    
+    # Verify file is not in regular file listing
+    response = requests.get(f"{API_URL}/files/{test_user_id}")
+    files = response.json()
+    file_ids = [file["id"] for file in files]
+    
+    if perm_delete_file_id in file_ids:
+        print("File still appears in regular file listing after permanent deletion")
+        return False
+    
+    # Verify file is not in recycle bin
+    response = requests.get(f"{API_URL}/files/{test_user_id}/recycle-bin")
+    recycle_bin = response.json()
+    recycle_ids = [file["id"] for file in recycle_bin]
+    
+    return perm_delete_file_id not in recycle_ids
+
+def test_empty_recycle_bin():
+    """Test emptying the recycle bin"""
+    # First create and delete some files to ensure recycle bin has content
+    for i in range(3):
+        file_data = {
+            "name": f"recycle_test_{i}.txt",
+            "type": "file",
+            "content": f"Recycle bin test file {i}",
+            "parent_id": None,
+            "path": f"/recycle_test_{i}.txt"
+        }
+        
+        response = requests.post(
+            f"{API_URL}/files/{test_user_id}",
+            json=file_data
+        )
+        
+        if response.status_code != 200:
+            print(f"Failed to create file for recycle bin test: {response.text}")
+            return False
+        
+        file_id = response.json()["id"]
+        
+        # Delete it (move to recycle bin)
+        response = requests.delete(f"{API_URL}/files/{test_user_id}/{file_id}")
+        if response.status_code != 200:
+            print(f"Failed to move file to recycle bin: {response.text}")
+            return False
+    
+    # Verify recycle bin has content
+    response = requests.get(f"{API_URL}/files/{test_user_id}/recycle-bin")
+    recycle_bin_before = response.json()
+    if len(recycle_bin_before) == 0:
+        print("Recycle bin is empty before emptying test")
+        return False
+    
+    # Empty the recycle bin
+    response = requests.post(f"{API_URL}/files/{test_user_id}/empty-recycle-bin")
+    print(f"Response: {response.status_code} - {response.text}")
+    
+    if response.status_code != 200:
+        return False
+    
+    # Verify recycle bin is now empty
+    response = requests.get(f"{API_URL}/files/{test_user_id}/recycle-bin")
+    recycle_bin_after = response.json()
+    
+    return len(recycle_bin_after) == 0
 
 def test_user_isolation():
     """Test that users can't access each other's files"""
@@ -410,6 +692,8 @@ def run_all_tests():
     # System tests
     run_test("Root Endpoint", test_root_endpoint)
     run_test("System Info", test_system_info)
+    run_test("Enhanced System Info", test_enhanced_system_info)
+    run_test("Wallpapers API", test_wallpapers_api)
     
     # User authentication tests
     run_test("User Registration", test_user_registration)
@@ -422,6 +706,7 @@ def run_all_tests():
     
     # File system tests
     run_test("Default Folders", test_default_folders)
+    run_test("Recycle Bin Folder Creation", test_recycle_bin_folder_creation)
     run_test("Create File", test_create_file)
     run_test("Create Folder", test_create_folder)
     run_test("Create Nested File", test_create_nested_file)
@@ -430,7 +715,13 @@ def run_all_tests():
     run_test("List Files", test_list_files)
     run_test("List Files by Parent", test_list_files_by_parent)
     run_test("List Files by Path", test_list_files_by_path)
-    run_test("Delete File", test_delete_file)
+    run_test("File Extension Tracking", test_file_extension_tracking)
+    
+    # Recycle bin tests
+    run_test("Delete File to Recycle Bin", test_delete_file_to_recycle_bin)
+    run_test("Restore from Recycle Bin", test_restore_from_recycle_bin)
+    run_test("Permanent Delete", test_permanent_delete)
+    run_test("Empty Recycle Bin", test_empty_recycle_bin)
     
     # Security tests
     run_test("User Isolation", test_user_isolation)
