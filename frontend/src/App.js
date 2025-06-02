@@ -254,16 +254,32 @@ const StartMenu = ({ isOpen, onClose, onOpenApp, user }) => {
   );
 };
 
-// Desktop Context Menu
+// Enhanced Context Menu Component
 const ContextMenu = ({ isOpen, position, onClose, onAction }) => {
   if (!isOpen) return null;
 
   const menuItems = [
-    { label: 'New', icon: '📄', submenu: [
-      { label: 'Folder', action: () => onAction('new-folder') },
-      { label: 'Text Document', action: () => onAction('new-text') }
+    { 
+      label: 'New', 
+      icon: '📄', 
+      submenu: [
+        { label: 'Folder', action: () => onAction('new-folder') },
+        { label: 'Text Document', action: () => onAction('new-text') },
+        { label: 'Bitmap Image', action: () => onAction('new-image') }
+      ]
+    },
+    { label: 'Arrange Icons', icon: '📐', submenu: [
+      { label: 'By Name', action: () => onAction('arrange-name') },
+      { label: 'By Type', action: () => onAction('arrange-type') },
+      { label: 'Auto Arrange', action: () => onAction('arrange-auto') }
+    ]},
+    { label: 'View', icon: '👁️', submenu: [
+      { label: 'Large Icons', action: () => onAction('view-large') },
+      { label: 'Small Icons', action: () => onAction('view-small') },
+      { label: 'Details', action: () => onAction('view-details') }
     ]},
     { label: 'Refresh', icon: '🔄', action: () => onAction('refresh') },
+    { label: 'Paste', icon: '📋', action: () => onAction('paste') },
     { label: 'Properties', icon: '📋', action: () => onAction('properties') }
   ];
 
@@ -287,6 +303,7 @@ const ContextMenu = ({ isOpen, position, onClose, onAction }) => {
             >
               <span className="context-menu-icon">{item.icon}</span>
               <span className="context-menu-label">{item.label}</span>
+              {item.submenu && <span className="context-menu-arrow">▶</span>}
             </div>
             {item.submenu && (
               <div className="context-submenu">
