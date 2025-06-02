@@ -23,7 +23,9 @@ const Window = ({
   const [size, setSize] = useState(initialSize);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState('');
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [isAnimating, setIsAnimating] = useState(false);
   const windowRef = useRef(null);
 
@@ -39,18 +41,61 @@ const Window = ({
     }
   };
 
+  const handleResizeMouseDown = (e, direction) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeDirection(direction);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: size.width,
+      height: size.height
+    });
+    onFocus && onFocus(id);
+  };
+
   const handleMouseMove = (e) => {
     if (isDragging && !isMaximized) {
       setPosition({
         x: e.clientX - dragOffset.x,
         y: Math.max(0, e.clientY - dragOffset.y)
       });
+    } else if (isResizing && !isMaximized) {
+      const deltaX = e.clientX - resizeStart.x;
+      const deltaY = e.clientY - resizeStart.y;
+      
+      let newWidth = resizeStart.width;
+      let newHeight = resizeStart.height;
+      let newX = position.x;
+      let newY = position.y;
+      
+      // Handle different resize directions
+      if (resizeDirection.includes('right')) {
+        newWidth = Math.max(300, resizeStart.width + deltaX);
+      }
+      if (resizeDirection.includes('left')) {
+        newWidth = Math.max(300, resizeStart.width - deltaX);
+        newX = position.x + (resizeStart.width - newWidth);
+      }
+      if (resizeDirection.includes('bottom')) {
+        newHeight = Math.max(200, resizeStart.height + deltaY);
+      }
+      if (resizeDirection.includes('top')) {
+        newHeight = Math.max(200, resizeStart.height - deltaY);
+        newY = position.y + (resizeStart.height - newHeight);
+      }
+      
+      setSize({ width: newWidth, height: newHeight });
+      if (newX !== position.x || newY !== position.y) {
+        setPosition({ x: newX, y: newY });
+      }
     }
   };
 
   const handleMouseUp = () => {
     setIsDragging(false);
     setIsResizing(false);
+    setResizeDirection('');
   };
 
   const handleMinimize = () => {
@@ -78,7 +123,7 @@ const Window = ({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging, isResizing, dragOffset]);
+  }, [isDragging, isResizing, dragOffset, resizeStart, position, size]);
 
   const windowStyle = isMaximized 
     ? { top: 0, left: 0, width: '100%', height: 'calc(100vh - 40px)', zIndex }
@@ -109,6 +154,23 @@ const Window = ({
       <div className="window-content">
         {children}
       </div>
+      
+      {/* Resize handles */}
+      {!isMaximized && (
+        <>
+          {/* Corner handles */}
+          <div className="resize-handle resize-nw" onMouseDown={(e) => handleResizeMouseDown(e, 'top-left')} />
+          <div className="resize-handle resize-ne" onMouseDown={(e) => handleResizeMouseDown(e, 'top-right')} />
+          <div className="resize-handle resize-sw" onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-left')} />
+          <div className="resize-handle resize-se" onMouseDown={(e) => handleResizeMouseDown(e, 'bottom-right')} />
+          
+          {/* Edge handles */}
+          <div className="resize-handle resize-n" onMouseDown={(e) => handleResizeMouseDown(e, 'top')} />
+          <div className="resize-handle resize-s" onMouseDown={(e) => handleResizeMouseDown(e, 'bottom')} />
+          <div className="resize-handle resize-w" onMouseDown={(e) => handleResizeMouseDown(e, 'left')} />
+          <div className="resize-handle resize-e" onMouseDown={(e) => handleResizeMouseDown(e, 'right')} />
+        </>
+      )}
     </div>
   );
 };
