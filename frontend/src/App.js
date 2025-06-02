@@ -175,8 +175,8 @@ const Window = ({
   );
 };
 
-// Start Menu Component
-const StartMenu = ({ isOpen, onClose, onOpenApp, user }) => {
+// Enhanced Start Menu Component  
+const StartMenu = ({ isOpen, onClose, onOpenApp, onShutDown, user }) => {
   const [submenuOpen, setSubmenuOpen] = useState(null);
 
   if (!isOpen) return null;
@@ -191,26 +191,47 @@ const StartMenu = ({ isOpen, onClose, onOpenApp, user }) => {
         { label: 'Paint', icon: '🎨', action: () => onOpenApp('paint', 'Paint') },
         { label: 'File Browser', icon: '📂', action: () => onOpenApp('filebrowser', 'File Browser') },
         { label: 'Web Browser', icon: '🌐', action: () => onOpenApp('webbrowser', 'Web Browser') },
-        { label: 'Games', icon: '🎮', action: () => onOpenApp('games', 'Games') }
+        { label: 'Games', icon: '🎮', action: () => onOpenApp('games', 'Games') },
+        { label: 'Task Manager', icon: '📊', action: () => onOpenApp('taskmanager', 'Task Manager') }
       ]
+    },
+    {
+      label: 'Documents',
+      icon: '📄',
+      action: () => onOpenApp('filebrowser', 'Documents')
     },
     {
       label: 'Settings',
       icon: '⚙️',
       submenu: [
         { label: 'Control Panel', icon: '🎛️', action: () => onOpenApp('controlpanel', 'Control Panel') },
-        { label: 'System Information', icon: 'ℹ️', action: () => onOpenApp('systeminfo', 'System Information') }
+        { label: 'System Information', icon: 'ℹ️', action: () => onOpenApp('systeminfo', 'System Information') },
+        { label: 'Task Manager', icon: '📊', action: () => onOpenApp('taskmanager', 'Task Manager') }
       ]
     },
+    {
+      label: 'Find',
+      icon: '🔍',
+      submenu: [
+        { label: 'Files or Folders...', action: () => onOpenApp('search', 'Search') },
+        { label: 'Computer', action: () => onOpenApp('filebrowser', 'Computer') }
+      ]
+    },
+    { label: 'Help', icon: '❓', action: () => onOpenApp('help', 'Help') },
     { label: 'Run...', icon: '🏃', action: () => onOpenApp('run', 'Run') },
-    { label: 'Shut Down...', icon: '🔴', action: () => window.location.reload() }
+    { label: 'Log Off...', icon: '👤', action: () => onShutDown() },
+    { label: 'Shut Down...', icon: '🔴', action: () => onShutDown() }
   ];
 
   return (
     <div className="start-menu-overlay" onClick={onClose}>
       <div className="start-menu" onClick={(e) => e.stopPropagation()}>
         <div className="start-menu-header">
-          <div className="start-menu-user">👤 {user?.username}</div>
+          <div className="start-menu-logo">🏠</div>
+          <div className="start-menu-user">
+            <div className="user-name">{user?.username}</div>
+            <div className="os-name">RetroOS</div>
+          </div>
         </div>
         <div className="start-menu-items">
           {menuItems.map((item, index) => (
