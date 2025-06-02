@@ -306,6 +306,10 @@ test_plan:
     - "User Authentication System"
     - "File System API"
     - "Desktop Settings API"
+    - "Recycle Bin Functionality"
+    - "Enhanced File System"
+    - "Wallpaper API"
+    - "Enhanced System Info"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -315,3 +319,5 @@ agent_communication:
       message: "Built complete retro Windows 95/98 style OS with desktop interface, window management, user auth, file system, and multiple applications (calculator, text editor, file browser, web browser, games). Need to test backend APIs first before frontend testing."
     - agent: "testing"
       message: "Completed comprehensive testing of all backend APIs. Created backend_test.py script that tests all endpoints including user authentication, file system operations, and desktop settings. All tests passed successfully with 100% success rate. The backend is working correctly with proper error handling and user isolation."
+    - agent: "testing"
+      message: "Completed testing of all new backend features. Created updated backend_test.py script that tests all new endpoints including recycle bin functionality, enhanced file system, wallpaper API, and enhanced system info. All tests passed successfully with 100% success rate. The enhanced backend is working correctly with proper error handling."
