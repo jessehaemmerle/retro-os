@@ -125,10 +125,13 @@ const Window = ({
     }, 200);
   };
 
-  const handleClose = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    onClose(id);
+  const handleWindowClick = (e) => {
+    // Don't focus if clicking on window controls
+    if (e.target.classList.contains('window-btn') || 
+        e.target.closest('.window-controls')) {
+      return;
+    }
+    onFocus && onFocus(id);
   };
 
   useEffect(() => {
