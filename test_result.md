@@ -149,6 +149,54 @@ backend:
         - working: true
           agent: "testing"
           comment: "Desktop settings API works correctly. Successfully tested updating and retrieving desktop settings including wallpaper and taskbar position."
+          
+  - task: "Recycle Bin Functionality"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Recycle Bin functionality works correctly. Successfully tested moving files to recycle bin, restoring files from recycle bin, permanently deleting files, and emptying the entire recycle bin. The is_deleted flag is properly tracked and the recycle bin folder is created during user registration."
+
+  - task: "Enhanced File System"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Enhanced File System features work correctly. File extension tracking is properly implemented, and the is_deleted flag for recycle bin functionality works as expected. Default Recycle Bin folder is created during user registration."
+
+  - task: "Wallpaper API"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Wallpaper API works correctly. The endpoint returns a list of available wallpapers with proper id, name, and description fields."
+
+  - task: "Enhanced System Info"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Enhanced System Info API works correctly. The endpoint returns system information including the enhanced features list with Recycle Bin and Control Panel."
 
 frontend:
   - task: "Desktop Interface"
