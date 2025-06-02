@@ -134,6 +134,12 @@ const Window = ({
     onFocus && onFocus(id);
   };
 
+  const handleClose = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onClose(id);
+  };
+
   useEffect(() => {
     if (isDragging || isResizing) {
       document.addEventListener('mousemove', handleMouseMove);
