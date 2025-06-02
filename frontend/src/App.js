@@ -16,13 +16,15 @@ const Window = ({
   isMaximized = false,
   initialPosition = { x: 100, y: 100 },
   initialSize = { width: 600, height: 400 },
-  zIndex = 1
+  zIndex = 1,
+  onFocus
 }) => {
   const [position, setPosition] = useState(initialPosition);
   const [size, setSize] = useState(initialSize);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isAnimating, setIsAnimating] = useState(false);
   const windowRef = useRef(null);
 
   const handleMouseDown = (e) => {
@@ -33,6 +35,7 @@ const Window = ({
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       });
+      onFocus && onFocus(id);
     }
   };
 
@@ -48,6 +51,22 @@ const Window = ({
   const handleMouseUp = () => {
     setIsDragging(false);
     setIsResizing(false);
+  };
+
+  const handleMinimize = () => {
+    setIsAnimating(true);
+    setTimeout(() => {
+      onMinimize(id);
+      setIsAnimating(false);
+    }, 200);
+  };
+
+  const handleMaximize = () => {
+    setIsAnimating(true);
+    setTimeout(() => {
+      onMaximize(id);
+      setIsAnimating(false);
+    }, 200);
   };
 
   useEffect(() => {
@@ -74,15 +93,16 @@ const Window = ({
   return (
     <div 
       ref={windowRef}
-      className="window"
+      className={`window ${isAnimating ? 'window-animating' : ''}`}
       style={windowStyle}
       onMouseDown={handleMouseDown}
+      onClick={() => onFocus && onFocus(id)}
     >
       <div className="window-title-bar">
         <span className="window-title">{title}</span>
         <div className="window-controls">
-          <button className="window-btn minimize-btn" onClick={() => onMinimize(id)}>_</button>
-          <button className="window-btn maximize-btn" onClick={() => onMaximize(id)}>□</button>
+          <button className="window-btn minimize-btn" onClick={handleMinimize}>_</button>
+          <button className="window-btn maximize-btn" onClick={handleMaximize}>□</button>
           <button className="window-btn close-btn" onClick={() => onClose(id)}>×</button>
         </div>
       </div>
@@ -93,7 +113,496 @@ const Window = ({
   );
 };
 
-// Calculator App
+// Start Menu Component
+const StartMenu = ({ isOpen, onClose, onOpenApp, user }) => {
+  const [submenuOpen, setSubmenuOpen] = useState(null);
+
+  if (!isOpen) return null;
+
+  const menuItems = [
+    {
+      label: 'Programs',
+      icon: '📁',
+      submenu: [
+        { label: 'Calculator', icon: '🔢', action: () => onOpenApp('calculator', 'Calculator') },
+        { label: 'Notepad', icon: '📝', action: () => onOpenApp('texteditor', 'Notepad') },
+        { label: 'Paint', icon: '🎨', action: () => onOpenApp('paint', 'Paint') },
+        { label: 'File Browser', icon: '📂', action: () => onOpenApp('filebrowser', 'File Browser') },
+        { label: 'Web Browser', icon: '🌐', action: () => onOpenApp('webbrowser', 'Web Browser') },
+        { label: 'Games', icon: '🎮', action: () => onOpenApp('games', 'Games') }
+      ]
+    },
+    {
+      label: 'Settings',
+      icon: '⚙️',
+      submenu: [
+        { label: 'Control Panel', icon: '🎛️', action: () => onOpenApp('controlpanel', 'Control Panel') },
+        { label: 'System Information', icon: 'ℹ️', action: () => onOpenApp('systeminfo', 'System Information') }
+      ]
+    },
+    { label: 'Run...', icon: '🏃', action: () => onOpenApp('run', 'Run') },
+    { label: 'Shut Down...', icon: '🔴', action: () => window.location.reload() }
+  ];
+
+  return (
+    <div className="start-menu-overlay" onClick={onClose}>
+      <div className="start-menu" onClick={(e) => e.stopPropagation()}>
+        <div className="start-menu-header">
+          <div className="start-menu-user">👤 {user?.username}</div>
+        </div>
+        <div className="start-menu-items">
+          {menuItems.map((item, index) => (
+            <div key={index} className="start-menu-item">
+              <div 
+                className="start-menu-item-main"
+                onMouseEnter={() => setSubmenuOpen(item.submenu ? index : null)}
+                onClick={() => {
+                  if (!item.submenu && item.action) {
+                    item.action();
+                    onClose();
+                  }
+                }}
+              >
+                <span className="start-menu-icon">{item.icon}</span>
+                <span className="start-menu-label">{item.label}</span>
+                {item.submenu && <span className="start-menu-arrow">▶</span>}
+              </div>
+              {item.submenu && submenuOpen === index && (
+                <div className="start-submenu">
+                  {item.submenu.map((subitem, subindex) => (
+                    <div 
+                      key={subindex}
+                      className="start-submenu-item"
+                      onClick={() => {
+                        subitem.action();
+                        onClose();
+                      }}
+                    >
+                      <span className="start-menu-icon">{subitem.icon}</span>
+                      <span className="start-menu-label">{subitem.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Desktop Context Menu
+const ContextMenu = ({ isOpen, position, onClose, onAction }) => {
+  if (!isOpen) return null;
+
+  const menuItems = [
+    { label: 'New', icon: '📄', submenu: [
+      { label: 'Folder', action: () => onAction('new-folder') },
+      { label: 'Text Document', action: () => onAction('new-text') }
+    ]},
+    { label: 'Refresh', icon: '🔄', action: () => onAction('refresh') },
+    { label: 'Properties', icon: '📋', action: () => onAction('properties') }
+  ];
+
+  return (
+    <div className="context-menu-overlay" onClick={onClose}>
+      <div 
+        className="context-menu" 
+        style={{ top: position.y, left: position.x }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {menuItems.map((item, index) => (
+          <div key={index} className="context-menu-item">
+            <div 
+              className="context-menu-item-main"
+              onClick={() => {
+                if (!item.submenu && item.action) {
+                  item.action();
+                  onClose();
+                }
+              }}
+            >
+              <span className="context-menu-icon">{item.icon}</span>
+              <span className="context-menu-label">{item.label}</span>
+            </div>
+            {item.submenu && (
+              <div className="context-submenu">
+                {item.submenu.map((subitem, subindex) => (
+                  <div 
+                    key={subindex}
+                    className="context-submenu-item"
+                    onClick={() => {
+                      subitem.action();
+                      onClose();
+                    }}
+                  >
+                    <span className="context-menu-label">{subitem.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Paint Program Component
+const Paint = () => {
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [tool, setTool] = useState('brush');
+  const [color, setColor] = useState('#000000');
+  const [brushSize, setBrushSize] = useState(3);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    setIsDrawing(true);
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = color;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const colors = ['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#FFC0CB'];
+
+  return (
+    <div className="paint-app">
+      <div className="paint-toolbar">
+        <div className="paint-tools">
+          <button className={`paint-tool ${tool === 'brush' ? 'active' : ''}`} onClick={() => setTool('brush')}>🖌️</button>
+          <button className={`paint-tool ${tool === 'eraser' ? 'active' : ''}`} onClick={() => setTool('eraser')}>🧹</button>
+          <button className="paint-tool" onClick={clearCanvas}>🗑️</button>
+        </div>
+        <div className="paint-colors">
+          {colors.map(c => (
+            <div 
+              key={c}
+              className={`color-swatch ${color === c ? 'active' : ''}`}
+              style={{ backgroundColor: c }}
+              onClick={() => setColor(c)}
+            />
+          ))}
+        </div>
+        <div className="paint-brush-size">
+          <label>Size: </label>
+          <input 
+            type="range" 
+            min="1" 
+            max="20" 
+            value={brushSize} 
+            onChange={(e) => setBrushSize(e.target.value)}
+          />
+          <span>{brushSize}px</span>
+        </div>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={800}
+        height={600}
+        className="paint-canvas"
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+      />
+    </div>
+  );
+};
+
+// Control Panel Component
+const ControlPanel = ({ user, onUpdateSettings }) => {
+  const [wallpapers, setWallpapers] = useState([]);
+  const [selectedWallpaper, setSelectedWallpaper] = useState(user?.desktop_settings?.wallpaper || 'classic_clouds');
+
+  useEffect(() => {
+    loadWallpapers();
+  }, []);
+
+  const loadWallpapers = async () => {
+    try {
+      const response = await axios.get(`${API}/wallpapers`);
+      setWallpapers(response.data);
+    } catch (error) {
+      console.error('Error loading wallpapers:', error);
+    }
+  };
+
+  const applyWallpaper = async () => {
+    try {
+      const newSettings = {
+        ...user.desktop_settings,
+        wallpaper: selectedWallpaper
+      };
+      
+      await axios.put(`${API}/user/${user.user_id}/desktop-settings`, newSettings);
+      onUpdateSettings(newSettings);
+      alert('Wallpaper changed successfully!');
+    } catch (error) {
+      console.error('Error updating wallpaper:', error);
+    }
+  };
+
+  return (
+    <div className="control-panel">
+      <div className="control-panel-tabs">
+        <div className="control-panel-tab active">Display</div>
+      </div>
+      <div className="control-panel-content">
+        <h3>Desktop Wallpaper</h3>
+        <div className="wallpaper-grid">
+          {wallpapers.map(wallpaper => (
+            <div 
+              key={wallpaper.id}
+              className={`wallpaper-option ${selectedWallpaper === wallpaper.id ? 'selected' : ''}`}
+              onClick={() => setSelectedWallpaper(wallpaper.id)}
+            >
+              <div className={`wallpaper-preview wallpaper-${wallpaper.id}`}></div>
+              <div className="wallpaper-name">{wallpaper.name}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={applyWallpaper} className="apply-btn">Apply</button>
+      </div>
+    </div>
+  );
+};
+
+// System Information Component
+const SystemInfo = () => {
+  const [systemInfo, setSystemInfo] = useState(null);
+
+  useEffect(() => {
+    loadSystemInfo();
+  }, []);
+
+  const loadSystemInfo = async () => {
+    try {
+      const response = await axios.get(`${API}/system/info`);
+      setSystemInfo(response.data);
+    } catch (error) {
+      console.error('Error loading system info:', error);
+    }
+  };
+
+  return (
+    <div className="system-info">
+      <div className="system-info-header">
+        <div className="system-logo">🖥️</div>
+        <div className="system-title">
+          <h2>{systemInfo?.os_name}</h2>
+          <p>Version {systemInfo?.version}</p>
+        </div>
+      </div>
+      <div className="system-details">
+        <div className="detail-row">
+          <span className="detail-label">Build:</span>
+          <span className="detail-value">{systemInfo?.build}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Status:</span>
+          <span className="detail-value">{systemInfo?.uptime}</span>
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Features:</span>
+          <div className="feature-list">
+            {systemInfo?.features?.map((feature, index) => (
+              <span key={index} className="feature-item">• {feature}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="system-info-footer">
+        <p>© 2024 RetroOS. All rights reserved.</p>
+      </div>
+    </div>
+  );
+};
+
+// Run Dialog Component
+const RunDialog = () => {
+  const [command, setCommand] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    alert(`Command "${command}" executed!`);
+    setCommand('');
+  };
+
+  return (
+    <div className="run-dialog">
+      <h3>Run</h3>
+      <p>Type the name of a program, folder, document, or Internet resource, and RetroOS will open it for you.</p>
+      <form onSubmit={handleSubmit}>
+        <div className="run-input-group">
+          <label>Open:</label>
+          <input 
+            type="text" 
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            className="run-input"
+            placeholder="Enter command..."
+          />
+        </div>
+        <div className="run-buttons">
+          <button type="submit">OK</button>
+          <button type="button">Cancel</button>
+          <button type="button">Browse...</button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+// Recycle Bin Component
+const RecycleBin = ({ user }) => {
+  const [deletedFiles, setDeletedFiles] = useState([]);
+
+  useEffect(() => {
+    if (user) {
+      loadDeletedFiles();
+    }
+  }, [user]);
+
+  const loadDeletedFiles = async () => {
+    try {
+      const response = await axios.get(`${API}/files/${user.user_id}/recycle-bin`);
+      setDeletedFiles(response.data);
+    } catch (error) {
+      console.error('Error loading deleted files:', error);
+    }
+  };
+
+  const restoreFile = async (fileId) => {
+    try {
+      await axios.post(`${API}/files/${user.user_id}/${fileId}/restore`);
+      loadDeletedFiles();
+      alert('File restored successfully!');
+    } catch (error) {
+      console.error('Error restoring file:', error);
+    }
+  };
+
+  const deleteFilePermanently = async (fileId) => {
+    if (window.confirm('Are you sure you want to permanently delete this file?')) {
+      try {
+        await axios.delete(`${API}/files/${user.user_id}/${fileId}?permanent=true`);
+        loadDeletedFiles();
+      } catch (error) {
+        console.error('Error deleting file permanently:', error);
+      }
+    }
+  };
+
+  const emptyRecycleBin = async () => {
+    if (window.confirm('Are you sure you want to permanently delete all items in the Recycle Bin?')) {
+      try {
+        await axios.post(`${API}/files/${user.user_id}/empty-recycle-bin`);
+        loadDeletedFiles();
+        alert('Recycle Bin emptied successfully!');
+      } catch (error) {
+        console.error('Error emptying recycle bin:', error);
+      }
+    }
+  };
+
+  return (
+    <div className="recycle-bin">
+      <div className="recycle-bin-toolbar">
+        <button onClick={emptyRecycleBin} className="empty-bin-btn" disabled={deletedFiles.length === 0}>
+          Empty Recycle Bin
+        </button>
+      </div>
+      <div className="deleted-files-list">
+        {deletedFiles.length === 0 ? (
+          <div className="empty-message">Recycle Bin is empty</div>
+        ) : (
+          deletedFiles.map(file => (
+            <div key={file.id} className="deleted-file-item">
+              <div className="file-icon">
+                {file.type === 'folder' ? '📁' : getFileIcon(file.file_extension)}
+              </div>
+              <div className="file-info">
+                <div className="file-name">{file.name}</div>
+                <div className="file-details">
+                  Deleted: {new Date(file.modified_at).toLocaleDateString()}
+                </div>
+              </div>
+              <div className="file-actions">
+                <button onClick={() => restoreFile(file.id)} className="restore-btn">Restore</button>
+                <button onClick={() => deleteFilePermanently(file.id)} className="delete-permanent-btn">Delete</button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Helper function to get file icons
+const getFileIcon = (extension) => {
+  const iconMap = {
+    'txt': '📄',
+    'doc': '📄',
+    'pdf': '📕',
+    'jpg': '🖼️',
+    'jpeg': '🖼️',
+    'png': '🖼️',
+    'gif': '🖼️',
+    'mp3': '🎵',
+    'wav': '🎵',
+    'mp4': '🎬',
+    'avi': '🎬',
+    'zip': '📦',
+    'exe': '⚙️',
+    'html': '🌐',
+    'css': '🎨',
+    'js': '📜'
+  };
+  return iconMap[extension] || '📄';
+};
+
+// Calculator App (keeping original)
 const Calculator = () => {
   const [display, setDisplay] = useState('0');
   const [operation, setOperation] = useState(null);
@@ -185,7 +694,7 @@ const Calculator = () => {
   );
 };
 
-// Text Editor App
+// Text Editor App (keeping original with small enhancements)
 const TextEditor = ({ user, onSave }) => {
   const [content, setContent] = useState('');
   const [fileName, setFileName] = useState('Untitled.txt');
@@ -198,7 +707,7 @@ const TextEditor = ({ user, onSave }) => {
 
   const saveFile = async () => {
     try {
-      await axios.post(`${API}/files/${user.id}`, {
+      await axios.post(`${API}/files/${user.user_id}`, {
         name: fileName,
         type: 'file',
         content: content,
@@ -234,7 +743,7 @@ const TextEditor = ({ user, onSave }) => {
   );
 };
 
-// File Browser App
+// File Browser App (enhanced with better icons)
 const FileBrowser = ({ user, onRefresh }) => {
   const [files, setFiles] = useState([]);
   const [currentPath, setCurrentPath] = useState('/');
@@ -243,7 +752,7 @@ const FileBrowser = ({ user, onRefresh }) => {
   const loadFiles = async (path = '/') => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API}/files/${user.id}?path=${path}`);
+      const response = await axios.get(`${API}/files/${user.user_id}?path=${path}`);
       setFiles(response.data);
       setCurrentPath(path);
     } catch (error) {
@@ -262,7 +771,7 @@ const FileBrowser = ({ user, onRefresh }) => {
     const folderName = prompt('Enter folder name:');
     if (folderName) {
       try {
-        await axios.post(`${API}/files/${user.id}`, {
+        await axios.post(`${API}/files/${user.user_id}`, {
           name: folderName,
           type: 'folder',
           path: `${currentPath}${folderName}`
@@ -275,9 +784,9 @@ const FileBrowser = ({ user, onRefresh }) => {
   };
 
   const deleteFile = async (fileId) => {
-    if (window.confirm('Are you sure you want to delete this file?')) {
+    if (window.confirm('Are you sure you want to move this file to Recycle Bin?')) {
       try {
-        await axios.delete(`${API}/files/${user.id}/${fileId}`);
+        await axios.delete(`${API}/files/${user.user_id}/${fileId}`);
         loadFiles(currentPath);
       } catch (error) {
         console.error('Error deleting file:', error);
@@ -298,7 +807,7 @@ const FileBrowser = ({ user, onRefresh }) => {
           files.map(file => (
             <div key={file.id} className="file-item">
               <div className="file-icon">
-                {file.type === 'folder' ? '📁' : '📄'}
+                {file.type === 'folder' ? '📁' : getFileIcon(file.file_extension)}
               </div>
               <div className="file-info">
                 <div className="file-name">{file.name}</div>
@@ -309,6 +818,7 @@ const FileBrowser = ({ user, onRefresh }) => {
               <button 
                 onClick={() => deleteFile(file.id)} 
                 className="delete-btn"
+                title="Move to Recycle Bin"
               >
                 🗑️
               </button>
@@ -320,7 +830,7 @@ const FileBrowser = ({ user, onRefresh }) => {
   );
 };
 
-// Web Browser App
+// Web Browser App (keeping original)
 const WebBrowser = () => {
   const [url, setUrl] = useState('https://www.google.com');
   const [currentUrl, setCurrentUrl] = useState('https://www.google.com');
@@ -357,7 +867,7 @@ const WebBrowser = () => {
   );
 };
 
-// Games Launcher App
+// Games Launcher App (keeping original)
 const GamesLauncher = ({ onOpenGame }) => {
   const games = [
     { name: 'Solitaire', url: 'https://www.solitr.com/' },
@@ -386,7 +896,7 @@ const GamesLauncher = ({ onOpenGame }) => {
   );
 };
 
-// Game Window Component
+// Game Window Component (keeping original)
 const GameWindow = ({ game }) => (
   <iframe 
     src={game.url} 
@@ -395,7 +905,7 @@ const GameWindow = ({ game }) => (
   />
 );
 
-// Login Component
+// Login Component (keeping original)
 const Login = ({ onLogin, onRegister }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -461,6 +971,10 @@ const Desktop = ({ user, onLogout }) => {
   const [windows, setWindows] = useState([]);
   const [nextZIndex, setNextZIndex] = useState(1);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [startMenuOpen, setStartMenuOpen] = useState(false);
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [wallpaper, setWallpaper] = useState(user?.desktop_settings?.wallpaper || 'classic_clouds');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -468,6 +982,10 @@ const Desktop = ({ user, onLogout }) => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setWallpaper(user?.desktop_settings?.wallpaper || 'classic_clouds');
+  }, [user?.desktop_settings?.wallpaper]);
 
   const openWindow = (type, title, props = {}) => {
     const newWindow = {
@@ -513,6 +1031,33 @@ const Desktop = ({ user, onLogout }) => {
     setNextZIndex(nextZIndex + 1);
   };
 
+  const handleDesktopRightClick = (e) => {
+    e.preventDefault();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    setContextMenuOpen(true);
+  };
+
+  const handleContextAction = (action) => {
+    switch (action) {
+      case 'new-folder':
+        // Create new folder on desktop
+        break;
+      case 'new-text':
+        openWindow('texteditor', 'New Text Document');
+        break;
+      case 'refresh':
+        window.location.reload();
+        break;
+      case 'properties':
+        openWindow('systeminfo', 'System Properties');
+        break;
+    }
+  };
+
+  const updateDesktopSettings = (newSettings) => {
+    setWallpaper(newSettings.wallpaper);
+  };
+
   const renderWindowContent = (window) => {
     switch (window.type) {
       case 'calculator':
@@ -527,26 +1072,51 @@ const Desktop = ({ user, onLogout }) => {
         return <GamesLauncher onOpenGame={(game) => openWindow('game', game.name, { game })} />;
       case 'game':
         return <GameWindow game={window.game} />;
+      case 'paint':
+        return <Paint />;
+      case 'controlpanel':
+        return <ControlPanel user={user} onUpdateSettings={updateDesktopSettings} />;
+      case 'systeminfo':
+        return <SystemInfo />;
+      case 'run':
+        return <RunDialog />;
+      case 'recyclebin':
+        return <RecycleBin user={user} />;
       default:
         return <div>Unknown application</div>;
     }
   };
 
   return (
-    <div className="desktop">
+    <div 
+      className={`desktop wallpaper-${wallpaper}`}
+      onContextMenu={handleDesktopRightClick}
+      onClick={() => {
+        setStartMenuOpen(false);
+        setContextMenuOpen(false);
+      }}
+    >
       {/* Desktop Icons */}
       <div className="desktop-icons">
         <div className="desktop-icon" onDoubleClick={() => openWindow('filebrowser', 'File Browser')}>
           <div className="icon">📁</div>
           <div className="icon-label">My Files</div>
         </div>
+        <div className="desktop-icon" onDoubleClick={() => openWindow('recyclebin', 'Recycle Bin')}>
+          <div className="icon">🗑️</div>
+          <div className="icon-label">Recycle Bin</div>
+        </div>
         <div className="desktop-icon" onDoubleClick={() => openWindow('calculator', 'Calculator')}>
           <div className="icon">🔢</div>
           <div className="icon-label">Calculator</div>
         </div>
-        <div className="desktop-icon" onDoubleClick={() => openWindow('texteditor', 'Text Editor')}>
+        <div className="desktop-icon" onDoubleClick={() => openWindow('texteditor', 'Notepad')}>
           <div className="icon">📝</div>
           <div className="icon-label">Notepad</div>
+        </div>
+        <div className="desktop-icon" onDoubleClick={() => openWindow('paint', 'Paint')}>
+          <div className="icon">🎨</div>
+          <div className="icon-label">Paint</div>
         </div>
         <div className="desktop-icon" onDoubleClick={() => openWindow('webbrowser', 'Web Browser')}>
           <div className="icon">🌐</div>
@@ -569,14 +1139,37 @@ const Desktop = ({ user, onLogout }) => {
           onMaximize={maximizeWindow}
           isMaximized={window.isMaximized}
           zIndex={window.zIndex}
+          onFocus={bringToFront}
         >
           {renderWindowContent(window)}
         </Window>
       ))}
 
+      {/* Start Menu */}
+      <StartMenu
+        isOpen={startMenuOpen}
+        onClose={() => setStartMenuOpen(false)}
+        onOpenApp={openWindow}
+        user={user}
+      />
+
+      {/* Context Menu */}
+      <ContextMenu
+        isOpen={contextMenuOpen}
+        position={contextMenuPosition}
+        onClose={() => setContextMenuOpen(false)}
+        onAction={handleContextAction}
+      />
+
       {/* Taskbar */}
       <div className="taskbar">
-        <button className="start-btn">
+        <button 
+          className="start-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setStartMenuOpen(!startMenuOpen);
+          }}
+        >
           🏠 Start
         </button>
         

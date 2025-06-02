@@ -53,6 +53,8 @@ class FileItem(BaseModel):
     size: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
     modified_at: datetime = Field(default_factory=datetime.utcnow)
+    is_deleted: bool = False  # for recycle bin
+    file_extension: Optional[str] = None
 
 class FileCreate(BaseModel):
     name: str
@@ -69,6 +71,7 @@ class DesktopSettings(BaseModel):
     wallpaper: Optional[str] = None
     window_positions: Dict[str, Any] = Field(default_factory=dict)
     taskbar_settings: Dict[str, Any] = Field(default_factory=dict)
+    theme: Optional[str] = None
 
 # Utility functions
 def hash_password(password: str) -> str:
@@ -76,6 +79,12 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
+
+def get_file_extension(filename: str) -> str:
+    """Get file extension from filename"""
+    if '.' in filename:
+        return filename.split('.')[-1].lower()
+    return ''
 
 # Authentication routes
 @api_router.post("/register")
@@ -90,9 +99,10 @@ async def register_user(user_data: UserCreate):
         username=user_data.username,
         password_hash=hash_password(user_data.password),
         desktop_settings={
-            "wallpaper": "default",
+            "wallpaper": "classic_clouds",
             "window_positions": {},
-            "taskbar_settings": {"position": "bottom"}
+            "taskbar_settings": {"position": "bottom"},
+            "theme": "classic"
         }
     )
     
@@ -103,7 +113,8 @@ async def register_user(user_data: UserCreate):
         {"name": "Documents", "path": "/Documents"},
         {"name": "Desktop", "path": "/Desktop"},
         {"name": "Downloads", "path": "/Downloads"},
-        {"name": "Programs", "path": "/Programs"}
+        {"name": "Programs", "path": "/Programs"},
+        {"name": "Recycle Bin", "path": "/RecycleBin"}
     ]
     
     for folder in folders:
@@ -155,8 +166,11 @@ async def update_desktop_settings(user_id: str, settings: DesktopSettings):
 
 # File system routes
 @api_router.get("/files/{user_id}")
-async def get_files(user_id: str, parent_id: Optional[str] = None, path: Optional[str] = None):
+async def get_files(user_id: str, parent_id: Optional[str] = None, path: Optional[str] = None, include_deleted: bool = False):
     query = {"user_id": user_id}
+    if not include_deleted:
+        query["is_deleted"] = {"$ne": True}
+    
     if parent_id:
         query["parent_id"] = parent_id
     elif path:
@@ -167,16 +181,25 @@ async def get_files(user_id: str, parent_id: Optional[str] = None, path: Optiona
     files = await db.files.find(query).to_list(1000)
     return [FileItem(**file) for file in files]
 
+@api_router.get("/files/{user_id}/recycle-bin")
+async def get_deleted_files(user_id: str):
+    """Get files in recycle bin"""
+    files = await db.files.find({"user_id": user_id, "is_deleted": True}).to_list(1000)
+    return [FileItem(**file) for file in files]
+
 @api_router.post("/files/{user_id}")
 async def create_file(user_id: str, file_data: FileCreate):
     # Check if file already exists in the same path
     existing = await db.files.find_one({
         "user_id": user_id,
         "name": file_data.name,
-        "parent_id": file_data.parent_id
+        "parent_id": file_data.parent_id,
+        "is_deleted": {"$ne": True}
     })
     if existing:
         raise HTTPException(status_code=400, detail="File already exists")
+    
+    file_extension = get_file_extension(file_data.name)
     
     file_item = FileItem(
         user_id=user_id,
@@ -185,7 +208,8 @@ async def create_file(user_id: str, file_data: FileCreate):
         content=file_data.content or "",
         parent_id=file_data.parent_id,
         path=file_data.path,
-        size=len(file_data.content or "")
+        size=len(file_data.content or ""),
+        file_extension=file_extension
     )
     
     await db.files.insert_one(file_item.dict())
@@ -204,6 +228,7 @@ async def update_file(user_id: str, file_id: str, file_update: FileUpdate):
     update_data = {"modified_at": datetime.utcnow()}
     if file_update.name:
         update_data["name"] = file_update.name
+        update_data["file_extension"] = get_file_extension(file_update.name)
     if file_update.content is not None:
         update_data["content"] = file_update.content
         update_data["size"] = len(file_update.content)
@@ -219,12 +244,40 @@ async def update_file(user_id: str, file_id: str, file_update: FileUpdate):
     return {"message": "File updated successfully"}
 
 @api_router.delete("/files/{user_id}/{file_id}")
-async def delete_file(user_id: str, file_id: str):
-    result = await db.files.delete_one({"id": file_id, "user_id": user_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="File not found")
+async def delete_file(user_id: str, file_id: str, permanent: bool = False):
+    if permanent:
+        # Permanent delete
+        result = await db.files.delete_one({"id": file_id, "user_id": user_id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="File not found")
+        return {"message": "File permanently deleted"}
+    else:
+        # Move to recycle bin
+        result = await db.files.update_one(
+            {"id": file_id, "user_id": user_id},
+            {"$set": {"is_deleted": True, "modified_at": datetime.utcnow()}}
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="File not found")
+        return {"message": "File moved to recycle bin"}
+
+@api_router.post("/files/{user_id}/{file_id}/restore")
+async def restore_file(user_id: str, file_id: str):
+    """Restore file from recycle bin"""
+    result = await db.files.update_one(
+        {"id": file_id, "user_id": user_id, "is_deleted": True},
+        {"$set": {"is_deleted": False, "modified_at": datetime.utcnow()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="File not found in recycle bin")
     
-    return {"message": "File deleted successfully"}
+    return {"message": "File restored successfully"}
+
+@api_router.post("/files/{user_id}/empty-recycle-bin")
+async def empty_recycle_bin(user_id: str):
+    """Permanently delete all files in recycle bin"""
+    result = await db.files.delete_many({"user_id": user_id, "is_deleted": True})
+    return {"message": f"Permanently deleted {result.deleted_count} files"}
 
 # System routes
 @api_router.get("/")
@@ -236,9 +289,34 @@ async def system_info():
     return {
         "os_name": "RetroOS",
         "version": "1.0",
-        "build": "95/98 Classic",
-        "uptime": "Running since startup"
+        "build": "95/98 Classic Enhanced",
+        "uptime": "Running since startup",
+        "features": [
+            "Window Management",
+            "File System", 
+            "User Accounts",
+            "Paint Program",
+            "Calculator",
+            "Text Editor",
+            "Web Browser",
+            "Games Launcher",
+            "Recycle Bin",
+            "Control Panel"
+        ]
     }
+
+@api_router.get("/wallpapers")
+async def get_available_wallpapers():
+    """Get list of available wallpapers"""
+    wallpapers = [
+        {"id": "classic_clouds", "name": "Classic Clouds", "description": "Windows 95 style clouds"},
+        {"id": "teal_solid", "name": "Teal", "description": "Solid teal background"},
+        {"id": "green_circuit", "name": "Green Circuit", "description": "Circuit board pattern"},
+        {"id": "blue_space", "name": "Blue Space", "description": "Deep space background"},
+        {"id": "pattern_maze", "name": "Maze Pattern", "description": "Classic maze pattern"},
+        {"id": "gradient_sunset", "name": "Sunset Gradient", "description": "Orange sunset gradient"}
+    ]
+    return wallpapers
 
 # Include the router in the main app
 app.include_router(api_router)
