@@ -165,7 +165,7 @@ const Window = ({
         <div className="window-controls">
           <button className="window-btn minimize-btn" onClick={handleMinimize}>_</button>
           <button className="window-btn maximize-btn" onClick={handleMaximize}>□</button>
-          <button className="window-btn close-btn" onClick={() => onClose(id)}>×</button>
+          <button className="window-btn close-btn" onClick={handleClose}>×</button>
         </div>
       </div>
       <div className="window-content">
