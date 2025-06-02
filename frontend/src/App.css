@@ -167,6 +167,76 @@ body {
   min-height: 200px;
 }
 
+/* Resize Handles */
+.resize-handle {
+  position: absolute;
+  background: transparent;
+}
+
+.resize-handle.resize-n,
+.resize-handle.resize-s {
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+}
+
+.resize-handle.resize-e,
+.resize-handle.resize-w {
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: ew-resize;
+}
+
+.resize-handle.resize-n {
+  top: -2px;
+}
+
+.resize-handle.resize-s {
+  bottom: -2px;
+}
+
+.resize-handle.resize-e {
+  right: -2px;
+}
+
+.resize-handle.resize-w {
+  left: -2px;
+}
+
+.resize-handle.resize-nw {
+  top: -2px;
+  left: -2px;
+  width: 8px;
+  height: 8px;
+  cursor: nw-resize;
+}
+
+.resize-handle.resize-ne {
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  cursor: ne-resize;
+}
+
+.resize-handle.resize-sw {
+  bottom: -2px;
+  left: -2px;
+  width: 8px;
+  height: 8px;
+  cursor: sw-resize;
+}
+
+.resize-handle.resize-se {
+  bottom: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  cursor: se-resize;
+}
+
 .window-title-bar {
   background: linear-gradient(90deg, #000080, #1010a0);
   color: white;
