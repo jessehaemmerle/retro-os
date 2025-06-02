@@ -30,7 +30,14 @@ const Window = ({
   const windowRef = useRef(null);
 
   const handleMouseDown = (e) => {
-    if (e.target.classList.contains('window-title-bar')) {
+    // Don't start dragging if clicking on window controls
+    if (e.target.classList.contains('window-btn') || 
+        e.target.closest('.window-controls')) {
+      return;
+    }
+    
+    if (e.target.classList.contains('window-title-bar') || 
+        e.target.closest('.window-title-bar')) {
       setIsDragging(true);
       const rect = windowRef.current.getBoundingClientRect();
       setDragOffset({
