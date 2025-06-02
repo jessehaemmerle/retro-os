@@ -105,7 +105,9 @@ const Window = ({
     setResizeDirection('');
   };
 
-  const handleMinimize = () => {
+  const handleMinimize = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     setIsAnimating(true);
     setTimeout(() => {
       onMinimize(id);
@@ -113,12 +115,20 @@ const Window = ({
     }, 200);
   };
 
-  const handleMaximize = () => {
+  const handleMaximize = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     setIsAnimating(true);
     setTimeout(() => {
       onMaximize(id);
       setIsAnimating(false);
     }, 200);
+  };
+
+  const handleClose = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onClose(id);
   };
 
   useEffect(() => {
