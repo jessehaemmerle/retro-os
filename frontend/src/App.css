@@ -121,6 +121,7 @@ body {
   background: linear-gradient(45deg, #FF6B35 0%, #F7931E 50%, #FFD23F 100%);
 }
 
+/* Desktop Icons - Responsive Sizes */
 .desktop-icons {
   position: absolute;
   top: 10px;
@@ -129,6 +130,87 @@ body {
   flex-direction: column;
   gap: 20px;
   z-index: 0;
+}
+
+.desktop-icons.icon-size-small .desktop-icon {
+  width: 48px;
+}
+
+.desktop-icons.icon-size-small .icon {
+  font-size: 24px;
+}
+
+.desktop-icons.icon-size-small .icon-label {
+  font-size: 9px;
+}
+
+.desktop-icons.icon-size-normal .desktop-icon {
+  width: 64px;
+}
+
+.desktop-icons.icon-size-normal .icon {
+  font-size: 32px;
+}
+
+.desktop-icons.icon-size-normal .icon-label {
+  font-size: 10px;
+}
+
+.desktop-icons.icon-size-large .desktop-icon {
+  width: 80px;
+}
+
+.desktop-icons.icon-size-large .icon {
+  font-size: 40px;
+}
+
+.desktop-icons.icon-size-large .icon-label {
+  font-size: 12px;
+}
+
+/* Desktop Themes */
+.desktop.theme-classic {
+  /* Default classic theme */
+}
+
+.desktop.theme-blue .taskbar {
+  background: linear-gradient(180deg, #245edb 0%, #1e4ba6 100%);
+}
+
+.desktop.theme-blue .window-title-bar {
+  background: linear-gradient(90deg, #245edb, #1e4ba6);
+}
+
+.desktop.theme-green .taskbar {
+  background: linear-gradient(180deg, #2d7d32 0%, #1b5e20 100%);
+}
+
+.desktop.theme-green .window-title-bar {
+  background: linear-gradient(90deg, #2d7d32, #1b5e20);
+}
+
+.desktop.theme-high-contrast {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+.desktop.theme-high-contrast .taskbar {
+  background: #000000 !important;
+  border: 2px solid #ffffff !important;
+}
+
+.desktop.theme-high-contrast .desktop-icon .icon-label {
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+/* Animation Controls */
+.desktop.animations-enabled .window {
+  transition: all 0.2s ease-in-out;
+}
+
+.desktop:not(.animations-enabled) .window {
+  transition: none;
 }
 
 .desktop-icon {
