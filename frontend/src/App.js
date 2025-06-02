@@ -1229,6 +1229,12 @@ const Desktop = ({ user, onLogout }) => {
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const [wallpaper, setWallpaper] = useState(user?.desktop_settings?.wallpaper || 'classic_clouds');
+  const [settings, setSettings] = useState({
+    taskbarPosition: user?.desktop_settings?.taskbar_settings?.position || 'bottom',
+    iconSize: user?.desktop_settings?.iconSize || 'normal',
+    theme: user?.desktop_settings?.theme || 'classic',
+    windowAnimations: user?.desktop_settings?.windowAnimations !== false
+  });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1239,9 +1245,23 @@ const Desktop = ({ user, onLogout }) => {
 
   useEffect(() => {
     setWallpaper(user?.desktop_settings?.wallpaper || 'classic_clouds');
-  }, [user?.desktop_settings?.wallpaper]);
+    setSettings({
+      taskbarPosition: user?.desktop_settings?.taskbar_settings?.position || 'bottom',
+      iconSize: user?.desktop_settings?.iconSize || 'normal',
+      theme: user?.desktop_settings?.theme || 'classic',
+      windowAnimations: user?.desktop_settings?.windowAnimations !== false
+    });
+  }, [user?.desktop_settings]);
 
   const openWindow = (type, title, props = {}) => {
+    // Check if window is already open
+    const existingWindow = windows.find(w => w.type === type);
+    if (existingWindow) {
+      // Bring existing window to front
+      bringToFront(existingWindow.id);
+      return;
+    }
+
     const newWindow = {
       id: Date.now(),
       type,
@@ -1289,12 +1309,32 @@ const Desktop = ({ user, onLogout }) => {
     e.preventDefault();
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
     setContextMenuOpen(true);
+    setStartMenuOpen(false);
   };
 
-  const handleContextAction = (action) => {
+  const handleDesktopClick = (e) => {
+    if (e.target.classList.contains('desktop') || e.target.classList.contains('desktop-icons')) {
+      setStartMenuOpen(false);
+      setContextMenuOpen(false);
+    }
+  };
+
+  const handleContextAction = async (action) => {
     switch (action) {
       case 'new-folder':
-        // Create new folder on desktop
+        const folderName = prompt('Enter folder name:');
+        if (folderName) {
+          try {
+            await axios.post(`${API}/files/${user.user_id}`, {
+              name: folderName,
+              type: 'folder',
+              path: `/Desktop/${folderName}`
+            });
+            alert('Folder created successfully!');
+          } catch (error) {
+            console.error('Error creating folder:', error);
+          }
+        }
         break;
       case 'new-text':
         openWindow('texteditor', 'New Text Document');
@@ -1303,13 +1343,42 @@ const Desktop = ({ user, onLogout }) => {
         window.location.reload();
         break;
       case 'properties':
-        openWindow('systeminfo', 'System Properties');
+        openWindow('systeminfo', 'Desktop Properties');
+        break;
+      case 'arrange-icons':
+        alert('Icons arranged!');
+        break;
+      case 'view-large':
+      case 'view-small':
+        const newSize = action === 'view-large' ? 'large' : 'small';
+        updateDesktopSettings({ ...settings, iconSize: newSize });
         break;
     }
   };
 
-  const updateDesktopSettings = (newSettings) => {
-    setWallpaper(newSettings.wallpaper);
+  const updateDesktopSettings = async (newSettings) => {
+    try {
+      const updatedSettings = {
+        ...user.desktop_settings,
+        ...newSettings,
+        taskbar_settings: { position: newSettings.taskbarPosition || settings.taskbarPosition }
+      };
+      
+      await axios.put(`${API}/user/${user.user_id}/desktop-settings`, updatedSettings);
+      setSettings(newSettings);
+      
+      if (newSettings.wallpaper) {
+        setWallpaper(newSettings.wallpaper);
+      }
+    } catch (error) {
+      console.error('Error updating settings:', error);
+    }
+  };
+
+  const shutDown = () => {
+    if (window.confirm('Are you sure you want to shut down RetroOS?')) {
+      onLogout();
+    }
   };
 
   const renderWindowContent = (window) => {
@@ -1333,25 +1402,66 @@ const Desktop = ({ user, onLogout }) => {
       case 'systeminfo':
         return <SystemInfo />;
       case 'run':
-        return <RunDialog />;
+        return <RunDialog onOpenApp={openWindow} />;
       case 'recyclebin':
         return <RecycleBin user={user} />;
+      case 'taskmanager':
+        return <TaskManager windows={windows} onCloseWindow={closeWindow} />;
+      case 'explorer':
+        return <Explorer user={user} onOpenFile={(file) => openWindow('texteditor', file.name, { file })} />;
       default:
         return <div>Unknown application</div>;
     }
   };
 
+  const getTaskbarStyle = () => {
+    const position = settings.taskbarPosition;
+    const baseStyle = {
+      position: 'fixed',
+      background: '#c0c0c0',
+      border: '1px solid #808080',
+      display: 'flex',
+      alignItems: 'center',
+      zIndex: 9999
+    };
+
+    switch (position) {
+      case 'top':
+        return { ...baseStyle, top: 0, left: 0, right: 0, height: '40px', borderTop: 'none' };
+      case 'left':
+        return { ...baseStyle, top: 0, left: 0, bottom: 0, width: '200px', flexDirection: 'column', borderLeft: 'none' };
+      case 'right':
+        return { ...baseStyle, top: 0, right: 0, bottom: 0, width: '200px', flexDirection: 'column', borderRight: 'none' };
+      default: // bottom
+        return { ...baseStyle, bottom: 0, left: 0, right: 0, height: '40px', borderBottom: 'none' };
+    }
+  };
+
+  const getDesktopStyle = () => {
+    const position = settings.taskbarPosition;
+    const baseStyle = { height: '100vh', position: 'relative', overflow: 'hidden' };
+
+    switch (position) {
+      case 'top':
+        return { ...baseStyle, paddingTop: '40px', height: 'calc(100vh - 40px)', marginTop: '40px' };
+      case 'left':
+        return { ...baseStyle, paddingLeft: '200px', width: 'calc(100vw - 200px)', marginLeft: '200px' };
+      case 'right':
+        return { ...baseStyle, paddingRight: '200px', width: 'calc(100vw - 200px)' };
+      default: // bottom
+        return { ...baseStyle, paddingBottom: '40px' };
+    }
+  };
+
   return (
     <div 
-      className={`desktop wallpaper-${wallpaper}`}
+      className={`desktop wallpaper-${wallpaper} theme-${settings.theme} ${settings.windowAnimations ? 'animations-enabled' : ''}`}
+      style={getDesktopStyle()}
       onContextMenu={handleDesktopRightClick}
-      onClick={() => {
-        setStartMenuOpen(false);
-        setContextMenuOpen(false);
-      }}
+      onClick={handleDesktopClick}
     >
       {/* Desktop Icons */}
-      <div className="desktop-icons">
+      <div className={`desktop-icons icon-size-${settings.iconSize}`}>
         <div className="desktop-icon" onDoubleClick={() => openWindow('filebrowser', 'File Browser')}>
           <div className="icon">📁</div>
           <div className="icon-label">My Files</div>
@@ -1380,6 +1490,10 @@ const Desktop = ({ user, onLogout }) => {
           <div className="icon">🎮</div>
           <div className="icon-label">Games</div>
         </div>
+        <div className="desktop-icon" onDoubleClick={() => openWindow('taskmanager', 'Task Manager')}>
+          <div className="icon">📊</div>
+          <div className="icon-label">Task Manager</div>
+        </div>
       </div>
 
       {/* Windows */}
@@ -1404,6 +1518,7 @@ const Desktop = ({ user, onLogout }) => {
         isOpen={startMenuOpen}
         onClose={() => setStartMenuOpen(false)}
         onOpenApp={openWindow}
+        onShutDown={shutDown}
         user={user}
       />
 
@@ -1416,12 +1531,13 @@ const Desktop = ({ user, onLogout }) => {
       />
 
       {/* Taskbar */}
-      <div className="taskbar">
+      <div className="taskbar" style={getTaskbarStyle()}>
         <button 
           className="start-btn"
           onClick={(e) => {
             e.stopPropagation();
             setStartMenuOpen(!startMenuOpen);
+            setContextMenuOpen(false);
           }}
         >
           🏠 Start
@@ -1433,6 +1549,7 @@ const Desktop = ({ user, onLogout }) => {
               key={window.id}
               className={`taskbar-item ${window.isMinimized ? 'minimized' : ''}`}
               onClick={() => window.isMinimized ? restoreWindow(window.id) : bringToFront(window.id)}
+              title={window.title}
             >
               {window.title}
             </button>
@@ -1440,8 +1557,12 @@ const Desktop = ({ user, onLogout }) => {
         </div>
         
         <div className="system-tray">
+          <div className="tray-icons">
+            <span className="tray-icon" title="Volume">🔊</span>
+            <span className="tray-icon" title="Network">📶</span>
+          </div>
           <span className="time">{currentTime.toLocaleTimeString()}</span>
-          <button className="logout-btn" onClick={onLogout}>Logout</button>
+          <button className="logout-btn" onClick={onLogout} title="Logout">Logout</button>
         </div>
       </div>
     </div>
