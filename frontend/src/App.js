@@ -415,6 +415,15 @@ const Paint = () => {
 const ControlPanel = ({ user, onUpdateSettings }) => {
   const [wallpapers, setWallpapers] = useState([]);
   const [selectedWallpaper, setSelectedWallpaper] = useState(user?.desktop_settings?.wallpaper || 'classic_clouds');
+  const [activeTab, setActiveTab] = useState('display');
+  const [settings, setSettings] = useState({
+    taskbarPosition: user?.desktop_settings?.taskbar_settings?.position || 'bottom',
+    doubleClickSpeed: user?.desktop_settings?.doubleClickSpeed || 'normal',
+    windowAnimations: user?.desktop_settings?.windowAnimations !== false,
+    soundEnabled: user?.desktop_settings?.soundEnabled !== false,
+    iconSize: user?.desktop_settings?.iconSize || 'normal',
+    theme: user?.desktop_settings?.theme || 'classic'
+  });
 
   useEffect(() => {
     loadWallpapers();
@@ -444,26 +453,209 @@ const ControlPanel = ({ user, onUpdateSettings }) => {
     }
   };
 
+  const applySettings = async () => {
+    try {
+      const newSettings = {
+        ...user.desktop_settings,
+        ...settings,
+        taskbar_settings: { position: settings.taskbarPosition }
+      };
+      
+      await axios.put(`${API}/user/${user.user_id}/desktop-settings`, newSettings);
+      onUpdateSettings(newSettings);
+      alert('Settings applied successfully!');
+    } catch (error) {
+      console.error('Error updating settings:', error);
+    }
+  };
+
+  const handleSettingChange = (setting, value) => {
+    setSettings(prev => ({ ...prev, [setting]: value }));
+  };
+
+  const tabs = [
+    { id: 'display', label: 'Display', icon: '🖥️' },
+    { id: 'interface', label: 'Interface', icon: '🎛️' },
+    { id: 'system', label: 'System', icon: '⚙️' },
+    { id: 'accessibility', label: 'Access', icon: '♿' }
+  ];
+
   return (
     <div className="control-panel">
       <div className="control-panel-tabs">
-        <div className="control-panel-tab active">Display</div>
+        {tabs.map(tab => (
+          <div 
+            key={tab.id}
+            className={`control-panel-tab ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <span className="tab-icon">{tab.icon}</span>
+            <span className="tab-label">{tab.label}</span>
+          </div>
+        ))}
       </div>
+      
       <div className="control-panel-content">
-        <h3>Desktop Wallpaper</h3>
-        <div className="wallpaper-grid">
-          {wallpapers.map(wallpaper => (
-            <div 
-              key={wallpaper.id}
-              className={`wallpaper-option ${selectedWallpaper === wallpaper.id ? 'selected' : ''}`}
-              onClick={() => setSelectedWallpaper(wallpaper.id)}
-            >
-              <div className={`wallpaper-preview wallpaper-${wallpaper.id}`}></div>
-              <div className="wallpaper-name">{wallpaper.name}</div>
+        {activeTab === 'display' && (
+          <div className="settings-section">
+            <h3>Desktop Wallpaper</h3>
+            <div className="wallpaper-grid">
+              {wallpapers.map(wallpaper => (
+                <div 
+                  key={wallpaper.id}
+                  className={`wallpaper-option ${selectedWallpaper === wallpaper.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedWallpaper(wallpaper.id)}
+                >
+                  <div className={`wallpaper-preview wallpaper-${wallpaper.id}`}></div>
+                  <div className="wallpaper-name">{wallpaper.name}</div>
+                </div>
+              ))}
             </div>
-          ))}
+            <button onClick={applyWallpaper} className="apply-btn">Apply Wallpaper</button>
+            
+            <h3>Screen Resolution</h3>
+            <div className="setting-group">
+              <label>Resolution:</label>
+              <select value="1024x768" onChange={() => {}}>
+                <option value="800x600">800 x 600</option>
+                <option value="1024x768">1024 x 768</option>
+                <option value="1280x1024">1280 x 1024</option>
+                <option value="1920x1080">1920 x 1080</option>
+              </select>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'interface' && (
+          <div className="settings-section">
+            <h3>Taskbar Settings</h3>
+            <div className="setting-group">
+              <label>Position:</label>
+              <select 
+                value={settings.taskbarPosition} 
+                onChange={(e) => handleSettingChange('taskbarPosition', e.target.value)}
+              >
+                <option value="bottom">Bottom</option>
+                <option value="top">Top</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+            
+            <h3>Desktop Icons</h3>
+            <div className="setting-group">
+              <label>Icon Size:</label>
+              <select 
+                value={settings.iconSize} 
+                onChange={(e) => handleSettingChange('iconSize', e.target.value)}
+              >
+                <option value="small">Small</option>
+                <option value="normal">Normal</option>
+                <option value="large">Large</option>
+              </select>
+            </div>
+            
+            <h3>Theme</h3>
+            <div className="setting-group">
+              <label>Color Scheme:</label>
+              <select 
+                value={settings.theme} 
+                onChange={(e) => handleSettingChange('theme', e.target.value)}
+              >
+                <option value="classic">Windows Classic</option>
+                <option value="blue">Windows Blue</option>
+                <option value="green">Windows Green</option>
+                <option value="high-contrast">High Contrast</option>
+              </select>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'system' && (
+          <div className="settings-section">
+            <h3>Performance</h3>
+            <div className="setting-group">
+              <label>
+                <input 
+                  type="checkbox" 
+                  checked={settings.windowAnimations}
+                  onChange={(e) => handleSettingChange('windowAnimations', e.target.checked)}
+                />
+                Enable window animations
+              </label>
+            </div>
+            
+            <h3>Sound</h3>
+            <div className="setting-group">
+              <label>
+                <input 
+                  type="checkbox" 
+                  checked={settings.soundEnabled}
+                  onChange={(e) => handleSettingChange('soundEnabled', e.target.checked)}
+                />
+                Enable system sounds
+              </label>
+            </div>
+            
+            <h3>Mouse</h3>
+            <div className="setting-group">
+              <label>Double-click speed:</label>
+              <select 
+                value={settings.doubleClickSpeed} 
+                onChange={(e) => handleSettingChange('doubleClickSpeed', e.target.value)}
+              >
+                <option value="slow">Slow</option>
+                <option value="normal">Normal</option>
+                <option value="fast">Fast</option>
+              </select>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'accessibility' && (
+          <div className="settings-section">
+            <h3>Visual</h3>
+            <div className="setting-group">
+              <label>
+                <input type="checkbox" />
+                Use high contrast
+              </label>
+            </div>
+            <div className="setting-group">
+              <label>
+                <input type="checkbox" />
+                Show large icons
+              </label>
+            </div>
+            
+            <h3>Keyboard</h3>
+            <div className="setting-group">
+              <label>
+                <input type="checkbox" />
+                Sticky keys
+              </label>
+            </div>
+            <div className="setting-group">
+              <label>
+                <input type="checkbox" />
+                Filter keys
+              </label>
+            </div>
+            
+            <h3>Mouse</h3>
+            <div className="setting-group">
+              <label>
+                <input type="checkbox" />
+                Mouse keys
+              </label>
+            </div>
+          </div>
+        )}
+        
+        <div className="control-panel-footer">
+          <button onClick={applySettings} className="apply-btn">Apply All Settings</button>
+          <button onClick={() => window.location.reload()} className="apply-btn">Reset to Defaults</button>
         </div>
-        <button onClick={applyWallpaper} className="apply-btn">Apply</button>
       </div>
     </div>
   );
