@@ -167,7 +167,7 @@ const Window = ({
       className={`window ${isAnimating ? 'window-animating' : ''}`}
       style={windowStyle}
       onMouseDown={handleMouseDown}
-      onClick={() => onFocus && onFocus(id)}
+      onClick={handleWindowClick}
     >
       <div className="window-title-bar">
         <span className="window-title">{title}</span>
