@@ -775,108 +775,222 @@ body {
   line-height: 1.4;
 }
 
-/* Modal Dialogs */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+/* Enhanced Save As Dialog */
+.save-as-dialog-enhanced {
+  min-width: 600px;
+  max-width: 800px;
+  height: 500px;
   display: flex;
+  flex-direction: column;
+}
+
+.save-dialog-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  z-index: 10000;
+  padding: 8px 16px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #d0d0d0;
 }
 
-.modal-dialog {
-  background: #c0c0c0;
-  border: 2px outset #c0c0c0;
-  padding: 16px;
-  min-width: 300px;
-  max-width: 500px;
-}
-
-.modal-dialog h3 {
-  margin-bottom: 12px;
+.save-dialog-header h3 {
+  margin: 0;
   font-size: 12px;
   color: #000;
 }
 
-.modal-dialog input {
-  width: 100%;
+.save-dialog-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
   padding: 4px;
-  border: 1px inset #c0c0c0;
-  background: white;
-  font-size: 11px;
-  margin-bottom: 12px;
+  color: #666;
 }
 
-.modal-buttons {
+.save-dialog-header .close-btn:hover {
+  background: #ff0000;
+  color: white;
+}
+
+.save-dialog-content {
+  flex: 1;
   display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+  flex-direction: column;
+  padding: 12px;
+  overflow: hidden;
 }
 
-.modal-buttons button {
-  padding: 4px 16px;
+.save-dialog-navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 4px;
+  background: #f8f8f8;
+  border: 1px inset #c0c0c0;
+}
+
+.save-dialog-navigation .nav-btn {
+  padding: 4px 8px;
   border: 1px outset #c0c0c0;
   background: #c0c0c0;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
+  min-width: 32px;
 }
 
-.modal-buttons button:disabled {
+.save-dialog-navigation .nav-btn:disabled {
   background: #a0a0a0;
   color: #666;
   cursor: default;
 }
 
-.modal-buttons button:active:not(:disabled) {
+.save-dialog-navigation .nav-btn:active:not(:disabled) {
   border: 1px inset #c0c0c0;
 }
 
-.save-as-dialog {
-  min-width: 400px;
+.save-dialog-path {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
 }
 
-.save-as-content {
-  margin-bottom: 16px;
+.save-dialog-folders {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+  border: 1px inset #c0c0c0;
+  background: white;
 }
 
-.save-location {
+.folders-header {
+  padding: 6px 8px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #d0d0d0;
+  font-size: 11px;
+  font-weight: bold;
+  color: #000;
+}
+
+.folders-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.folder-item:hover {
+  background: #e0e0e0;
+}
+
+.folder-item:active {
+  background: #0080ff;
+  color: white;
+}
+
+.folder-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loading, .no-folders {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  font-size: 11px;
+}
+
+.save-dialog-filename {
   margin-bottom: 12px;
 }
 
-.save-location label {
+.save-dialog-filename label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   font-size: 11px;
   color: #000;
+  font-weight: bold;
 }
 
-.location-btn {
-  padding: 2px 8px;
+.save-dialog-filename .filename-input {
+  width: 100%;
+  padding: 4px;
+  border: 1px inset #c0c0c0;
+  background: white;
+  font-size: 11px;
+}
+
+.file-type-hint {
+  font-size: 10px;
+  color: #666;
+  margin-top: 2px;
+  font-style: italic;
+}
+
+.save-dialog-footer {
+  padding: 8px 16px;
+  background: #f0f0f0;
+  border-top: 1px solid #d0d0d0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.current-location {
+  font-size: 10px;
+  color: #666;
+  font-style: italic;
+}
+
+.save-dialog-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.save-dialog-buttons button {
+  padding: 4px 16px;
   border: 1px outset #c0c0c0;
   background: #c0c0c0;
   cursor: pointer;
-  font-size: 10px;
-  margin-right: 4px;
+  font-size: 11px;
+  min-width: 70px;
 }
 
-.location-btn:active {
+.save-dialog-buttons button:disabled {
+  background: #a0a0a0;
+  color: #666;
+  cursor: default;
+}
+
+.save-dialog-buttons button:active:not(:disabled) {
   border: 1px inset #c0c0c0;
 }
 
-.filename-input-group {
+/* Enhanced Text Editor Stats */
+.editor-stats {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.filename-input-group label {
-  font-size: 11px;
-  color: #000;
+  gap: 16px;
+  color: #666;
 }
 
 /* Web Browser */
