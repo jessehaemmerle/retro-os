@@ -1312,6 +1312,17 @@ const FileBrowser = ({ user, onRefresh }) => {
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
     
+    // Check if folder already exists in current location
+    const existingFolder = files.find(file => 
+      file.name.toLowerCase() === newFolderName.toLowerCase() && 
+      file.type === 'folder'
+    );
+    
+    if (existingFolder) {
+      alert(`A folder named "${newFolderName}" already exists in this location.`);
+      return;
+    }
+    
     try {
       const newPath = currentPath === '/' ? `/${newFolderName}` : `${currentPath}/${newFolderName}`;
       console.log('Creating folder with data:', {
@@ -1337,7 +1348,17 @@ const FileBrowser = ({ user, onRefresh }) => {
     } catch (error) {
       console.error('Error creating folder:', error);
       console.error('Error response:', error.response?.data);
-      alert(`Error creating folder: ${error.response?.data?.detail || error.message}`);
+      
+      let errorMessage = 'Error creating folder';
+      if (error.response?.data?.detail) {
+        if (error.response.data.detail === 'File already exists') {
+          errorMessage = `A folder named "${newFolderName}" already exists in this location.`;
+        } else {
+          errorMessage = error.response.data.detail;
+        }
+      }
+      
+      alert(errorMessage);
     }
   };
 
