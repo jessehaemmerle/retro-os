@@ -2954,14 +2954,77 @@ const GamesLauncher = ({ onOpenGame }) => {
 
   // Holographic Theme Manager
   const HolographicTheme = ({ children, enabled = true }) => {
-    if (!enabled) return children;
+// Enhanced Games Launcher
+const GamesLauncher = ({ onOpenGame }) => {
+  const games = [
+    { 
+      id: 'solitaire',
+      name: 'Solitaire', 
+      icon: '🃏', 
+      description: 'Classic Klondike Solitaire',
+      component: 'solitaire'
+    },
+    { 
+      id: 'minesweeper',
+      name: 'Minesweeper', 
+      icon: '💣', 
+      description: 'Find all the mines',
+      component: 'minesweeper'
+    },
+    { 
+      id: 'snake',
+      name: 'Snake', 
+      icon: '🐍', 
+      description: 'Classic Snake game',
+      component: 'snake'
+    },
+    { 
+      id: 'tictactoe',
+      name: 'Tic Tac Toe', 
+      icon: '⭕', 
+      description: 'X\'s and O\'s',
+      component: 'tictactoe'
+    },
+    { 
+      id: 'memory',
+      name: 'Memory', 
+      icon: '🧠', 
+      description: 'Match the pairs',
+      component: 'memory'
+    },
+    { 
+      id: 'web-games',
+      name: 'Web Games', 
+      icon: '🌐', 
+      description: 'Online retro games',
+      component: 'webgames'
+    }
+  ];
 
-    return (
-      <div className="holographic-theme">
-        {children}
-        <div className="holographic-overlay" />
+  return (
+    <div className="games-launcher">
+      <div className="games-header">
+        <h3>🎮 RetroOS Games</h3>
+        <p>Choose a game to play:</p>
       </div>
-    );
+      <div className="games-grid">
+        {games.map((game) => (
+          <div 
+            key={game.id} 
+            className="game-tile"
+            onClick={() => onOpenGame(game)}
+          >
+            <div className="game-icon">{game.icon}</div>
+            <div className="game-info">
+              <div className="game-name">{game.name}</div>
+              <div className="game-description">{game.description}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
   };
 
   return (
