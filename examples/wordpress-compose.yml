@@ -29,11 +29,6 @@ services:
       - traefik.http.routers.blog.entrypoints=websecure
       - traefik.http.routers.blog.tls.certresolver=letsencrypt
       - traefik.http.services.blog.loadbalancer.server.port=80
-      
-      # Optional: Admin area with basic auth
-      # - traefik.http.routers.blog-admin.rule=Host(`${BLOG_DOMAIN:-blog.example.com}`) && PathPrefix(`/wp-admin`)
-      # - traefik.http.routers.blog-admin.middlewares=blog-auth
-      # - traefik.http.middlewares.blog-auth.basicauth.users=admin:$$2y$$10$$HASHED_PASSWORD
 
   mysql:
     image: mysql:8.0
@@ -48,7 +43,6 @@ services:
       - mysql_data:/var/lib/mysql
     networks:
       - blog-internal
-    # Security: MySQL not exposed externally
 
 volumes:
   wordpress_data:
