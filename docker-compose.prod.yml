@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: retroos-mongodb-prod
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: retroos
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - retroos-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: retroos-backend-prod
+    restart: unless-stopped
+    env_file:
+      - backend/.env.production
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mongodb
+    networks:
+      - retroos-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.prod
+      args:
+        REACT_APP_BACKEND_URL: http://localhost:8001
+    container_name: retroos-frontend-prod
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - retroos-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: retroos-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - retroos-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  retroos-network:
+    driver: bridge
