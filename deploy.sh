@@ -118,7 +118,7 @@ sleep 10
 
 # Check service status
 print_status "Checking service status..."
-docker-compose ps
+docker-compose -f $COMPOSE_FILE ps
 
 # Test the application
 print_status "Testing application endpoints..."
