@@ -1234,7 +1234,9 @@ const FileBrowser = ({ user, onRefresh }) => {
         url += `?path=${encodeURIComponent(path)}`;
       }
       
+      console.log('Loading files with URL:', url);
       const response = await axios.get(url);
+      console.log('Files loaded:', response.data.length, 'files');
       setFiles(response.data);
       setCurrentPath(path);
       setCurrentFolderId(folderId);
