@@ -1763,28 +1763,713 @@ const WebBrowser = () => {
   );
 };
 
-// Games Launcher App (keeping original)
+// Classic Solitaire Game
+const Solitaire = () => {
+  const [cards, setCards] = useState([]);
+  const [draggedCard, setDraggedCard] = useState(null);
+  const [score, setScore] = useState(0);
+  const [moves, setMoves] = useState(0);
+  const [gameWon, setGameWon] = useState(false);
+
+  const suits = ['♠', '♥', '♦', '♣'];
+  const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+  const initializeGame = () => {
+    const deck = [];
+    suits.forEach(suit => {
+      values.forEach(value => {
+        deck.push({
+          id: `${suit}-${value}`,
+          suit,
+          value,
+          color: suit === '♥' || suit === '♦' ? 'red' : 'black',
+          faceUp: false
+        });
+      });
+    });
+    
+    // Shuffle deck
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+
+    setCards(deck);
+    setScore(0);
+    setMoves(0);
+    setGameWon(false);
+  };
+
+  useEffect(() => {
+    initializeGame();
+  }, []);
+
+  return (
+    <div className="solitaire-game">
+      <div className="solitaire-header">
+        <div className="game-stats">
+          <span>Score: {score}</span>
+          <span>Moves: {moves}</span>
+        </div>
+        <button onClick={initializeGame} className="new-game-btn">New Game</button>
+      </div>
+      <div className="solitaire-board">
+        <div className="card-placeholder">
+          <div className="card back">🂠</div>
+        </div>
+        <div className="game-message">
+          {gameWon ? '🎉 You Won! 🎉' : 'Classic Solitaire - Coming Soon!'}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Classic Minesweeper Game  
+const Minesweeper = () => {
+  const [board, setBoard] = useState([]);
+  const [gameState, setGameState] = useState('playing'); // 'playing', 'won', 'lost'
+  const [mineCount, setMineCount] = useState(10);
+  const [flagCount, setFlagCount] = useState(0);
+  const [timer, setTimer] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
+
+  const ROWS = 9;
+  const COLS = 9;
+  const MINES = 10;
+
+  const initializeBoard = () => {
+    const newBoard = Array(ROWS).fill().map(() => 
+      Array(COLS).fill().map(() => ({
+        isMine: false,
+        isRevealed: false,
+        isFlagged: false,
+        neighborMines: 0
+      }))
+    );
+
+    // Place mines randomly
+    let minesPlaced = 0;
+    while (minesPlaced < MINES) {
+      const row = Math.floor(Math.random() * ROWS);
+      const col = Math.floor(Math.random() * COLS);
+      if (!newBoard[row][col].isMine) {
+        newBoard[row][col].isMine = true;
+        minesPlaced++;
+      }
+    }
+
+    // Calculate neighbor mine counts
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        if (!newBoard[row][col].isMine) {
+          let count = 0;
+          for (let r = -1; r <= 1; r++) {
+            for (let c = -1; c <= 1; c++) {
+              const newRow = row + r;
+              const newCol = col + c;
+              if (newRow >= 0 && newRow < ROWS && newCol >= 0 && newCol < COLS) {
+                if (newBoard[newRow][newCol].isMine) count++;
+              }
+            }
+          }
+          newBoard[row][col].neighborMines = count;
+        }
+      }
+    }
+
+    setBoard(newBoard);
+    setGameState('playing');
+    setFlagCount(0);
+    setTimer(0);
+    setGameStarted(false);
+  };
+
+  const handleCellClick = (row, col) => {
+    if (gameState !== 'playing' || board[row][col].isRevealed || board[row][col].isFlagged) {
+      return;
+    }
+
+    if (!gameStarted) {
+      setGameStarted(true);
+    }
+
+    const newBoard = [...board];
+    
+    if (newBoard[row][col].isMine) {
+      setGameState('lost');
+      // Reveal all mines
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (newBoard[r][c].isMine) {
+            newBoard[r][c].isRevealed = true;
+          }
+        }
+      }
+    } else {
+      revealCell(newBoard, row, col);
+      checkWin(newBoard);
+    }
+
+    setBoard(newBoard);
+  };
+
+  const revealCell = (board, row, col) => {
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS || 
+        board[row][col].isRevealed || board[row][col].isFlagged) {
+      return;
+    }
+
+    board[row][col].isRevealed = true;
+
+    if (board[row][col].neighborMines === 0) {
+      for (let r = -1; r <= 1; r++) {
+        for (let c = -1; c <= 1; c++) {
+          revealCell(board, row + r, col + c);
+        }
+      }
+    }
+  };
+
+  const handleRightClick = (e, row, col) => {
+    e.preventDefault();
+    if (gameState !== 'playing' || board[row][col].isRevealed) {
+      return;
+    }
+
+    const newBoard = [...board];
+    newBoard[row][col].isFlagged = !newBoard[row][col].isFlagged;
+    setBoard(newBoard);
+    setFlagCount(flagCount + (newBoard[row][col].isFlagged ? 1 : -1));
+  };
+
+  const checkWin = (board) => {
+    let revealedCount = 0;
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        if (board[row][col].isRevealed && !board[row][col].isMine) {
+          revealedCount++;
+        }
+      }
+    }
+    if (revealedCount === ROWS * COLS - MINES) {
+      setGameState('won');
+    }
+  };
+
+  useEffect(() => {
+    initializeBoard();
+  }, []);
+
+  useEffect(() => {
+    let interval;
+    if (gameStarted && gameState === 'playing') {
+      interval = setInterval(() => {
+        setTimer(t => t + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [gameStarted, gameState]);
+
+  const getCellContent = (cell) => {
+    if (cell.isFlagged) return '🚩';
+    if (!cell.isRevealed) return '';
+    if (cell.isMine) return '💣';
+    if (cell.neighborMines === 0) return '';
+    return cell.neighborMines;
+  };
+
+  const getCellClass = (cell) => {
+    let className = 'mine-cell';
+    if (cell.isRevealed) {
+      className += ' revealed';
+      if (cell.isMine) className += ' mine';
+    }
+    if (cell.isFlagged) className += ' flagged';
+    return className;
+  };
+
+  return (
+    <div className="minesweeper-game">
+      <div className="minesweeper-header">
+        <div className="mine-counter">💣 {MINES - flagCount}</div>
+        <button onClick={initializeBoard} className="new-game-btn">
+          {gameState === 'lost' ? '😵' : gameState === 'won' ? '😎' : '🙂'}
+        </button>
+        <div className="timer">⏱️ {timer}</div>
+      </div>
+      <div className="minesweeper-board">
+        {board.map((row, rowIndex) => (
+          <div key={rowIndex} className="mine-row">
+            {row.map((cell, colIndex) => (
+              <div
+                key={`${rowIndex}-${colIndex}`}
+                className={getCellClass(cell)}
+                onClick={() => handleCellClick(rowIndex, colIndex)}
+                onContextMenu={(e) => handleRightClick(e, rowIndex, colIndex)}
+              >
+                {getCellContent(cell)}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      {gameState !== 'playing' && (
+        <div className="game-over-message">
+          {gameState === 'won' ? '🎉 You Won! 🎉' : '💥 Game Over! 💥'}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Classic Snake Game
+const Snake = () => {
+  const [snake, setSnake] = useState([{x: 10, y: 10}]);
+  const [food, setFood] = useState({x: 15, y: 15});
+  const [direction, setDirection] = useState({x: 0, y: -1});
+  const [gameRunning, setGameRunning] = useState(false);
+  const [score, setScore] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+
+  const BOARD_SIZE = 20;
+
+  const generateFood = () => {
+    const newFood = {
+      x: Math.floor(Math.random() * BOARD_SIZE),
+      y: Math.floor(Math.random() * BOARD_SIZE)
+    };
+    setFood(newFood);
+  };
+
+  const startGame = () => {
+    setSnake([{x: 10, y: 10}]);
+    setDirection({x: 0, y: -1});
+    setScore(0);
+    setGameOver(false);
+    setGameRunning(true);
+    generateFood();
+  };
+
+  const stopGame = () => {
+    setGameRunning(false);
+    setGameOver(true);
+  };
+
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (!gameRunning) return;
+      
+      switch(e.key) {
+        case 'ArrowUp':
+          if (direction.y === 0) setDirection({x: 0, y: -1});
+          break;
+        case 'ArrowDown':
+          if (direction.y === 0) setDirection({x: 0, y: 1});
+          break;
+        case 'ArrowLeft':
+          if (direction.x === 0) setDirection({x: -1, y: 0});
+          break;
+        case 'ArrowRight':
+          if (direction.x === 0) setDirection({x: 1, y: 0});
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [direction, gameRunning]);
+
+  useEffect(() => {
+    if (!gameRunning) return;
+
+    const gameLoop = setInterval(() => {
+      setSnake(currentSnake => {
+        const newSnake = [...currentSnake];
+        const head = {...newSnake[0]};
+        
+        head.x += direction.x;
+        head.y += direction.y;
+
+        // Check wall collision
+        if (head.x < 0 || head.x >= BOARD_SIZE || head.y < 0 || head.y >= BOARD_SIZE) {
+          stopGame();
+          return currentSnake;
+        }
+
+        // Check self collision
+        if (newSnake.some(segment => segment.x === head.x && segment.y === head.y)) {
+          stopGame();
+          return currentSnake;
+        }
+
+        newSnake.unshift(head);
+
+        // Check food collision
+        if (head.x === food.x && head.y === food.y) {
+          setScore(s => s + 10);
+          generateFood();
+        } else {
+          newSnake.pop();
+        }
+
+        return newSnake;
+      });
+    }, 150);
+
+    return () => clearInterval(gameLoop);
+  }, [direction, food, gameRunning]);
+
+  const isSnakeSegment = (x, y) => {
+    return snake.some(segment => segment.x === x && segment.y === y);
+  };
+
+  const isFood = (x, y) => {
+    return food.x === x && food.y === y;
+  };
+
+  return (
+    <div className="snake-game">
+      <div className="snake-header">
+        <div className="score">Score: {score}</div>
+        <button onClick={startGame} className="new-game-btn">
+          {gameRunning ? 'Restart' : 'Start Game'}
+        </button>
+      </div>
+      <div className="snake-board">
+        {Array(BOARD_SIZE).fill().map((_, y) => (
+          <div key={y} className="snake-row">
+            {Array(BOARD_SIZE).fill().map((_, x) => (
+              <div
+                key={`${x}-${y}`}
+                className={`snake-cell ${
+                  isSnakeSegment(x, y) ? 'snake' : 
+                  isFood(x, y) ? 'food' : ''
+                }`}
+              >
+                {isSnakeSegment(x, y) ? '█' : isFood(x, y) ? '🍎' : ''}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="snake-controls">
+        <div>Use arrow keys to control the snake</div>
+        {gameOver && <div className="game-over">Game Over! Score: {score}</div>}
+      </div>
+    </div>
+  );
+};
+
+// Classic Tic Tac Toe Game
+const TicTacToe = () => {
+  const [board, setBoard] = useState(Array(9).fill(null));
+  const [isXNext, setIsXNext] = useState(true);
+  const [winner, setWinner] = useState(null);
+  const [gameMode, setGameMode] = useState('human'); // 'human' or 'computer'
+
+  const calculateWinner = (squares) => {
+    const lines = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6]
+    ];
+    
+    for (let line of lines) {
+      const [a, b, c] = line;
+      if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
+        return squares[a];
+      }
+    }
+    return null;
+  };
+
+  const makeComputerMove = (squares) => {
+    const availableMoves = squares.map((square, index) => square === null ? index : null).filter(val => val !== null);
+    if (availableMoves.length === 0) return squares;
+    
+    const randomMove = availableMoves[Math.floor(Math.random() * availableMoves.length)];
+    const newSquares = [...squares];
+    newSquares[randomMove] = 'O';
+    return newSquares;
+  };
+
+  const handleClick = (index) => {
+    if (board[index] || winner) return;
+
+    const newBoard = [...board];
+    newBoard[index] = isXNext ? 'X' : 'O';
+    
+    const gameWinner = calculateWinner(newBoard);
+    setWinner(gameWinner);
+    
+    if (gameMode === 'computer' && !gameWinner && isXNext) {
+      // Player move (X)
+      setBoard(newBoard);
+      setIsXNext(false);
+      
+      // Computer move (O) after a short delay
+      setTimeout(() => {
+        const computerBoard = makeComputerMove(newBoard);
+        const computerWinner = calculateWinner(computerBoard);
+        setBoard(computerBoard);
+        setWinner(computerWinner);
+        setIsXNext(true);
+      }, 500);
+    } else {
+      setBoard(newBoard);
+      setIsXNext(!isXNext);
+    }
+  };
+
+  const resetGame = () => {
+    setBoard(Array(9).fill(null));
+    setIsXNext(true);
+    setWinner(null);
+  };
+
+  const renderSquare = (index) => (
+    <button
+      className="tic-tac-square"
+      onClick={() => handleClick(index)}
+      disabled={board[index] !== null || winner !== null}
+    >
+      {board[index]}
+    </button>
+  );
+
+  const isDraw = board.every(square => square !== null) && !winner;
+
+  return (
+    <div className="tic-tac-toe-game">
+      <div className="tic-tac-header">
+        <div className="game-mode">
+          <label>
+            <input
+              type="radio"
+              checked={gameMode === 'human'}
+              onChange={() => {
+                setGameMode('human');
+                resetGame();
+              }}
+            />
+            2 Players
+          </label>
+          <label>
+            <input
+              type="radio"
+              checked={gameMode === 'computer'}
+              onChange={() => {
+                setGameMode('computer');
+                resetGame();
+              }}
+            />
+            vs Computer
+          </label>
+        </div>
+        <button onClick={resetGame} className="new-game-btn">New Game</button>
+      </div>
+      
+      <div className="tic-tac-board">
+        <div className="board-row">
+          {renderSquare(0)}
+          {renderSquare(1)}
+          {renderSquare(2)}
+        </div>
+        <div className="board-row">
+          {renderSquare(3)}
+          {renderSquare(4)}
+          {renderSquare(5)}
+        </div>
+        <div className="board-row">
+          {renderSquare(6)}
+          {renderSquare(7)}
+          {renderSquare(8)}
+        </div>
+      </div>
+      
+      <div className="tic-tac-status">
+        {winner ? (
+          <div className="winner">🎉 {winner} Wins! 🎉</div>
+        ) : isDraw ? (
+          <div className="draw">It's a Draw!</div>
+        ) : (
+          <div className="next-player">
+            Next player: {gameMode === 'computer' ? 'Your turn (X)' : isXNext ? 'X' : 'O'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Memory Card Game
+const MemoryGame = () => {
+  const [cards, setCards] = useState([]);
+  const [flippedCards, setFlippedCards] = useState([]);
+  const [matchedCards, setMatchedCards] = useState([]);
+  const [moves, setMoves] = useState(0);
+  const [gameWon, setGameWon] = useState(false);
+
+  const cardEmojis = ['🎮', '🎯', '🎲', '🃏', '🎪', '🎭', '🎨', '🎵'];
+
+  const initializeGame = () => {
+    const gameCards = [...cardEmojis, ...cardEmojis].map((emoji, index) => ({
+      id: index,
+      emoji,
+      isFlipped: false,
+      isMatched: false
+    }));
+    
+    // Shuffle cards
+    for (let i = gameCards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [gameCards[i], gameCards[j]] = [gameCards[j], gameCards[i]];
+    }
+    
+    setCards(gameCards);
+    setFlippedCards([]);
+    setMatchedCards([]);
+    setMoves(0);
+    setGameWon(false);
+  };
+
+  const handleCardClick = (cardId) => {
+    if (flippedCards.length >= 2 || flippedCards.includes(cardId) || matchedCards.includes(cardId)) {
+      return;
+    }
+
+    const newFlippedCards = [...flippedCards, cardId];
+    setFlippedCards(newFlippedCards);
+
+    if (newFlippedCards.length === 2) {
+      setMoves(moves + 1);
+      
+      const card1 = cards.find(card => card.id === newFlippedCards[0]);
+      const card2 = cards.find(card => card.id === newFlippedCards[1]);
+      
+      if (card1.emoji === card2.emoji) {
+        // Match found
+        setTimeout(() => {
+          setMatchedCards([...matchedCards, ...newFlippedCards]);
+          setFlippedCards([]);
+          
+          if (matchedCards.length + 2 === cards.length) {
+            setGameWon(true);
+          }
+        }, 500);
+      } else {
+        // No match
+        setTimeout(() => {
+          setFlippedCards([]);
+        }, 1000);
+      }
+    }
+  };
+
+  useEffect(() => {
+    initializeGame();
+  }, []);
+
+  return (
+    <div className="memory-game">
+      <div className="memory-header">
+        <div className="game-stats">
+          <span>Moves: {moves}</span>
+          <span>Pairs: {matchedCards.length / 2}/{cardEmojis.length}</span>
+        </div>
+        <button onClick={initializeGame} className="new-game-btn">New Game</button>
+      </div>
+      
+      <div className="memory-board">
+        {cards.map(card => (
+          <div
+            key={card.id}
+            className={`memory-card ${
+              flippedCards.includes(card.id) || matchedCards.includes(card.id) ? 'flipped' : ''
+            }`}
+            onClick={() => handleCardClick(card.id)}
+          >
+            <div className="card-front">?</div>
+            <div className="card-back">{card.emoji}</div>
+          </div>
+        ))}
+      </div>
+      
+      {gameWon && (
+        <div className="game-won-message">
+          🎉 Congratulations! You won in {moves} moves! 🎉
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Enhanced Games Launcher
 const GamesLauncher = ({ onOpenGame }) => {
   const games = [
-    { name: 'Solitaire', url: 'https://www.solitr.com/' },
-    { name: 'Minesweeper', url: 'https://minesweeper.online/' },
-    { name: 'Tetris', url: 'https://tetris.com/play-tetris' },
-    { name: 'Snake', url: 'https://playsnake.org/' },
-    { name: 'Pac-Man', url: 'https://pacman.live/' }
+    { 
+      id: 'solitaire',
+      name: 'Solitaire', 
+      icon: '🃏', 
+      description: 'Classic Klondike Solitaire',
+      component: 'solitaire'
+    },
+    { 
+      id: 'minesweeper',
+      name: 'Minesweeper', 
+      icon: '💣', 
+      description: 'Find all the mines',
+      component: 'minesweeper'
+    },
+    { 
+      id: 'snake',
+      name: 'Snake', 
+      icon: '🐍', 
+      description: 'Classic Snake game',
+      component: 'snake'
+    },
+    { 
+      id: 'tictactoe',
+      name: 'Tic Tac Toe', 
+      icon: '⭕', 
+      description: 'X\'s and O\'s',
+      component: 'tictactoe'
+    },
+    { 
+      id: 'memory',
+      name: 'Memory', 
+      icon: '🧠', 
+      description: 'Match the pairs',
+      component: 'memory'
+    },
+    { 
+      id: 'web-games',
+      name: 'Web Games', 
+      icon: '🌐', 
+      description: 'Online retro games',
+      component: 'webgames'
+    }
   ];
 
   return (
     <div className="games-launcher">
-      <h3>Games</h3>
+      <div className="games-header">
+        <h3>🎮 RetroOS Games</h3>
+        <p>Choose a game to play:</p>
+      </div>
       <div className="games-grid">
-        {games.map((game, index) => (
+        {games.map((game) => (
           <div 
-            key={index} 
+            key={game.id} 
             className="game-tile"
             onClick={() => onOpenGame(game)}
           >
-            <div className="game-icon">🎮</div>
-            <div className="game-name">{game.name}</div>
+            <div className="game-icon">{game.icon}</div>
+            <div className="game-info">
+              <div className="game-name">{game.name}</div>
+              <div className="game-description">{game.description}</div>
+            </div>
           </div>
         ))}
       </div>
