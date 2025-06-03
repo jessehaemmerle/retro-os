@@ -1012,51 +1012,200 @@ const Calculator = () => {
   );
 };
 
-// Text Editor App (keeping original with small enhancements)
-const TextEditor = ({ user, onSave }) => {
+// Enhanced Text Editor App
+const TextEditor = ({ user, onSave, initialFile = null }) => {
   const [content, setContent] = useState('');
   const [fileName, setFileName] = useState('Untitled.txt');
+  const [currentFile, setCurrentFile] = useState(null);
   const [isSaved, setIsSaved] = useState(true);
+  const [isModified, setIsModified] = useState(false);
+  const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
+  const [saveAsPath, setSaveAsPath] = useState('/');
+  const [saveAsName, setSaveAsName] = useState('');
+
+  useEffect(() => {
+    if (initialFile) {
+      loadFile(initialFile);
+    }
+  }, [initialFile]);
+
+  const loadFile = async (file) => {
+    try {
+      const response = await axios.get(`${API}/files/${user.user_id}/${file.id}`);
+      setContent(response.data.content || '');
+      setFileName(response.data.name);
+      setCurrentFile(response.data);
+      setIsSaved(true);
+      setIsModified(false);
+    } catch (error) {
+      console.error('Error loading file:', error);
+      alert('Error loading file');
+    }
+  };
 
   const handleContentChange = (e) => {
     setContent(e.target.value);
     setIsSaved(false);
+    setIsModified(true);
   };
 
-  const saveFile = async () => {
+  const saveFile = async (saveAs = false) => {
     try {
-      await axios.post(`${API}/files/${user.user_id}`, {
-        name: fileName,
+      if (currentFile && !saveAs) {
+        // Update existing file
+        await axios.put(`${API}/files/${user.user_id}/${currentFile.id}`, {
+          content: content
+        });
+        setIsSaved(true);
+        setIsModified(false);
+        onSave && onSave();
+      } else {
+        // Save as new file or Save As
+        setShowSaveAsDialog(true);
+      }
+    } catch (error) {
+      console.error('Error saving file:', error);
+      alert('Error saving file');
+    }
+  };
+
+  const saveAsNewFile = async () => {
+    if (!saveAsName.trim()) {
+      alert('Please enter a file name');
+      return;
+    }
+
+    try {
+      const newPath = saveAsPath === '/' ? `/${saveAsName}` : `${saveAsPath}/${saveAsName}`;
+      const response = await axios.post(`${API}/files/${user.user_id}`, {
+        name: saveAsName,
         type: 'file',
         content: content,
-        path: `/Desktop/${fileName}`
+        path: newPath
       });
+      
+      setCurrentFile(response.data);
+      setFileName(saveAsName);
       setIsSaved(true);
+      setIsModified(false);
+      setShowSaveAsDialog(false);
+      setSaveAsName('');
+      setSaveAsPath('/');
       onSave && onSave();
     } catch (error) {
       console.error('Error saving file:', error);
+      alert('Error saving file');
     }
+  };
+
+  const newFile = () => {
+    if (isModified) {
+      if (window.confirm('You have unsaved changes. Are you sure you want to create a new file?')) {
+        setContent('');
+        setFileName('Untitled.txt');
+        setCurrentFile(null);
+        setIsSaved(true);
+        setIsModified(false);
+      }
+    } else {
+      setContent('');
+      setFileName('Untitled.txt');
+      setCurrentFile(null);
+      setIsSaved(true);
+      setIsModified(false);
+    }
+  };
+
+  const openFile = () => {
+    // This would ideally open a file picker dialog
+    // For now, we'll just alert the user to use the File Browser
+    alert('To open a file, use the File Browser and double-click on a text file.');
   };
 
   return (
     <div className="text-editor">
-      <div className="text-editor-toolbar">
-        <input 
-          type="text" 
-          value={fileName} 
-          onChange={(e) => setFileName(e.target.value)}
-          className="filename-input"
-        />
-        <button onClick={saveFile} className="save-btn" disabled={isSaved}>
-          {isSaved ? 'Saved' : 'Save'}
-        </button>
+      <div className="text-editor-menubar">
+        <div className="menu-group">
+          <button onClick={newFile} className="menu-btn" title="New File">📄 New</button>
+          <button onClick={openFile} className="menu-btn" title="Open File">📂 Open</button>
+          <button onClick={() => saveFile(false)} className="menu-btn" disabled={isSaved} title="Save">
+            💾 Save {isModified ? '*' : ''}
+          </button>
+          <button onClick={() => saveFile(true)} className="menu-btn" title="Save As">
+            💾 Save As...
+          </button>
+        </div>
       </div>
+      
+      <div className="text-editor-toolbar">
+        <div className="file-info">
+          <span className="current-file">{currentFile ? currentFile.name : fileName}{isModified ? ' *' : ''}</span>
+          <span className="file-path">{currentFile ? currentFile.path : 'Not saved'}</span>
+        </div>
+        <div className="editor-stats">
+          <span>Lines: {content.split('\n').length}</span>
+          <span>Characters: {content.length}</span>
+        </div>
+      </div>
+      
       <textarea
         value={content}
         onChange={handleContentChange}
         className="text-editor-content"
         placeholder="Start typing..."
+        spellCheck={false}
       />
+
+      {/* Save As Dialog */}
+      {showSaveAsDialog && (
+        <div className="modal-overlay">
+          <div className="modal-dialog save-as-dialog">
+            <h3>Save As</h3>
+            <div className="save-as-content">
+              <div className="save-location">
+                <label>Save in: {saveAsPath}</label>
+                <button 
+                  onClick={() => setSaveAsPath('/')} 
+                  className="location-btn"
+                >
+                  📁 Root
+                </button>
+                <button 
+                  onClick={() => setSaveAsPath('/Documents')} 
+                  className="location-btn"
+                >
+                  📄 Documents
+                </button>
+                <button 
+                  onClick={() => setSaveAsPath('/Desktop')} 
+                  className="location-btn"
+                >
+                  🖥️ Desktop
+                </button>
+              </div>
+              <div className="filename-input-group">
+                <label>File name:</label>
+                <input 
+                  type="text" 
+                  value={saveAsName}
+                  onChange={(e) => setSaveAsName(e.target.value)}
+                  placeholder="Enter file name..."
+                  onKeyPress={(e) => e.key === 'Enter' && saveAsNewFile()}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-buttons">
+              <button onClick={saveAsNewFile} disabled={!saveAsName.trim()}>Save</button>
+              <button onClick={() => {
+                setShowSaveAsDialog(false);
+                setSaveAsName('');
+                setSaveAsPath('/');
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
