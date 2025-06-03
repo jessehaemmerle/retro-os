@@ -1020,8 +1020,11 @@ const TextEditor = ({ user, onSave, initialFile = null }) => {
   const [isSaved, setIsSaved] = useState(true);
   const [isModified, setIsModified] = useState(false);
   const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
-  const [saveAsPath, setSaveAsPath] = useState('/');
+  const [saveDialogFolders, setSaveDialogFolders] = useState([]);
+  const [saveDialogCurrentPath, setSaveDialogCurrentPath] = useState('/');
+  const [saveDialogCurrentFolderId, setSaveDialogCurrentFolderId] = useState(null);
   const [saveAsName, setSaveAsName] = useState('');
+  const [saveDialogLoading, setSaveDialogLoading] = useState(false);
 
   useEffect(() => {
     if (initialFile) {
@@ -1061,11 +1064,54 @@ const TextEditor = ({ user, onSave, initialFile = null }) => {
         onSave && onSave();
       } else {
         // Save as new file or Save As
+        await loadSaveDialogFolders('/');
         setShowSaveAsDialog(true);
+        setSaveAsName(currentFile ? currentFile.name : 'Untitled.txt');
       }
     } catch (error) {
       console.error('Error saving file:', error);
-      alert('Error saving file');
+      alert(`Error saving file: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  const loadSaveDialogFolders = async (path = '/', folderId = null) => {
+    setSaveDialogLoading(true);
+    try {
+      let url = `${API}/files/${user.user_id}`;
+      if (folderId) {
+        url += `?parent_id=${folderId}`;
+      } else if (path !== '/') {
+        url += `?path=${encodeURIComponent(path)}`;
+      }
+      
+      const response = await axios.get(url);
+      // Only show folders in save dialog
+      const folders = response.data.filter(item => item.type === 'folder');
+      setSaveDialogFolders(folders);
+      setSaveDialogCurrentPath(path);
+      setSaveDialogCurrentFolderId(folderId);
+    } catch (error) {
+      console.error('Error loading folders:', error);
+    }
+    setSaveDialogLoading(false);
+  };
+
+  const navigateToSaveFolder = async (folder) => {
+    const newPath = saveDialogCurrentPath === '/' ? `/${folder.name}` : `${saveDialogCurrentPath}/${folder.name}`;
+    await loadSaveDialogFolders(newPath, folder.id);
+  };
+
+  const navigateSaveDialogUp = async () => {
+    if (saveDialogCurrentPath === '/') return;
+    
+    const pathParts = saveDialogCurrentPath.split('/').filter(p => p);
+    if (pathParts.length === 1) {
+      // Go to root
+      await loadSaveDialogFolders('/');
+    } else {
+      // Go to parent
+      const parentPath = '/' + pathParts.slice(0, -1).join('/');
+      await loadSaveDialogFolders(parentPath);
     }
   };
 
@@ -1075,26 +1121,53 @@ const TextEditor = ({ user, onSave, initialFile = null }) => {
       return;
     }
 
+    // Ensure file has extension
+    let finalFileName = saveAsName.trim();
+    if (!finalFileName.includes('.')) {
+      finalFileName += '.txt';
+    }
+
     try {
-      const newPath = saveAsPath === '/' ? `/${saveAsName}` : `${saveAsPath}/${saveAsName}`;
-      const response = await axios.post(`${API}/files/${user.user_id}`, {
-        name: saveAsName,
+      const newPath = saveDialogCurrentPath === '/' ? `/${finalFileName}` : `${saveDialogCurrentPath}/${finalFileName}`;
+      
+      console.log('Saving file with data:', {
+        name: finalFileName,
         type: 'file',
         content: content,
+        parent_id: saveDialogCurrentFolderId,
+        path: newPath
+      });
+
+      const response = await axios.post(`${API}/files/${user.user_id}`, {
+        name: finalFileName,
+        type: 'file',
+        content: content,
+        parent_id: saveDialogCurrentFolderId,
         path: newPath
       });
       
       setCurrentFile(response.data);
-      setFileName(saveAsName);
+      setFileName(finalFileName);
       setIsSaved(true);
       setIsModified(false);
       setShowSaveAsDialog(false);
       setSaveAsName('');
-      setSaveAsPath('/');
+      setSaveDialogCurrentPath('/');
+      setSaveDialogCurrentFolderId(null);
       onSave && onSave();
+      
+      alert('File saved successfully!');
     } catch (error) {
       console.error('Error saving file:', error);
-      alert('Error saving file');
+      let errorMessage = 'Error saving file';
+      if (error.response?.data?.detail) {
+        if (error.response.data.detail === 'File already exists') {
+          errorMessage = `A file named "${finalFileName}" already exists in this location.`;
+        } else {
+          errorMessage = error.response.data.detail;
+        }
+      }
+      alert(errorMessage);
     }
   };
 
@@ -1117,9 +1190,19 @@ const TextEditor = ({ user, onSave, initialFile = null }) => {
   };
 
   const openFile = () => {
-    // This would ideally open a file picker dialog
-    // For now, we'll just alert the user to use the File Browser
     alert('To open a file, use the File Browser and double-click on a text file.');
+  };
+
+  const getSaveDialogPathSegments = () => {
+    if (saveDialogCurrentPath === '/') return [{ name: 'Root', path: '/' }];
+    const parts = saveDialogCurrentPath.split('/').filter(p => p);
+    const segments = [{ name: 'Root', path: '/' }];
+    let buildPath = '';
+    parts.forEach(part => {
+      buildPath += `/${part}`;
+      segments.push({ name: part, path: buildPath });
+    });
+    return segments;
   };
 
   return (
@@ -1145,6 +1228,7 @@ const TextEditor = ({ user, onSave, initialFile = null }) => {
         <div className="editor-stats">
           <span>Lines: {content.split('\n').length}</span>
           <span>Characters: {content.length}</span>
+          <span>Words: {content.trim().split(/\s+/).filter(w => w).length}</span>
         </div>
       </div>
       
@@ -1156,34 +1240,76 @@ const TextEditor = ({ user, onSave, initialFile = null }) => {
         spellCheck={false}
       />
 
-      {/* Save As Dialog */}
+      {/* Enhanced Save As Dialog */}
       {showSaveAsDialog && (
         <div className="modal-overlay">
-          <div className="modal-dialog save-as-dialog">
-            <h3>Save As</h3>
-            <div className="save-as-content">
-              <div className="save-location">
-                <label>Save in: {saveAsPath}</label>
+          <div className="modal-dialog save-as-dialog-enhanced">
+            <div className="save-dialog-header">
+              <h3>Save As</h3>
+              <button 
+                className="close-btn"
+                onClick={() => {
+                  setShowSaveAsDialog(false);
+                  setSaveAsName('');
+                  setSaveDialogCurrentPath('/');
+                  setSaveDialogCurrentFolderId(null);
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="save-dialog-content">
+              {/* Navigation */}
+              <div className="save-dialog-navigation">
                 <button 
-                  onClick={() => setSaveAsPath('/')} 
-                  className="location-btn"
+                  onClick={navigateSaveDialogUp}
+                  disabled={saveDialogCurrentPath === '/'}
+                  className="nav-btn"
+                  title="Up"
                 >
-                  📁 Root
+                  ⬆️
                 </button>
-                <button 
-                  onClick={() => setSaveAsPath('/Documents')} 
-                  className="location-btn"
-                >
-                  📄 Documents
-                </button>
-                <button 
-                  onClick={() => setSaveAsPath('/Desktop')} 
-                  className="location-btn"
-                >
-                  🖥️ Desktop
-                </button>
+                <div className="save-dialog-path">
+                  {getSaveDialogPathSegments().map((segment, index) => (
+                    <span key={index}>
+                      <button 
+                        className="path-segment"
+                        onClick={() => loadSaveDialogFolders(segment.path)}
+                      >
+                        {segment.name}
+                      </button>
+                      {index < getSaveDialogPathSegments().length - 1 && <span className="path-separator"> › </span>}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="filename-input-group">
+
+              {/* Folder List */}
+              <div className="save-dialog-folders">
+                <div className="folders-header">Choose a folder:</div>
+                <div className="folders-list">
+                  {saveDialogLoading ? (
+                    <div className="loading">Loading folders...</div>
+                  ) : saveDialogFolders.length === 0 ? (
+                    <div className="no-folders">No folders in this location</div>
+                  ) : (
+                    saveDialogFolders.map(folder => (
+                      <div 
+                        key={folder.id}
+                        className="folder-item"
+                        onDoubleClick={() => navigateToSaveFolder(folder)}
+                      >
+                        <span className="folder-icon">📁</span>
+                        <span className="folder-name">{folder.name}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* File Name Input */}
+              <div className="save-dialog-filename">
                 <label>File name:</label>
                 <input 
                   type="text" 
@@ -1191,17 +1317,25 @@ const TextEditor = ({ user, onSave, initialFile = null }) => {
                   onChange={(e) => setSaveAsName(e.target.value)}
                   placeholder="Enter file name..."
                   onKeyPress={(e) => e.key === 'Enter' && saveAsNewFile()}
-                  autoFocus
+                  className="filename-input"
                 />
+                <div className="file-type-hint">
+                  {!saveAsName.includes('.') && "Will be saved as .txt file"}
+                </div>
               </div>
             </div>
-            <div className="modal-buttons">
-              <button onClick={saveAsNewFile} disabled={!saveAsName.trim()}>Save</button>
-              <button onClick={() => {
-                setShowSaveAsDialog(false);
-                setSaveAsName('');
-                setSaveAsPath('/');
-              }}>Cancel</button>
+            
+            <div className="save-dialog-footer">
+              <div className="current-location">Save in: {saveDialogCurrentPath}</div>
+              <div className="save-dialog-buttons">
+                <button onClick={saveAsNewFile} disabled={!saveAsName.trim()}>Save</button>
+                <button onClick={() => {
+                  setShowSaveAsDialog(false);
+                  setSaveAsName('');
+                  setSaveDialogCurrentPath('/');
+                  setSaveDialogCurrentFolderId(null);
+                }}>Cancel</button>
+              </div>
             </div>
           </div>
         </div>
