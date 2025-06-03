@@ -93,11 +93,24 @@ fi
 
 # Stop any existing containers
 print_status "Stopping any existing containers..."
-docker-compose down 2>/dev/null || true
+docker-compose -f $COMPOSE_FILE down 2>/dev/null || true
+
+# Setup environment files
+if [ "$ENVIRONMENT" = "production" ]; then
+    print_status "Setting up production environment..."
+    if [ -f "backend/.env.production" ]; then
+        cp backend/.env.production backend/.env
+    fi
+    if [ -f "frontend/.env.production" ]; then
+        cp frontend/.env.production frontend/.env
+    fi
+else
+    print_status "Setting up development environment..."
+fi
 
 # Build and start the services
-print_status "Building and starting services..."
-docker-compose up --build -d
+print_status "Building and starting services with $COMPOSE_FILE..."
+docker-compose -f $COMPOSE_FILE up --build -d
 
 # Wait for services to be ready
 print_status "Waiting for services to start..."
