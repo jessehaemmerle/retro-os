@@ -1855,7 +1855,7 @@ const Desktop = ({ user, onLogout }) => {
       case 'calculator':
         return <Calculator />;
       case 'texteditor':
-        return <TextEditor user={user} />;
+        return <TextEditor user={user} initialFile={window.file} />;
       case 'filebrowser':
         return <FileBrowser user={user} />;
       case 'webbrowser':
@@ -1881,6 +1881,23 @@ const Desktop = ({ user, onLogout }) => {
       default:
         return <div>Unknown application</div>;
     }
+  };
+
+  // Set up global file opening function for File Browser integration
+  useEffect(() => {
+    window.openTextFile = (file) => {
+      const windowTitle = file.name;
+      openWindow('texteditor', windowTitle, { file });
+    };
+    
+    return () => {
+      delete window.openTextFile;
+    };
+  }, []);
+
+  const openFileInTextEditor = (file) => {
+    const windowTitle = file.name;
+    openWindow('texteditor', windowTitle, { file });
   };
 
   const getTaskbarStyle = () => {
