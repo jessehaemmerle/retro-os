@@ -5,12 +5,46 @@
 
 set -e
 
-echo "🚀 Starting RetroOS Docker Deployment..."
+# Default environment
+ENVIRONMENT="development"
+COMPOSE_FILE="docker-compose.yml"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -p|--production)
+            ENVIRONMENT="production"
+            COMPOSE_FILE="docker-compose.prod.yml"
+            shift
+            ;;
+        -h|--help)
+            echo "RetroOS Docker Deployment Script"
+            echo ""
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  -p, --production    Deploy in production mode"
+            echo "  -h, --help         Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0                 # Deploy in development mode"
+            echo "  $0 --production    # Deploy in production mode"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option $1"
+            exit 1
+            ;;
+    esac
+done
+
+echo "🚀 Starting RetroOS Docker Deployment in $ENVIRONMENT mode..."
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Function to print colored output
@@ -24,6 +58,10 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_info() {
+    echo -e "${BLUE}[DEBUG]${NC} $1"
 }
 
 # Check if Docker is installed
