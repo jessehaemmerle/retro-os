@@ -171,11 +171,13 @@ async def get_files(user_id: str, parent_id: Optional[str] = None, path: Optiona
     if not include_deleted:
         query["is_deleted"] = {"$ne": True}
     
-    if parent_id:
+    # Handle parent_id parameter
+    if parent_id and parent_id != "null":
         query["parent_id"] = parent_id
     elif path:
         query["path"] = {"$regex": f"^{path}"}
     else:
+        # For root directory or when parent_id is None/"null"
         query["parent_id"] = None
     
     files = await db.files.find(query).to_list(1000)
