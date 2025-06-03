@@ -1314,18 +1314,30 @@ const FileBrowser = ({ user, onRefresh }) => {
     
     try {
       const newPath = currentPath === '/' ? `/${newFolderName}` : `${currentPath}/${newFolderName}`;
-      await axios.post(`${API}/files/${user.user_id}`, {
+      console.log('Creating folder with data:', {
+        name: newFolderName,
+        type: 'folder',
+        parent_id: currentFolderId,
+        path: newPath,
+        user_id: user.user_id,
+        url: `${API}/files/${user.user_id}`
+      });
+      
+      const response = await axios.post(`${API}/files/${user.user_id}`, {
         name: newFolderName,
         type: 'folder',
         parent_id: currentFolderId,
         path: newPath
       });
+      
+      console.log('Folder created successfully:', response.data);
       setNewFolderName('');
       setShowNewFolderDialog(false);
       loadFiles(currentFolderId, currentPath);
     } catch (error) {
       console.error('Error creating folder:', error);
-      alert('Error creating folder');
+      console.error('Error response:', error.response?.data);
+      alert(`Error creating folder: ${error.response?.data?.detail || error.message}`);
     }
   };
 
