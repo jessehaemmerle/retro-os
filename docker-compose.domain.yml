@@ -1,0 +1,83 @@
+version: '3.8'
+
+# RetroOS with Domain-based Routing
+# Use this when deploying with global Traefik reverse proxy
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: retroos-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: retroos
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - retroos-internal
+    # MongoDB is not exposed externally for security
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: retroos-backend
+    restart: unless-stopped
+    env_file:
+      - backend/.env.production
+    depends_on:
+      - mongodb
+    networks:
+      - retroos-internal
+      - traefik-global
+    labels:
+      # Enable Traefik
+      - traefik.enable=true
+      - traefik.docker.network=traefik-global
+      
+      # Backend API routing
+      - traefik.http.routers.retroos-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.retroos-api.entrypoints=websecure
+      - traefik.http.routers.retroos-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.retroos-api.service=retroos-api
+      - traefik.http.services.retroos-api.loadbalancer.server.port=8001
+      
+      # Health check endpoint
+      - traefik.http.routers.retroos-api-health.rule=Host(`${DOMAIN}`) && Path(`/api/health`)
+      - traefik.http.routers.retroos-api-health.entrypoints=websecure
+      - traefik.http.routers.retroos-api-health.tls.certresolver=letsencrypt
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.prod
+      args:
+        REACT_APP_BACKEND_URL: https://${DOMAIN}
+    container_name: retroos-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - traefik-global
+    labels:
+      # Enable Traefik
+      - traefik.enable=true
+      - traefik.docker.network=traefik-global
+      
+      # Frontend routing (everything except /api)
+      - traefik.http.routers.retroos-frontend.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.retroos-frontend.entrypoints=websecure
+      - traefik.http.routers.retroos-frontend.tls.certresolver=letsencrypt
+      - traefik.http.routers.retroos-frontend.service=retroos-frontend
+      - traefik.http.services.retroos-frontend.loadbalancer.server.port=80
+      
+      # Priority to ensure API routes are handled first
+      - traefik.http.routers.retroos-frontend.priority=1
+
+volumes:
+  mongodb_data:
+
+networks:
+  retroos-internal:
+    driver: bridge
+  traefik-global:
+    external: true

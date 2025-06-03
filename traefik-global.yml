@@ -1,0 +1,72 @@
+version: '3.8'
+
+# Global Traefik Reverse Proxy for Multiple Applications
+# This should be deployed once on your VPS to handle all domains
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik-global
+    restart: unless-stopped
+    command:
+      # Enable Docker provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik-global
+      
+      # Entry points
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      
+      # SSL/TLS with Let's Encrypt
+      - --certificatesresolvers.letsencrypt.acme.email=your-email@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      
+      # Redirect HTTP to HTTPS
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      
+      # Dashboard (optional, comment out for security)
+      - --api.dashboard=true
+      - --api.insecure=false
+      
+      # Logs
+      - --log.level=INFO
+      - --accesslog=true
+      
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard (remove in production)
+    
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik-data/acme.json:/acme.json
+      - ./traefik-data/logs:/logs
+    
+    networks:
+      - traefik-global
+    
+    labels:
+      # Enable Traefik for itself
+      - traefik.enable=true
+      
+      # Dashboard configuration (optional)
+      - traefik.http.routers.traefik.rule=Host(`traefik.yourdomain.com`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.tls.certresolver=letsencrypt
+      - traefik.http.routers.traefik.service=api@internal
+      
+      # Dashboard authentication (optional)
+      # Generate password with: htpasswd -nb admin your_password
+      # - traefik.http.routers.traefik.middlewares=auth
+      # - traefik.http.middlewares.auth.basicauth.users=admin:$$2y$$10$$...
+
+networks:
+  traefik-global:
+    name: traefik-global
+    driver: bridge
+
+volumes:
+  traefik-data:
