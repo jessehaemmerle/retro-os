@@ -2653,50 +2653,254 @@ const HolographicTheme = ({ children, enabled = true }) => {
     </div>
   );
 };
-  const games = [
-    { 
-      id: 'solitaire',
-      name: 'Solitaire', 
-      icon: '🃏', 
-      description: 'Classic Klondike Solitaire',
-      component: 'solitaire'
-    },
-    { 
-      id: 'minesweeper',
-      name: 'Minesweeper', 
-      icon: '💣', 
-      description: 'Find all the mines',
-      component: 'minesweeper'
-    },
-    { 
-      id: 'snake',
-      name: 'Snake', 
-      icon: '🐍', 
-      description: 'Classic Snake game',
-      component: 'snake'
-    },
-    { 
-      id: 'tictactoe',
-      name: 'Tic Tac Toe', 
-      icon: '⭕', 
-      description: 'X\'s and O\'s',
-      component: 'tictactoe'
-    },
-    { 
-      id: 'memory',
-      name: 'Memory', 
-      icon: '🧠', 
-      description: 'Match the pairs',
-      component: 'memory'
-    },
-    { 
-      id: 'web-games',
-      name: 'Web Games', 
-      icon: '🌐', 
-      description: 'Online retro games',
-      component: 'webgames'
-    }
-  ];
+  // Matrix Rain Screensaver Component
+  const MatrixRain = ({ isActive, onDeactivate }) => {
+    const canvasRef = useRef(null);
+    const animationRef = useRef(null);
+
+    useEffect(() => {
+      if (!isActive) return;
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()';
+      const matrix = chars.split('');
+      const drops = [];
+      const fontSize = 10;
+      const columns = canvas.width / fontSize;
+
+      // Initialize drops
+      for (let x = 0; x < columns; x++) {
+        drops[x] = 1;
+      }
+
+      const draw = () => {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#0F0';
+        ctx.font = fontSize + 'px monospace';
+
+        for (let i = 0; i < drops.length; i++) {
+          const text = matrix[Math.floor(Math.random() * matrix.length)];
+          ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+          if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+          }
+          drops[i]++;
+        }
+      };
+
+      const animate = () => {
+        draw();
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      animate();
+
+      const handleClick = () => {
+        onDeactivate();
+      };
+
+      const handleKeyPress = () => {
+        onDeactivate();
+      };
+
+      canvas.addEventListener('click', handleClick);
+      window.addEventListener('keydown', handleKeyPress);
+
+      return () => {
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+        }
+        canvas.removeEventListener('click', handleClick);
+        window.removeEventListener('keydown', handleKeyPress);
+      };
+    }, [isActive, onDeactivate]);
+
+    if (!isActive) return null;
+
+    return (
+      <div className="matrix-screensaver">
+        <canvas ref={canvasRef} />
+        <div className="screensaver-hint">
+          Click anywhere or press any key to exit screensaver
+        </div>
+      </div>
+    );
+  };
+
+  // Particle Background Component
+  const ParticleBackground = ({ enabled = true }) => {
+    const canvasRef = useRef(null);
+    const animationRef = useRef(null);
+    const particlesRef = useRef([]);
+
+    useEffect(() => {
+      if (!enabled) return;
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      
+      const resizeCanvas = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      };
+
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // Create particles
+      const createParticles = () => {
+        const particles = [];
+        const numParticles = Math.floor((canvas.width * canvas.height) / 15000);
+        
+        for (let i = 0; i < numParticles; i++) {
+          particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 2 + 0.5,
+            speedX: (Math.random() - 0.5) * 0.5,
+            speedY: (Math.random() - 0.5) * 0.5,
+            opacity: Math.random() * 0.5 + 0.2,
+            color: `hsl(${Math.random() * 60 + 180}, 50%, 70%)` // Cyan/blue hues
+          });
+        }
+        return particles;
+      };
+
+      particlesRef.current = createParticles();
+
+      const animate = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        particlesRef.current.forEach(particle => {
+          // Update position
+          particle.x += particle.speedX;
+          particle.y += particle.speedY;
+
+          // Wrap around edges
+          if (particle.x < 0) particle.x = canvas.width;
+          if (particle.x > canvas.width) particle.x = 0;
+          if (particle.y < 0) particle.y = canvas.height;
+          if (particle.y > canvas.height) particle.y = 0;
+
+          // Draw particle
+          ctx.save();
+          ctx.globalAlpha = particle.opacity;
+          ctx.fillStyle = particle.color;
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Add subtle glow effect
+          ctx.save();
+          ctx.globalAlpha = particle.opacity * 0.3;
+          ctx.fillStyle = particle.color;
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size * 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      animate();
+
+      return () => {
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+        }
+        window.removeEventListener('resize', resizeCanvas);
+      };
+    }, [enabled]);
+
+    if (!enabled) return null;
+
+    return <canvas ref={canvasRef} className="particle-background" />;
+  };
+
+  // RetroOS Boot Screen Component
+  const BootScreen = ({ onComplete }) => {
+    const [bootStage, setBootStage] = useState(0);
+    const [bootText, setBootText] = useState('');
+
+    const bootMessages = [
+      'RetroOS v1.0 Starting...',
+      'Loading system drivers...',
+      'Initializing desktop environment...',
+      'Loading applications...',
+      'Connecting to matrix...',
+      'Boot sequence complete!'
+    ];
+
+    useEffect(() => {
+      const bootSequence = async () => {
+        for (let i = 0; i < bootMessages.length; i++) {
+          setBootStage(i);
+          setBootText(bootMessages[i]);
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+        setTimeout(onComplete, 500);
+      };
+
+      bootSequence();
+    }, [onComplete]);
+
+    return (
+      <div className="boot-screen">
+        <div className="boot-content">
+          <div className="boot-logo">
+            <div className="logo-text">RetroOS</div>
+            <div className="logo-version">Enhanced Edition</div>
+          </div>
+          
+          <div className="boot-progress">
+            <div className="boot-message">{bootText}</div>
+            <div className="progress-bar">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${(bootStage / (bootMessages.length - 1)) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="boot-effects">
+            {[...Array(20)].map((_, i) => (
+              <div 
+                key={i} 
+                className="boot-particle"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 2}s`,
+                  animationDuration: `${2 + Math.random() * 2}s`
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Holographic Theme Manager
+  const HolographicTheme = ({ children, enabled = true }) => {
+    if (!enabled) return children;
+
+    return (
+      <div className="holographic-theme">
+        {children}
+        <div className="holographic-overlay" />
+      </div>
+    );
+  };
 
   return (
     <div className="games-launcher">
