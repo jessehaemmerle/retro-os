@@ -2719,7 +2719,25 @@ const Desktop = ({ user, onLogout }) => {
       case 'webbrowser':
         return <WebBrowser />;
       case 'games':
-        return <GamesLauncher onOpenGame={(game) => openWindow('game', game.name, { game })} />;
+        return <GamesLauncher onOpenGame={(game) => {
+          if (game.component === 'webgames') {
+            // For web games, use the old iframe system
+            openWindow('game', game.name, { game: { url: 'https://www.google.com/search?q=retro+games' } });
+          } else {
+            // For built-in games, open the game component
+            openWindow(game.component, game.name);
+          }
+        }} />;
+      case 'solitaire':
+        return <Solitaire />;
+      case 'minesweeper':
+        return <Minesweeper />;
+      case 'snake':
+        return <Snake />;
+      case 'tictactoe':
+        return <TicTacToe />;
+      case 'memory':
+        return <MemoryGame />;
       case 'game':
         return <GameWindow game={window.game} />;
       case 'paint':
