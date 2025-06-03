@@ -1061,20 +1061,38 @@ const TextEditor = ({ user, onSave }) => {
   );
 };
 
-// File Browser App (enhanced with better icons)
+// Enhanced File Browser App
 const FileBrowser = ({ user, onRefresh }) => {
   const [files, setFiles] = useState([]);
   const [currentPath, setCurrentPath] = useState('/');
+  const [currentFolderId, setCurrentFolderId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'icons'
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [pathHistory, setPathHistory] = useState(['/']);
+  const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
 
-  const loadFiles = async (path = '/') => {
+  const loadFiles = async (folderId = null, path = '/') => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API}/files/${user.user_id}?path=${path}`);
+      let url = `${API}/files/${user.user_id}`;
+      if (folderId) {
+        url += `?parent_id=${folderId}`;
+      } else if (path === '/') {
+        url += `?parent_id=null`;
+      } else {
+        url += `?path=${encodeURIComponent(path)}`;
+      }
+      
+      const response = await axios.get(url);
       setFiles(response.data);
       setCurrentPath(path);
+      setCurrentFolderId(folderId);
+      setSelectedFiles([]);
     } catch (error) {
       console.error('Error loading files:', error);
+      alert('Error loading files');
     }
     setLoading(false);
   };
@@ -1085,65 +1103,303 @@ const FileBrowser = ({ user, onRefresh }) => {
     }
   }, [user]);
 
-  const createFolder = async () => {
-    const folderName = prompt('Enter folder name:');
-    if (folderName) {
+  const navigateToFolder = async (folder) => {
+    const newPath = currentPath === '/' ? `/${folder.name}` : `${currentPath}/${folder.name}`;
+    setPathHistory([...pathHistory, newPath]);
+    await loadFiles(folder.id, newPath);
+  };
+
+  const navigateUp = async () => {
+    if (pathHistory.length > 1) {
+      const newHistory = pathHistory.slice(0, -1);
+      const parentPath = newHistory[newHistory.length - 1];
+      setPathHistory(newHistory);
+      
+      // Find parent folder ID
+      let parentId = null;
+      if (parentPath !== '/') {
+        try {
+          const response = await axios.get(`${API}/files/${user.user_id}`);
+          const allFiles = response.data;
+          const parentFolder = allFiles.find(f => f.path === parentPath && f.type === 'folder');
+          parentId = parentFolder?.id || null;
+        } catch (error) {
+          console.error('Error finding parent folder:', error);
+        }
+      }
+      
+      await loadFiles(parentId, parentPath);
+    }
+  };
+
+  const navigateToPath = async (targetPath) => {
+    if (targetPath === '/') {
+      setPathHistory(['/']);
+      await loadFiles(null, '/');
+    } else {
+      // Build path history
+      const pathParts = targetPath.split('/').filter(p => p);
+      const history = ['/'];
+      let buildPath = '';
+      pathParts.forEach(part => {
+        buildPath += `/${part}`;
+        history.push(buildPath);
+      });
+      setPathHistory(history);
+      
+      // Find target folder ID
       try {
-        await axios.post(`${API}/files/${user.user_id}`, {
-          name: folderName,
-          type: 'folder',
-          path: `${currentPath}${folderName}`
-        });
-        loadFiles(currentPath);
+        const response = await axios.get(`${API}/files/${user.user_id}`);
+        const allFiles = response.data;
+        const targetFolder = allFiles.find(f => f.path === targetPath && f.type === 'folder');
+        await loadFiles(targetFolder?.id || null, targetPath);
       } catch (error) {
-        console.error('Error creating folder:', error);
+        console.error('Error navigating to path:', error);
+        await loadFiles(null, targetPath);
       }
     }
   };
 
-  const deleteFile = async (fileId) => {
-    if (window.confirm('Are you sure you want to move this file to Recycle Bin?')) {
+  const createFolder = async () => {
+    if (!newFolderName.trim()) return;
+    
+    try {
+      const newPath = currentPath === '/' ? `/${newFolderName}` : `${currentPath}/${newFolderName}`;
+      await axios.post(`${API}/files/${user.user_id}`, {
+        name: newFolderName,
+        type: 'folder',
+        parent_id: currentFolderId,
+        path: newPath
+      });
+      setNewFolderName('');
+      setShowNewFolderDialog(false);
+      loadFiles(currentFolderId, currentPath);
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      alert('Error creating folder');
+    }
+  };
+
+  const deleteSelectedFiles = async () => {
+    if (selectedFiles.length === 0) return;
+    
+    if (window.confirm(`Are you sure you want to move ${selectedFiles.length} item(s) to Recycle Bin?`)) {
       try {
-        await axios.delete(`${API}/files/${user.user_id}/${fileId}`);
-        loadFiles(currentPath);
+        for (const fileId of selectedFiles) {
+          await axios.delete(`${API}/files/${user.user_id}/${fileId}`);
+        }
+        setSelectedFiles([]);
+        loadFiles(currentFolderId, currentPath);
       } catch (error) {
-        console.error('Error deleting file:', error);
+        console.error('Error deleting files:', error);
+        alert('Error deleting files');
       }
     }
+  };
+
+  const renameFile = async (file, newName) => {
+    if (!newName.trim() || newName === file.name) return;
+    
+    try {
+      await axios.put(`${API}/files/${user.user_id}/${file.id}`, {
+        name: newName
+      });
+      loadFiles(currentFolderId, currentPath);
+    } catch (error) {
+      console.error('Error renaming file:', error);
+      alert('Error renaming file');
+    }
+  };
+
+  const openFile = async (file) => {
+    if (file.type === 'folder') {
+      navigateToFolder(file);
+    } else {
+      // Open file in appropriate application
+      const extension = file.file_extension?.toLowerCase();
+      if (['txt', 'md', 'js', 'py', 'html', 'css', 'json'].includes(extension)) {
+        // Open in text editor - we'll need to pass this up to the Desktop component
+        if (window.openTextFile) {
+          window.openTextFile(file);
+        }
+      } else {
+        alert(`Cannot open ${extension} files yet`);
+      }
+    }
+  };
+
+  const selectFile = (fileId, isCtrlClick = false) => {
+    if (isCtrlClick) {
+      setSelectedFiles(prev => 
+        prev.includes(fileId) 
+          ? prev.filter(id => id !== fileId)
+          : [...prev, fileId]
+      );
+    } else {
+      setSelectedFiles([fileId]);
+    }
+  };
+
+  const getPathSegments = () => {
+    if (currentPath === '/') return [{ name: 'Root', path: '/' }];
+    const parts = currentPath.split('/').filter(p => p);
+    const segments = [{ name: 'Root', path: '/' }];
+    let buildPath = '';
+    parts.forEach(part => {
+      buildPath += `/${part}`;
+      segments.push({ name: part, path: buildPath });
+    });
+    return segments;
   };
 
   return (
     <div className="file-browser">
+      {/* Toolbar */}
       <div className="file-browser-toolbar">
-        <div className="path-display">Path: {currentPath}</div>
-        <button onClick={createFolder} className="new-folder-btn">New Folder</button>
-      </div>
-      <div className="file-list">
-        {loading ? (
-          <div>Loading...</div>
-        ) : (
-          files.map(file => (
-            <div key={file.id} className="file-item">
-              <div className="file-icon">
-                {file.type === 'folder' ? '📁' : getFileIcon(file.file_extension)}
-              </div>
-              <div className="file-info">
-                <div className="file-name">{file.name}</div>
-                <div className="file-details">
-                  {file.type} - {file.size} bytes
-                </div>
-              </div>
+        <div className="nav-buttons">
+          <button 
+            onClick={navigateUp} 
+            disabled={pathHistory.length <= 1}
+            className="nav-btn"
+            title="Up"
+          >
+            ⬆️
+          </button>
+          <button 
+            onClick={() => loadFiles(currentFolderId, currentPath)}
+            className="nav-btn"
+            title="Refresh"
+          >
+            🔄
+          </button>
+        </div>
+        
+        <div className="path-bar">
+          {getPathSegments().map((segment, index) => (
+            <span key={index}>
               <button 
-                onClick={() => deleteFile(file.id)} 
-                className="delete-btn"
-                title="Move to Recycle Bin"
+                className="path-segment"
+                onClick={() => navigateToPath(segment.path)}
               >
-                🗑️
+                {segment.name}
               </button>
+              {index < getPathSegments().length - 1 && <span className="path-separator"> › </span>}
+            </span>
+          ))}
+        </div>
+
+        <div className="view-controls">
+          <button 
+            className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
+            onClick={() => setViewMode('list')}
+            title="List View"
+          >
+            📋
+          </button>
+          <button 
+            className={`view-btn ${viewMode === 'icons' ? 'active' : ''}`}
+            onClick={() => setViewMode('icons')}
+            title="Icon View"
+          >
+            🔲
+          </button>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="file-actions">
+        <button 
+          onClick={() => setShowNewFolderDialog(true)} 
+          className="action-btn"
+        >
+          📁 New Folder
+        </button>
+        <button 
+          onClick={deleteSelectedFiles} 
+          disabled={selectedFiles.length === 0}
+          className="action-btn"
+        >
+          🗑️ Delete Selected ({selectedFiles.length})
+        </button>
+      </div>
+
+      {/* File List */}
+      <div className={`file-list ${viewMode}`}>
+        {loading ? (
+          <div className="loading">Loading...</div>
+        ) : files.length === 0 ? (
+          <div className="empty-folder">This folder is empty</div>
+        ) : (
+          viewMode === 'list' ? (
+            <>
+              <div className="file-list-header">
+                <div className="col-name">Name</div>
+                <div className="col-type">Type</div>
+                <div className="col-size">Size</div>
+                <div className="col-modified">Modified</div>
+              </div>
+              {files.map(file => (
+                <div 
+                  key={file.id} 
+                  className={`file-item ${selectedFiles.includes(file.id) ? 'selected' : ''}`}
+                  onClick={(e) => selectFile(file.id, e.ctrlKey)}
+                  onDoubleClick={() => openFile(file)}
+                >
+                  <div className="col-name">
+                    <span className="file-icon">
+                      {file.type === 'folder' ? '📁' : getFileIcon(file.file_extension)}
+                    </span>
+                    <span className="file-name">{file.name}</span>
+                  </div>
+                  <div className="col-type">{file.type === 'folder' ? 'Folder' : (file.file_extension || 'File')}</div>
+                  <div className="col-size">{file.type === 'folder' ? '--' : `${file.size} bytes`}</div>
+                  <div className="col-modified">{new Date(file.modified_at).toLocaleDateString()}</div>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div className="file-grid">
+              {files.map(file => (
+                <div 
+                  key={file.id} 
+                  className={`file-icon-item ${selectedFiles.includes(file.id) ? 'selected' : ''}`}
+                  onClick={(e) => selectFile(file.id, e.ctrlKey)}
+                  onDoubleClick={() => openFile(file)}
+                >
+                  <div className="large-file-icon">
+                    {file.type === 'folder' ? '📁' : getFileIcon(file.file_extension)}
+                  </div>
+                  <div className="file-name">{file.name}</div>
+                </div>
+              ))}
             </div>
-          ))
+          )
         )}
       </div>
+
+      {/* New Folder Dialog */}
+      {showNewFolderDialog && (
+        <div className="modal-overlay">
+          <div className="modal-dialog">
+            <h3>Create New Folder</h3>
+            <input 
+              type="text" 
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Folder name"
+              onKeyPress={(e) => e.key === 'Enter' && createFolder()}
+              autoFocus
+            />
+            <div className="modal-buttons">
+              <button onClick={createFolder} disabled={!newFolderName.trim()}>Create</button>
+              <button onClick={() => {
+                setShowNewFolderDialog(false);
+                setNewFolderName('');
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
