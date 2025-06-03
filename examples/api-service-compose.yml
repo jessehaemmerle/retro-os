@@ -1,0 +1,53 @@
+# Example: Simple API Service with Traefik
+# Deploy with: docker-compose -f api-service-compose.yml up -d
+
+version: '3.8'
+
+services:
+  api:
+    image: node:18-alpine
+    container_name: api-service
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///app/data/api.db}
+    volumes:
+      - ./api-code:/app
+      - api_data:/app/data
+    networks:
+      - traefik-global
+    labels:
+      # Enable Traefik
+      - traefik.enable=true
+      - traefik.docker.network=traefik-global
+      
+      # API routing
+      - traefik.http.routers.api.rule=Host(`${API_DOMAIN:-api.example.com}`)
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.tls.certresolver=letsencrypt
+      - traefik.http.services.api.loadbalancer.server.port=3000
+      
+      # Health check endpoint
+      - traefik.http.routers.api-health.rule=Host(`${API_DOMAIN:-api.example.com}`) && Path(`/health`)
+      - traefik.http.routers.api-health.priority=100
+      
+      # Rate limiting (optional)
+      # - traefik.http.routers.api.middlewares=api-ratelimit
+      # - traefik.http.middlewares.api-ratelimit.ratelimit.burst=100
+      # - traefik.http.middlewares.api-ratelimit.ratelimit.average=50
+    command: ["npm", "start"]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  api_data:
+
+networks:
+  traefik-global:
+    external: true
