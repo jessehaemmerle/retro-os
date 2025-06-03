@@ -167,4 +167,4 @@ echo ""
 
 # Show running containers
 print_status "Running containers:"
-docker-compose ps
+docker-compose -f $COMPOSE_FILE ps
