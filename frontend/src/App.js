@@ -1229,7 +1229,8 @@ const FileBrowser = ({ user, onRefresh }) => {
       if (folderId) {
         url += `?parent_id=${folderId}`;
       } else if (path === '/') {
-        url += `?parent_id=null`;
+        // For root directory, don't include parent_id parameter at all
+        // The backend will default to parent_id = None
       } else {
         url += `?path=${encodeURIComponent(path)}`;
       }
