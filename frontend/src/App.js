@@ -1344,7 +1344,10 @@ const FileBrowser = ({ user, onRefresh }) => {
       console.log('Folder created successfully:', response.data);
       setNewFolderName('');
       setShowNewFolderDialog(false);
-      loadFiles(currentFolderId, currentPath);
+      
+      // Refresh the file list to show the new folder
+      console.log('Refreshing files with currentFolderId:', currentFolderId, 'currentPath:', currentPath);
+      await loadFiles(currentFolderId, currentPath);
     } catch (error) {
       console.error('Error creating folder:', error);
       console.error('Error response:', error.response?.data);
