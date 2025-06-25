@@ -184,7 +184,7 @@ docker stats
 1. **Port Already in Use**
    ```bash
    # Check what's using the port
-   sudo lsof -i :80
+   sudo lsof -i :5050
    
    # Stop conflicting services
    sudo systemctl stop apache2 nginx
