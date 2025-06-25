@@ -103,7 +103,7 @@ docker compose -f docker-compose.yml down
 
 #### Frontend (.env)
 ```env
-REACT_APP_BACKEND_URL=http://localhost/api
+REACT_APP_BACKEND_URL=http://localhost:5050/api
 ```
 
 #### Backend (.env)
