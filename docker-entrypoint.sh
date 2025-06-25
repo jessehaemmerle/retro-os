@@ -46,11 +46,11 @@ if ! check_service "Backend API" "http://backend:8001/api/"; then
 fi
 
 echo -e "${GREEN}🎉 All services are ready!${NC}"
-echo -e "${GREEN}🌐 RetroOS is now accessible at: http://localhost${NC}"
+echo -e "${GREEN}🌐 RetroOS is now accessible at: http://localhost:5050${NC}"
 echo -e "${YELLOW}📋 Available endpoints:${NC}"
-echo -e "  - Frontend: http://localhost"
-echo -e "  - Backend API: http://localhost/api"
-echo -e "  - Health Check: http://localhost/health"
+echo -e "  - Frontend: http://localhost:5050"
+echo -e "  - Backend API: http://localhost:5050/api"
+echo -e "  - Health Check: http://localhost:5050/health"
 
 # Keep the container running
 tail -f /dev/null
