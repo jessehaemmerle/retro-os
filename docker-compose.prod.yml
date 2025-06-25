@@ -77,7 +77,7 @@ services:
     networks:
       - retroos-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
       interval: 30s
       timeout: 10s
       retries: 3
