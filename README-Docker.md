@@ -1,237 +1,326 @@
-# RetroOS - Docker Deployment Guide
+# RetroOS Docker Deployment Guide
 
-This guide will help you easily deploy the RetroOS application on your Ubuntu VPS using Docker.
+This guide explains how to deploy RetroOS using Docker and Docker Compose.
 
 ## Prerequisites
 
-### 1. Install Docker
+- Docker 20.0+ installed
+- Docker Compose 2.0+ installed
+- At least 2GB RAM available
+- Ports 80, 443, 8001, 3000, 27017 available
+
+## Quick Start
+
+### Production Deployment
+
 ```bash
-# Update package list
-sudo apt update
+# Make the deploy script executable
+chmod +x deploy-docker.sh
 
-# Install required packages
-sudo apt install apt-transport-https ca-certificates curl software-properties-common
+# Deploy in production mode
+./deploy-docker.sh
 
-# Add Docker's official GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-
-# Add Docker repository
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Install Docker
-sudo apt update
-sudo apt install docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Add your user to docker group (to run docker without sudo)
-sudo usermod -aG docker $USER
-
-# Log out and log back in for group changes to take effect
+# Or with options
+./deploy-docker.sh -e prod -d -b
 ```
 
-### 2. Install Docker Compose (if not included with Docker)
+### Development Deployment
+
 ```bash
-# Download Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-
-# Make it executable
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Verify installation
-docker-compose --version
+# Deploy in development mode with hot reload
+./deploy-docker.sh -e dev
 ```
 
-## Quick Deployment
+## Manual Deployment
 
-### Option 1: Automated Deployment (Recommended)
+### Production Mode
+
 ```bash
-# Clone your repository
-git clone <your-repo-url>
-cd <your-repo-directory>
-
-# Make the deployment script executable
-chmod +x deploy.sh
-
-# Run the deployment script
-./deploy.sh
-```
-
-### Option 2: Manual Deployment
-```bash
-# Clone your repository
-git clone <your-repo-url>
-cd <your-repo-directory>
-
 # Build and start all services
-docker-compose up --build -d
+docker compose -f docker-compose.prod.yml up -d
 
-# Check status
-docker-compose ps
+# View logs
+docker compose -f docker-compose.prod.yml logs -f
+
+# Stop services
+docker compose -f docker-compose.prod.yml down
 ```
+
+### Development Mode
+
+```bash
+# Build and start all services
+docker compose -f docker-compose.yml up -d
+
+# View logs
+docker compose -f docker-compose.yml logs -f
+
+# Stop services
+docker compose -f docker-compose.yml down
+```
+
+## Services Overview
+
+### Architecture
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│    Nginx    │    │  Frontend   │    │   Backend   │    │  MongoDB    │
+│   (Proxy)   │◄──►│  (React)    │◄──►│  (FastAPI)  │◄──►│ (Database)  │
+│   Port 80   │    │  Port 3000  │    │  Port 8001  │    │ Port 27017  │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+### Service Details
+
+1. **Nginx Proxy** (`nginx`)
+   - Serves as reverse proxy
+   - Routes `/api/*` to backend
+   - Routes everything else to frontend
+   - Handles SSL termination (if configured)
+
+2. **Frontend** (`frontend`)
+   - React application
+   - Retro desktop interface
+   - Built with Tailwind CSS
+   - Connects to backend via `/api` endpoints
+
+3. **Backend** (`backend`)
+   - FastAPI application
+   - RESTful API for file system, authentication
+   - Data persistence via MongoDB
+   - Comprehensive error handling
+
+4. **MongoDB** (`mongodb`)
+   - Document database
+   - Stores user data, files, settings
+   - Persistent volume for data storage
 
 ## Configuration
 
 ### Environment Variables
-The application uses the following key environment variables:
 
-**Backend (.env in backend directory):**
+#### Frontend (.env)
+```env
+REACT_APP_BACKEND_URL=http://localhost/api
+```
+
+#### Backend (.env)
 ```env
 MONGO_URL=mongodb://mongodb:27017
 DB_NAME=retroos
 ```
 
-**Frontend (.env in frontend directory):**
-```env
-REACT_APP_BACKEND_URL=http://localhost:8001
-```
+### Customization
 
-### Custom Domain Setup
-If you want to use a custom domain instead of localhost:
+#### Backend URL
+To change the backend URL for frontend:
 
-1. Update the nginx configuration in `nginx/nginx.conf`
-2. Change the `server_name` from `localhost` to your domain
-3. Update `REACT_APP_BACKEND_URL` to use your domain
-4. Restart the services: `docker-compose restart`
-
-## Service Management
-
-### Start Services
 ```bash
-docker-compose up -d
+# In docker-compose.prod.yml
+services:
+  frontend:
+    build:
+      args:
+        REACT_APP_BACKEND_URL: https://your-domain.com/api
 ```
 
-### Stop Services
+#### Database Configuration
+To use external MongoDB:
+
 ```bash
-docker-compose down
+# In docker-compose.prod.yml
+services:
+  backend:
+    environment:
+      MONGO_URL: mongodb://your-mongo-host:27017
+      DB_NAME: your_database_name
 ```
 
-### Restart Services
+## Monitoring and Debugging
+
+### Health Checks
+
+All services include health checks:
+
 ```bash
-docker-compose restart
+# Check service health
+docker compose -f docker-compose.prod.yml ps
+
+# View specific service health
+docker inspect retroos-backend-prod | grep -A 10 Health
 ```
 
-### View Logs
+### Logs
+
 ```bash
-# All services
-docker-compose logs -f
+# View all logs
+docker compose -f docker-compose.prod.yml logs -f
 
-# Specific service
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f mongodb
+# View specific service logs
+docker compose -f docker-compose.prod.yml logs -f backend
+docker compose -f docker-compose.prod.yml logs -f frontend
+docker compose -f docker-compose.prod.yml logs -f mongodb
+docker compose -f docker-compose.prod.yml logs -f nginx
 ```
 
-### Rebuild and Restart
+### Debugging
+
 ```bash
-docker-compose up --build -d
+# Execute commands in running containers
+docker exec -it retroos-backend-prod bash
+docker exec -it retroos-frontend-prod sh
+docker exec -it retroos-mongodb-prod mongosh
+
+# View container resources
+docker stats
 ```
-
-## Application Access
-
-Once deployed, you can access the application at:
-
-- **Main Application**: http://your-server-ip/ (or http://localhost/ if testing locally)
-- **Frontend Only**: http://your-server-ip:3000
-- **Backend API**: http://your-server-ip:8001/api
-
-## Architecture
-
-The Docker setup includes:
-
-1. **Frontend Container** (React)
-   - Runs on port 3000
-   - Serves the RetroOS interface
-   - Hot reload enabled for development
-
-2. **Backend Container** (FastAPI)
-   - Runs on port 8001
-   - Provides API endpoints
-   - Auto-reload enabled for development
-
-3. **MongoDB Container**
-   - Runs on port 27017
-   - Persistent data storage
-   - Automatic database initialization
-
-4. **Nginx Container** (Reverse Proxy)
-   - Runs on port 80
-   - Routes requests to appropriate services
-   - Handles static file serving
 
 ## Troubleshooting
 
-### Service Won't Start
-```bash
-# Check logs for errors
-docker-compose logs [service-name]
+### Common Issues
 
-# Check if ports are already in use
-sudo netstat -tulpn | grep :80
-sudo netstat -tulpn | grep :3000
-sudo netstat -tulpn | grep :8001
-```
+1. **Port Already in Use**
+   ```bash
+   # Check what's using the port
+   sudo lsof -i :80
+   
+   # Stop conflicting services
+   sudo systemctl stop apache2 nginx
+   ```
 
-### Database Connection Issues
-```bash
-# Check MongoDB logs
-docker-compose logs mongodb
+2. **Database Connection Issues**
+   ```bash
+   # Check MongoDB is running
+   docker compose -f docker-compose.prod.yml exec mongodb mongosh --eval "db.adminCommand('ping')"
+   
+   # View backend logs for connection errors
+   docker compose -f docker-compose.prod.yml logs backend
+   ```
 
-# Connect to MongoDB container
-docker-compose exec mongodb mongo
-```
+3. **Build Failures**
+   ```bash
+   # Clean Docker cache
+   docker system prune -a
+   
+   # Rebuild without cache
+   docker compose -f docker-compose.prod.yml build --no-cache
+   ```
 
-### Rebuild Specific Service
-```bash
-# Rebuild just the backend
-docker-compose up --build -d backend
+4. **Frontend Not Loading**
+   ```bash
+   # Check if backend is accessible
+   curl http://localhost/api/
+   
+   # Check nginx configuration
+   docker compose -f docker-compose.prod.yml exec nginx nginx -t
+   ```
 
-# Rebuild just the frontend
-docker-compose up --build -d frontend
-```
+### Performance Optimization
 
-### Reset Everything
-```bash
-# Stop and remove all containers, networks, and volumes
-docker-compose down -v
+1. **Resource Limits**
+   ```yaml
+   services:
+     backend:
+       deploy:
+         resources:
+           limits:
+             memory: 512M
+             cpus: '0.5'
+   ```
 
-# Remove all images
-docker-compose down --rmi all
-
-# Start fresh
-docker-compose up --build -d
-```
+2. **Volume Optimization**
+   ```yaml
+   volumes:
+     mongodb_data:
+       driver: local
+       driver_opts:
+         type: none
+         o: bind
+         device: /data/mongodb
+   ```
 
 ## Production Considerations
 
 ### Security
-- Change default MongoDB credentials
-- Use HTTPS with SSL certificates
-- Configure firewall rules
-- Regular security updates
 
-### Performance
-- Use production builds for React
-- Enable Nginx caching
-- Configure resource limits
-- Monitor container resource usage
+1. **Use HTTPS**
+   - Configure SSL certificates
+   - Update nginx configuration
+   - Use proper security headers
+
+2. **Environment Variables**
+   - Use Docker secrets for sensitive data
+   - Don't hardcode credentials
+
+3. **Network Security**
+   - Use custom networks
+   - Limit exposed ports
+   - Enable firewall rules
+
+### Scaling
+
+1. **Horizontal Scaling**
+   ```yaml
+   services:
+     backend:
+       deploy:
+         replicas: 3
+   ```
+
+2. **Load Balancing**
+   - Configure nginx upstream
+   - Use external load balancer
 
 ### Backup
-```bash
-# Backup MongoDB data
-docker-compose exec mongodb mongodump --out /backup
-docker cp $(docker-compose ps -q mongodb):/backup ./mongodb-backup
 
-# Restore MongoDB data
-docker cp ./mongodb-backup $(docker-compose ps -q mongodb):/backup
-docker-compose exec mongodb mongorestore /backup
-```
+1. **Database Backup**
+   ```bash
+   # Create backup
+   docker exec retroos-mongodb-prod mongodump --out /backup
+   
+   # Restore backup
+   docker exec retroos-mongodb-prod mongorestore /backup
+   ```
+
+2. **Volume Backup**
+   ```bash
+   # Backup volume
+   docker run --rm -v retroos_mongodb_data:/data -v $(pwd):/backup alpine tar czf /backup/mongodb_backup.tar.gz -C /data .
+   ```
+
+## Deployment Checklist
+
+- [ ] Docker and Docker Compose installed
+- [ ] Required ports available
+- [ ] Environment variables configured
+- [ ] SSL certificates ready (for HTTPS)
+- [ ] Firewall rules configured
+- [ ] Backup strategy in place
+- [ ] Monitoring configured
+- [ ] Health checks working
+- [ ] Load testing completed
 
 ## Support
 
-If you encounter any issues:
+For deployment issues:
+1. Check logs for error messages
+2. Verify all services are healthy
+3. Test individual service endpoints
+4. Review Docker and system resources
+5. Consult Docker documentation
 
-1. Check the logs: `docker-compose logs -f`
-2. Verify all containers are running: `docker-compose ps`
-3. Ensure all required ports are available
-4. Check firewall settings on your VPS
+## Updates
 
-For additional help, refer to the main README.md file or create an issue in the repository.
+To update RetroOS:
+
+```bash
+# Pull latest images
+docker compose -f docker-compose.prod.yml pull
+
+# Recreate containers
+docker compose -f docker-compose.prod.yml up -d
+
+# Clean up old images
+docker image prune -f
+```
