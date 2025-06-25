@@ -120,9 +120,9 @@ if [[ -n "$DETACH_MODE" ]]; then
     docker compose -f "$COMPOSE_FILE" ps
     echo -e ""
     echo -e "${GREEN}🌐 Access URLs:${NC}"
-    echo -e "  - Frontend: http://localhost"
-    echo -e "  - Backend API: http://localhost/api"
-    echo -e "  - Health Check: http://localhost/health"
+    echo -e "  - Frontend: http://localhost:5050"
+    echo -e "  - Backend API: http://localhost:5050/api"
+    echo -e "  - Health Check: http://localhost:5050/health"
     echo -e ""
     echo -e "${YELLOW}📊 To view logs:${NC}"
     echo -e "  docker compose -f $COMPOSE_FILE logs -f"
