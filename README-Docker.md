@@ -78,6 +78,7 @@ docker compose -f docker-compose.yml down
    - Routes `/api/*` to backend
    - Routes everything else to frontend
    - Handles SSL termination (if configured)
+   - **Accessible on port 5050**
 
 2. **Frontend** (`frontend`)
    - React application
