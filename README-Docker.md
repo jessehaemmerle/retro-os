@@ -211,7 +211,7 @@ docker stats
 4. **Frontend Not Loading**
    ```bash
    # Check if backend is accessible
-   curl http://localhost/api/
+   curl http://localhost:5050/api/
    
    # Check nginx configuration
    docker compose -f docker-compose.prod.yml exec nginx nginx -t
