@@ -14,7 +14,7 @@ RUN yarn install --frozen-lockfile --production=false
 COPY frontend/ .
 
 # Build argument for backend URL
-ARG REACT_APP_BACKEND_URL=http://localhost/api
+ARG REACT_APP_BACKEND_URL=http://localhost:5050/api
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 
 # Build the application
