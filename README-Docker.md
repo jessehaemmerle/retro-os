@@ -7,7 +7,7 @@ This guide explains how to deploy RetroOS using Docker and Docker Compose.
 - Docker 20.0+ installed
 - Docker Compose 2.0+ installed
 - At least 2GB RAM available
-- Ports 80, 443, 8001, 3000, 27017 available
+- Ports 5050, 5051, 8001, 3000, 27017 available
 
 ## Quick Start
 
