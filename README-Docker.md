@@ -123,7 +123,7 @@ services:
   frontend:
     build:
       args:
-        REACT_APP_BACKEND_URL: https://your-domain.com/api
+        REACT_APP_BACKEND_URL: https://your-domain.com:5050/api
 ```
 
 #### Database Configuration
