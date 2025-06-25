@@ -39,7 +39,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        REACT_APP_BACKEND_URL: http://localhost:8001
+        REACT_APP_BACKEND_URL: http://localhost:5050/api
     container_name: retroos-frontend
     restart: unless-stopped
     ports:
