@@ -32,6 +32,12 @@ static volatile struct limine_hhdm_request hhdm_request = {
 };
 
 __attribute__((used, section(".limine_requests")))
+static volatile struct limine_rsdp_request rsdp_request = {
+    .id = LIMINE_RSDP_REQUEST,
+    .revision = 0,
+};
+
+__attribute__((used, section(".limine_requests")))
 static volatile struct limine_kernel_address_request kaddr_request = {
     .id = LIMINE_KERNEL_ADDRESS_REQUEST,
     .revision = 0,
@@ -88,6 +94,9 @@ void boot_collect(void)
         info.fb_pitch  = fb->pitch;
         info.fb_bpp    = fb->bpp;
     }
+
+    if (rsdp_request.response)
+        info.rsdp = (uint64_t)rsdp_request.response->address;
 
     if (memmap_request.response) {
         uint64_t count = memmap_request.response->entry_count;

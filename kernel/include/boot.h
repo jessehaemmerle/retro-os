@@ -32,6 +32,8 @@ struct boot_info {
     uint32_t memmap_count;
     struct boot_mem_entry memmap[BOOT_MAX_MEMMAP];
 
+    uint64_t rsdp;          /* Einstieg in die ACPI-Tabellen */
+
     uint64_t total_memory;
     uint64_t usable_memory;
 };

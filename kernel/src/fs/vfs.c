@@ -143,6 +143,31 @@ struct fs_node *fs_create(struct fs_node *dir, const char *name, enum fs_type ty
     return n;
 }
 
+struct fs_node *fs_create_path(struct fs_node *base, const char *path,
+                               enum fs_type type)
+{
+    char parent[FS_PATH_MAX];
+    const char *name = path;
+
+    strlcpy(parent, path, sizeof(parent));
+
+    char *slash = strrchr(parent, '/');
+    struct fs_node *dir;
+
+    if (slash) {
+        *slash = '\0';
+        name = path + (slash - parent) + 1;
+        dir = fs_lookup(base, parent[0] ? parent : "/");
+    } else {
+        dir = base ? base : root;
+    }
+
+    if (!dir || dir->type != FS_DIR || !name[0])
+        return NULL;
+
+    return fs_create(dir, name, type);
+}
+
 static void free_subtree(struct fs_node *node)
 {
     struct fs_node *child = node->first_child;

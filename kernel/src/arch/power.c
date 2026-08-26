@@ -1,16 +1,20 @@
 /* power.c - Neustart und Abschalten des Rechners.
  *
- * Ein sauberes Herunterfahren erfordert eigentlich einen ACPI-Interpreter.
- * RetroOS begnuegt sich mit den bekannten Kurzwegen, die Emulatoren und
- * viele echte Rechner verstehen - und haelt die Maschine sonst einfach an.
+ * Zuerst wird der von der Firmware beschriebene Weg versucht (ACPI), dann
+ * die bekannten Kurzwege der Emulatoren, und wenn auch die nicht wirken,
+ * wird die Maschine angehalten.
  */
 
 #include "power.h"
+#include "acpi.h"
 #include "io.h"
 
 NORETURN void power_reboot(void)
 {
     cli();
+
+    /* Der saubere Weg: das Reset-Register aus der ACPI-Tabelle. */
+    acpi_reset();
 
     /* Ueber den Tastaturcontroller die CPU zuruecksetzen. */
     for (int i = 0; i < 10; i++) {
@@ -32,7 +36,11 @@ NORETURN void power_shutdown(void)
 {
     cli();
 
-    /* QEMU (neuere Versionen), Bochs/aeltere QEMU, VirtualBox. */
+    /* Der richtige Weg: der von der Firmware beschriebene S5-Uebergang. */
+    acpi_shutdown();
+
+    /* Falls die Tabellen nichts hergeben: die bekannten Kurzwege der
+     * Emulatoren - QEMU, Bochs, VirtualBox. */
     outw(0x604, 0x2000);
     outw(0xB004, 0x2000);
     outw(0x4004, 0x3400);

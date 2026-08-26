@@ -67,6 +67,10 @@ struct fs_node *fs_lookup(struct fs_node *base, const char *path);
 struct fs_node *fs_find_child(struct fs_node *dir, const char *name);
 
 struct fs_node *fs_create(struct fs_node *dir, const char *name, enum fs_type type);
+/* Wie fs_create, nimmt aber einen ganzen Pfad ("/Ordner/datei.txt") und
+ * legt den Eintrag im passenden Ordner an. */
+struct fs_node *fs_create_path(struct fs_node *base, const char *path,
+                               enum fs_type type);
 bool  fs_remove(struct fs_node *node);
 bool  fs_rename(struct fs_node *node, const char *name);
 bool  fs_move(struct fs_node *node, struct fs_node *new_parent);

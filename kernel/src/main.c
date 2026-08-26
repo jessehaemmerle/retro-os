@@ -6,6 +6,7 @@
  */
 
 #include "retro.h"
+#include "acpi.h"
 #include "arch.h"
 #include "block.h"
 #include "boot.h"
@@ -57,6 +58,7 @@ NORETURN void kmain(void)
     sti();
 
     /* Busse und Datentraeger */
+    acpi_init();
     pci_init();
     storage_init();
 

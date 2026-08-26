@@ -118,23 +118,7 @@ static int64_t do_open(struct process *proc, uint64_t path_ptr, uint64_t mode)
 
     /* Modus 1 legt die Datei bei Bedarf an. */
     if (!node && mode == 1) {
-        char parent_path[FS_PATH_MAX];
-
-        strlcpy(parent_path, path, sizeof(parent_path));
-        char *slash = strrchr(parent_path, '/');
-        const char *name = path;
-
-        if (slash) {
-            *slash = '\0';
-            name = slash + 1;
-        }
-
-        struct fs_node *dir = fs_lookup(fs_root(),
-                                        parent_path[0] ? parent_path : "/");
-        if (!dir)
-            return SYS_ERR_NOENT;
-
-        node = fs_create(dir, name, FS_FILE);
+        node = fs_create_path(fs_root(), path, FS_FILE);
         if (node)
             fs_write(node, "", 0);
     }

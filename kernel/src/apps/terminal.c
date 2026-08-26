@@ -269,7 +269,7 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
         struct fs_node *file = fs_lookup(st->cwd, target);
 
         if (!file)
-            file = fs_create(st->cwd, target, FS_FILE);
+            file = fs_create_path(st->cwd, target, FS_FILE);
 
         if (!file || file->type != FS_FILE) {
             term_printf(st, C_ERROR, "holen: %s laesst sich nicht anlegen", target);
