@@ -1,100 +1,145 @@
 /* browser.c - der Webbrowser von RetroOS.
  *
- * Er holt Seiten per HTTP, laesst sie von html.c zerlegen und setzt daraus
- * ein Bild: Ueberschriften groesser, Verweise blau und unterstrichen,
- * Aufzaehlungen mit Punkt. Der Umbruch geschieht beim Zeichnen, also passt
- * sich die Seite sofort an die Fenstergroesse an.
+ * Der Ablauf entspricht dem eines richtigen Browsers:
  *
- * Drei Adressarten werden verstanden:
+ *   1. Die Seite wird geholt und zu einem Dokumentbaum zerlegt.
+ *   2. Eingebundene Formatvorlagen, Skripte und Bilder werden
+ *      nachgeladen - jedes davon ein eigener Auftrag an den
+ *      Arbeits-Thread, damit die Oberflaeche bedienbar bleibt.
+ *   3. Die Formatvorlagen werden gewichtet und auf den Baum gelegt.
+ *   4. Die Skripte laufen und duerfen den Baum veraendern.
+ *   5. Der Baum wird nach dem Kastenmodell umgebrochen und gezeichnet.
+ *
+ * Aendert ein Skript spaeter etwas - etwa durch einen Klick oder einen
+ * Zeitgeber - werden die Schritte drei bis fuenf wiederholt.
+ *
+ * Vier Adressarten werden verstanden:
  *   http://...   eine Seite aus dem Netz
+ *   https://...  dasselbe, verschluesselt
  *   datei:/...   eine Datei aus dem Dateisystem
  *   start:       die eingebaute Startseite
- *
- * Geladen wird, waehrend die Oberflaeche steht. Das ist der Preis dafuer,
- * dass RetroOS ohne Nebenlaeufigkeit auskommt; der Zustand "Lade ..." wird
- * deshalb vor dem Beginn gezeichnet.
  */
 
 #include "apps.h"
+#include "css.h"
 #include "font.h"
-#include "html.h"
+#include "htmlparse.h"
+#include "image.h"
+#include "js.h"
 #include "kstring.h"
+#include "layout.h"
 #include "mm.h"
 #include "net.h"
+#include "arch.h"
 #include "thread.h"
 #include "theme.h"
 #include "widgets.h"
 
 #define BR_TOOLBAR_H 34
 #define BR_STATUS_H  24
-#define BR_MARGIN    12
+#define BR_MARGIN    10
 #define BR_LINE      18
-#define BR_MAX_LINKS 256
 #define BR_URL_MAX   255
 #define BR_HISTORY   16
+#define BR_RESOURCES 32
+#define BR_SHEET_MAX 65536
 
-#define COL_PAGE_BG   RGB(0xFC, 0xFC, 0xF8)
-#define COL_LINK      RGB(0x18, 0x40, 0xC8)
-#define COL_HEADING   RGB(0x10, 0x28, 0x60)
-#define COL_PLACE     RGB(0x80, 0x80, 0x80)
+#define COL_PAGE_BG   RGB(0xFF, 0xFF, 0xFF)
+#define COL_PLACE     RGB(0x88, 0x88, 0x88)
 
 enum br_button { BR_BACK, BR_RELOAD, BR_HOME, BR_GO, BR_COUNT };
 
-struct link_area {
-    struct rect rect;
-    const char *href;
+/* ------------------------------------------------------------------ */
+/* Nachgeladene Bestandteile                                           */
+/* ------------------------------------------------------------------ */
+
+enum resource_kind { RES_STYLE, RES_SCRIPT, RES_IMAGE };
+
+enum resource_state { RES_WAITING, RES_BUSY, RES_READY, RES_FAILED };
+
+struct resource {
+    char  url[BR_URL_MAX + 1];
+    enum resource_kind  kind;
+    volatile int        state;
+
+    struct image image;         /* bei RES_IMAGE */
+    char        *text;          /* bei RES_STYLE und RES_SCRIPT */
+    size_t       length;
 };
 
 /* Der Ladeauftrag wandert zwischen Oberflaeche und Arbeits-Thread hin und
  * her. Nur ein Feld wechselt dabei die Richtung, deshalb genuegt ein
  * Zustandswert ohne weitere Absprache. */
-enum job_state {
-    JOB_IDLE,
-    JOB_REQUESTED,
-    JOB_RUNNING,
-    JOB_DONE,
-};
+enum job_state { JOB_IDLE, JOB_REQUESTED, JOB_RUNNING, JOB_DONE };
 
 struct load_job {
     char     url[BR_URL_MAX + 1];
     volatile int state;
+    int32_t  resource;          /* -1 = die Seite selbst */
 
     struct http_response response;
     bool     ok;
 };
 
+/* ------------------------------------------------------------------ */
+/* Zustand eines Fensters                                              */
+/* ------------------------------------------------------------------ */
+
+enum br_phase {
+    PHASE_LEER,
+    PHASE_SEITE,        /* wartet auf das Hauptdokument   */
+    PHASE_BESTANDTEILE, /* wartet auf Vorlagen und Bilder */
+    PHASE_FERTIG,
+};
+
 struct br_state {
-    struct html_doc doc;
+    struct document    doc;
+    struct stylesheet *sheet;
+    struct layout      layout;
+    struct js_context *js;
+    bool               scripts_ran;
+
+    struct resource resources[BR_RESOURCES];
+    size_t          resource_count;
 
     struct load_job  job;
     struct thread   *worker;
     volatile bool    worker_quit;
     volatile bool    worker_done;
 
+    int32_t phase;
+
     char url[BR_URL_MAX + 1];
     char address[BR_URL_MAX + 1];
     int32_t address_cursor;
     bool    address_focus;
-    bool    address_selected;   /* nach dem Anklicken ersetzt Tippen alles */
+    bool    address_selected;
     bool    caret_on;
 
     char history[BR_HISTORY][BR_URL_MAX + 1];
     int  history_len;
 
-    bool loading;
-
-    char status[160];
+    char status[192];
+    char security[64];
 
     int32_t scroll;
-    int32_t content_height;
+    int32_t layout_width;
 
-    struct link_area links[BR_MAX_LINKS];
-    size_t           link_count;
+    struct node *focused;       /* Eingabefeld unter dem Schreibzeiger */
+    struct node *hovered;
 
     int pressed;
+    bool needs_layout;
+    bool needs_restyle;
+
+    /* Der Browser darf sich selbst eine neue Adresse geben. */
+    char     pending_url[BR_URL_MAX + 1];
+    bool     has_pending;
 };
 
-static void browser_navigate(struct window *win, const char *url, bool remember);
+static void browser_navigate(struct window *win, const char *url,
+                             bool remember);
+static void rebuild_page(struct window *win);
 
 /* ------------------------------------------------------------------ */
 /* Adressen                                                            */
@@ -109,10 +154,19 @@ static void resolve_url(const char *base, const char *href, char *out,
         return;
     }
 
+    while (*href == ' ' || *href == '\t' || *href == '\n')
+        href++;
+
     if (strncasecmp(href, "http://", 7) == 0 ||
         strncasecmp(href, "https://", 8) == 0 ||
         strncasecmp(href, "datei:", 6) == 0 ||
         strncasecmp(href, "start:", 6) == 0) {
+        strlcpy(out, href, size);
+        return;
+    }
+    if (strncasecmp(href, "data:", 5) == 0 ||
+        strncasecmp(href, "javascript:", 11) == 0 ||
+        strncasecmp(href, "mailto:", 7) == 0) {
         strlcpy(out, href, size);
         return;
     }
@@ -135,7 +189,9 @@ static void resolve_url(const char *base, const char *href, char *out,
         char directory[BR_URL_MAX + 1];
 
         strlcpy(directory, base + 6, sizeof(directory));
+
         char *slash = strrchr(directory, '/');
+
         if (slash)
             slash[1] = '\0';
 
@@ -156,7 +212,6 @@ static void resolve_url(const char *base, const char *href, char *out,
         return;
     }
 
-    /* Ein Verweis ohne Schema bleibt beim Schema der aktuellen Seite. */
     const char *scheme = secure ? "https" : "http";
     uint16_t standard = secure ? 443 : 80;
     char prefix[160];
@@ -172,6 +227,7 @@ static void resolve_url(const char *base, const char *href, char *out,
     }
 
     char *slash = strrchr(path, '/');
+
     if (slash)
         slash[1] = '\0';
     else
@@ -181,34 +237,325 @@ static void resolve_url(const char *base, const char *href, char *out,
 }
 
 /* ------------------------------------------------------------------ */
+/* Bestandteile verwalten                                              */
+/* ------------------------------------------------------------------ */
+
+static void release_resources(struct br_state *st)
+{
+    for (size_t i = 0; i < st->resource_count; i++) {
+        image_free(&st->resources[i].image);
+        kfree(st->resources[i].text);
+        st->resources[i].text = NULL;
+    }
+    st->resource_count = 0;
+}
+
+static struct resource *find_resource(struct br_state *st, const char *url)
+{
+    for (size_t i = 0; i < st->resource_count; i++)
+        if (strcmp(st->resources[i].url, url) == 0)
+            return &st->resources[i];
+    return NULL;
+}
+
+static struct resource *add_resource(struct br_state *st, const char *url,
+                                     enum resource_kind kind)
+{
+    struct resource *found = find_resource(st, url);
+
+    if (found)
+        return found;
+    if (st->resource_count >= BR_RESOURCES)
+        return NULL;
+
+    struct resource *r = &st->resources[st->resource_count++];
+
+    memset(r, 0, sizeof(*r));
+    strlcpy(r->url, url, sizeof(r->url));
+    r->kind = kind;
+    r->state = RES_WAITING;
+    return r;
+}
+
+/* Der Umbruch fragt hierueber nach dem Bild zu einer Adresse. */
+static struct image *lookup_image(void *context, const char *src)
+{
+    struct br_state *st = context;
+    char full[BR_URL_MAX + 1];
+
+    resolve_url(st->url, src, full, sizeof(full));
+
+    struct resource *r = find_resource(st, full);
+
+    if (!r || r->state != RES_READY || !r->image.px)
+        return NULL;
+    return &r->image;
+}
+
+/* ------------------------------------------------------------------ */
+/* Bestandteile im Baum finden                                         */
+/* ------------------------------------------------------------------ */
+
+static void scan_node(struct br_state *st, struct node *node)
+{
+    if (node->kind == NODE_ELEMENT && node->name) {
+        if (strcmp(node->name, "link") == 0) {
+            const char *rel = node_attribute(node, "rel");
+            const char *href = node_attribute(node, "href");
+
+            if (href && rel && strcasecmp(rel, "stylesheet") == 0) {
+                char full[BR_URL_MAX + 1];
+
+                resolve_url(st->url, href, full, sizeof(full));
+                if (strncasecmp(full, "data:", 5) != 0)
+                    add_resource(st, full, RES_STYLE);
+            }
+        } else if (strcmp(node->name, "script") == 0) {
+            const char *src = node_attribute(node, "src");
+            const char *type = node_attribute(node, "type");
+            bool usable = !type || strcasecmp(type, "text/javascript") == 0 ||
+                          strcasecmp(type, "application/javascript") == 0 ||
+                          strcasecmp(type, "module") == 0 || !*type;
+
+            if (src && usable) {
+                char full[BR_URL_MAX + 1];
+
+                resolve_url(st->url, src, full, sizeof(full));
+                if (strncasecmp(full, "data:", 5) != 0)
+                    add_resource(st, full, RES_SCRIPT);
+            }
+        } else if (strcmp(node->name, "img") == 0) {
+            const char *src = node_attribute(node, "src");
+
+            if (src && *src) {
+                char full[BR_URL_MAX + 1];
+
+                resolve_url(st->url, src, full, sizeof(full));
+                if (strncasecmp(full, "data:", 5) != 0)
+                    add_resource(st, full, RES_IMAGE);
+            }
+        }
+    }
+    for (struct node *c = node->first; c; c = c->next)
+        scan_node(st, c);
+}
+
+/* ------------------------------------------------------------------ */
+/* Formatvorlagen und Skripte anwenden                                 */
+/* ------------------------------------------------------------------ */
+
+static void collect_styles(struct br_state *st)
+{
+    css_free(st->sheet);
+    st->sheet = css_create();
+    if (!st->sheet)
+        return;
+
+    char *buffer = kmalloc(BR_SHEET_MAX);
+
+    if (!buffer)
+        return;
+
+    /* Erst die eingebundenen Dateien, dann die style-Bloecke der Seite -
+     * so gewinnt bei gleichem Gewicht das Naeherliegende. */
+    for (size_t i = 0; i < st->resource_count; i++) {
+        struct resource *r = &st->resources[i];
+
+        if (r->kind == RES_STYLE && r->state == RES_READY && r->text)
+            css_add(st->sheet, r->text, r->length);
+    }
+
+    for (size_t i = 0; ; i++) {
+        struct node *style = dom_by_tag(st->doc.root, "style", i);
+
+        if (!style)
+            break;
+        dom_raw_text(style, buffer, BR_SHEET_MAX);
+        css_add(st->sheet, buffer, strlen(buffer));
+    }
+    kfree(buffer);
+}
+
+/* Wird gerufen, wenn ein Skript den Baum veraendert hat. */
+static void on_document_changed(void *context)
+{
+    struct br_state *st = context;
+
+    st->needs_restyle = true;
+    st->needs_layout = true;
+}
+
+static void on_script_navigate(void *context, const char *url)
+{
+    struct br_state *st = context;
+
+    strlcpy(st->pending_url, url, sizeof(st->pending_url));
+    st->has_pending = true;
+}
+
+static void run_scripts(struct window *win)
+{
+    struct br_state *st = win->user;
+
+    if (!st->js)
+        return;
+
+    js_bind_document(st->js, &st->doc);
+
+    char *buffer = kmalloc(BR_SHEET_MAX);
+
+    if (!buffer)
+        return;
+
+    for (size_t i = 0; ; i++) {
+        struct node *script = dom_by_tag(st->doc.root, "script", i);
+
+        if (!script)
+            break;
+
+        const char *src = node_attribute(script, "src");
+
+        if (src && *src) {
+            char full[BR_URL_MAX + 1];
+
+            resolve_url(st->url, src, full, sizeof(full));
+
+            struct resource *r = find_resource(st, full);
+
+            if (r && r->state == RES_READY && r->text)
+                js_run(st->js, r->text, r->length);
+            continue;
+        }
+
+        dom_raw_text(script, buffer, BR_SHEET_MAX);
+        if (buffer[0])
+            js_run(st->js, buffer, strlen(buffer));
+    }
+    kfree(buffer);
+
+    /* Ein Skript darf sich an das Laden der Seite haengen. */
+    js_dispatch_event(st->js, st->doc.root, "DOMContentLoaded");
+    js_dispatch_event(st->js, st->doc.root, "load");
+}
+
+/* ------------------------------------------------------------------ */
+/* Umbruch                                                             */
+/* ------------------------------------------------------------------ */
+
+static struct rect page_rect(struct window *win);
+
+static void clear_boxes(struct node *node)
+{
+    node->has_box = false;
+    for (struct node *c = node->first; c; c = c->next)
+        clear_boxes(c);
+}
+
+static void relayout(struct window *win)
+{
+    struct br_state *st = win->user;
+    struct rect area = page_rect(win);
+    int32_t width = MAX(area.w - 2 * BR_MARGIN - 4, 80);
+
+    if (st->needs_restyle) {
+        collect_styles(st);
+        css_apply(st->sheet, st->doc.root, 16);
+        st->needs_restyle = false;
+    }
+
+    clear_boxes(st->doc.root);
+    layout_run(&st->layout, st->doc.body, width, lookup_image, st);
+    st->layout_width = width;
+    st->needs_layout = false;
+    st->scroll = MIN(st->scroll,
+                     MAX(st->layout.height - area.h + 2 * BR_MARGIN, 0));
+}
+
+static void rebuild_page(struct window *win)
+{
+    struct br_state *st = win->user;
+
+    st->needs_restyle = true;
+    if (!st->scripts_ran) {
+        collect_styles(st);
+        css_apply(st->sheet, st->doc.root, 16);
+        st->needs_restyle = false;
+        run_scripts(win);
+        st->scripts_ran = true;
+    }
+    st->needs_restyle = true;
+    relayout(win);
+    gui_invalidate();
+}
+
+/* ------------------------------------------------------------------ */
 /* Seiten laden                                                        */
 /* ------------------------------------------------------------------ */
 
 static const char start_page[] =
-    "<html><head><title>RetroOS</title></head><body>"
+    "<html><head><title>RetroOS</title><style>"
+    "body { background: #fdfdf8; color: #202020; font-family: sans-serif;"
+    "       margin: 18px }"
+    "h1 { color: #204878; border-bottom: 2px solid #6890c0;"
+    "     padding-bottom: 6px }"
+    "h2 { color: #305888 }"
+    ".kasten { background: #eef2f8; border: 1px solid #b8c8dc;"
+    "          padding: 10px 14px; margin: 12px 0 }"
+    ".hinweis { color: #606060; font-size: 14px }"
+    "code { background: #e8e8e0; padding: 1px 4px }"
+    "</style></head><body>"
     "<h1>RetroOS-Browser</h1>"
-    "<p>Ein einfacher Browser fuer Textseiten. Gib oben eine Adresse ein "
-    "oder folge einem der Verweise.</p>"
+    "<p>Ein Browser mit Dokumentbaum, Formatvorlagen, Bildern und "
+    "JavaScript. Gib oben eine Adresse ein oder folge einem Verweis.</p>"
+    "<div class=\"kasten\">"
     "<h2>Aus dem Dateisystem</h2>"
     "<ul>"
     "<li><a href=\"datei:/Dokumente/beispiel.html\">Beispielseite</a></li>"
+    "<li><a href=\"datei:/Dokumente/pruefung.html\">Selbsttest der "
+    "Darstellung</a></li>"
     "<li><a href=\"datei:/Dokumente/willkommen.txt\">Willkommenstext</a></li>"
     "<li><a href=\"datei:/System/version.txt\">Systemversion</a></li>"
     "</ul>"
-    "<h2>Hinweise</h2>"
+    "</div>"
+    "<h2>Was der Browser kann</h2>"
     "<ul>"
-    "<li>Adressen ohne Vorsatz werden als <b>http://</b> gelesen.</li>"
-    "<li>HTTPS wird unterstuetzt: TLS 1.3 mit X25519 und AES-GCM oder "
-    "ChaCha20-Poly1305, mit Pruefung der Zertifikatskette.</li>"
-    "<li>Bilder werden als Platzhalter angezeigt.</li>"
+    "<li>HTTPS mit TLS 1.3, X25519 und AES-GCM oder ChaCha20-Poly1305, "
+    "mit Pruefung der Zertifikatskette</li>"
+    "<li>Formatvorlagen mit Kaskade, Kastenmodell, Farben, Schriftgroessen "
+    "und schwebenden Kaesten</li>"
+    "<li>Bilder in PNG, JPEG, GIF und BMP</li>"
+    "<li>JavaScript mit Zugriff auf den Dokumentbaum, Ereignissen und "
+    "Zeitgebern</li>"
     "</ul>"
+    "<p class=\"hinweis\">Adressen ohne Vorsatz werden als "
+    "<code>http://</code> gelesen.</p>"
     "</body></html>";
+
+static void reset_document(struct br_state *st)
+{
+    layout_free(&st->layout);
+    document_free(&st->doc);
+    release_resources(st);
+    if (st->js) {
+        js_destroy(st->js);
+        st->js = NULL;
+    }
+    st->js = js_create();
+    if (st->js) {
+        js_on_change(st->js, on_document_changed, st);
+        js_on_navigate(st->js, on_script_navigate, st);
+    }
+    st->scripts_ran = false;
+    st->focused = NULL;
+    document_init(&st->doc);
+}
 
 static void load_start_page(struct br_state *st)
 {
-    html_free(&st->doc);
-    html_parse(&st->doc, start_page, sizeof(start_page) - 1);
+    reset_document(st);
+    html_build(&st->doc, start_page, sizeof(start_page) - 1);
     strlcpy(st->status, "Startseite", sizeof(st->status));
+    st->security[0] = '\0';
 }
 
 static bool load_local(struct br_state *st, const char *path)
@@ -226,23 +573,44 @@ static bool load_local(struct br_state *st, const char *path)
         return false;
     }
 
-    html_free(&st->doc);
+    reset_document(st);
 
     const char *dot = strrchr(node->name, '.');
     bool is_html = dot && (strcasecmp(dot, ".html") == 0 ||
                            strcasecmp(dot, ".htm") == 0);
 
     if (is_html)
-        html_parse(&st->doc, (const char *)node->data, node->size);
+        html_build(&st->doc, (const char *)node->data, node->size);
     else
-        html_parse_plain(&st->doc, (const char *)node->data, node->size);
+        html_build_plain(&st->doc, (const char *)node->data, node->size);
 
     ksnprintf(st->status, sizeof(st->status), "%s - %u Byte", node->name,
               (unsigned)node->size);
+    st->security[0] = '\0';
     return true;
 }
 
-/* Wertet das Ergebnis des Arbeits-Threads aus. */
+/* Laedt einen Bestandteil aus dem Dateisystem. */
+static bool load_local_resource(struct resource *r, const char *path)
+{
+    struct fs_node *node = fs_lookup(fs_root(), path);
+
+    if (!node || node->type != FS_FILE || !fs_load(node))
+        return false;
+
+    if (r->kind == RES_IMAGE)
+        return image_decode(node->data, node->size, &r->image);
+
+    r->text = kmalloc(node->size + 1);
+    if (!r->text)
+        return false;
+    memcpy(r->text, node->data, node->size);
+    r->text[node->size] = '\0';
+    r->length = node->size;
+    return true;
+}
+
+/* Wertet das Ergebnis des Arbeits-Threads fuer die Seite aus. */
 static bool finish_http(struct br_state *st)
 {
     struct http_response *response = &st->job.response;
@@ -255,29 +623,54 @@ static bool finish_http(struct br_state *st)
         return false;
     }
 
-    html_free(&st->doc);
+    reset_document(st);
 
-    if (strncasecmp(response->content_type, "text/plain", 10) == 0)
-        html_parse_plain(&st->doc, response->body, response->body_length);
+    if (strncasecmp(response->content_type, "text/plain", 10) == 0 ||
+        strncasecmp(response->content_type, "application/json", 16) == 0)
+        html_build_plain(&st->doc, response->body, response->body_length);
     else
-        html_parse(&st->doc, response->body, response->body_length);
+        html_build(&st->doc, response->body, response->body_length);
 
-    if (response->security[0])
-        ksnprintf(st->status, sizeof(st->status), "%d - %u Byte - %s - %s",
-                  response->status, (unsigned)response->body_length,
-                  response->content_type, response->security);
-    else
-        ksnprintf(st->status, sizeof(st->status),
-                  "%d - %u Byte - %s - unverschluesselt",
-                  response->status, (unsigned)response->body_length,
-                  response->content_type);
+    strlcpy(st->security, response->security[0] ? response->security
+                                                : "unverschluesselt",
+            sizeof(st->security));
+    ksnprintf(st->status, sizeof(st->status), "%d - %u Byte - %s - %s",
+              response->status, (unsigned)response->body_length,
+              response->content_type, st->security);
 
     http_response_free(response);
     return true;
 }
 
-/* Laeuft im Arbeits-Thread: holt die Seite, waehrend die Oberflaeche
- * weiterlaeuft. Ausgewertet wird das Ergebnis wieder im Fenster-Thread. */
+/* Wertet das Ergebnis fuer einen nachgeladenen Bestandteil aus. */
+static void finish_resource(struct br_state *st, struct resource *r)
+{
+    struct http_response *response = &st->job.response;
+
+    if (!st->job.ok) {
+        r->state = RES_FAILED;
+        return;
+    }
+
+    if (r->kind == RES_IMAGE) {
+        r->state = image_decode((const uint8_t *)response->body,
+                                response->body_length, &r->image)
+                   ? RES_READY : RES_FAILED;
+    } else {
+        r->text = kmalloc(response->body_length + 1);
+        if (r->text) {
+            memcpy(r->text, response->body, response->body_length);
+            r->text[response->body_length] = '\0';
+            r->length = response->body_length;
+            r->state = RES_READY;
+        } else {
+            r->state = RES_FAILED;
+        }
+    }
+    http_response_free(response);
+}
+
+/* Laeuft im Arbeits-Thread: holt, waehrend die Oberflaeche weiterlaeuft. */
 static void browser_worker(void *argument)
 {
     struct br_state *st = argument;
@@ -296,31 +689,124 @@ static void browser_worker(void *argument)
     st->worker_done = true;
 }
 
-static void do_load(struct window *win, const char *url)
+/* Gibt den naechsten offenen Bestandteil in Auftrag. */
+static bool post_next_resource(struct window *win)
+{
+    struct br_state *st = win->user;
+
+    if (st->job.state != JOB_IDLE)
+        return true;
+
+    for (size_t i = 0; i < st->resource_count; i++) {
+        struct resource *r = &st->resources[i];
+
+        if (r->state != RES_WAITING)
+            continue;
+
+        /* Aus dem Dateisystem geht es ohne Umweg. */
+        if (strncasecmp(r->url, "datei:", 6) == 0) {
+            r->state = load_local_resource(r, r->url + 6) ? RES_READY
+                                                          : RES_FAILED;
+            continue;
+        }
+        if (strncasecmp(r->url, "http", 4) != 0 || !net_ready() ||
+            !st->worker) {
+            r->state = RES_FAILED;
+            continue;
+        }
+
+        r->state = RES_BUSY;
+        strlcpy(st->job.url, r->url, sizeof(st->job.url));
+        st->job.resource = (int32_t)i;
+        st->job.state = JOB_REQUESTED;
+        wake_one(&st->job);
+
+        size_t done = 0;
+
+        for (size_t k = 0; k < st->resource_count; k++)
+            if (st->resources[k].state == RES_READY ||
+                st->resources[k].state == RES_FAILED)
+                done++;
+        ksnprintf(st->status, sizeof(st->status),
+                  "Lade Bestandteil %u von %u ...",
+                  (unsigned)(done + 1), (unsigned)st->resource_count);
+        return true;
+    }
+    return false;
+}
+
+static void document_ready(struct window *win)
 {
     struct br_state *st = win->user;
     char title[WIN_TITLE_MAX + 1];
 
+    st->phase = PHASE_FERTIG;
+    rebuild_page(win);
+
+    ksnprintf(title, sizeof(title), "Browser - %s",
+              st->doc.title[0] ? st->doc.title : st->url);
+    gui_set_title(win, title);
+
+    if (st->security[0])
+        ksnprintf(st->status, sizeof(st->status), "%s%s%s",
+                  st->doc.title[0] ? st->doc.title : st->url,
+                  " - ", st->security);
+    gui_invalidate();
+}
+
+static void after_document(struct window *win)
+{
+    struct br_state *st = win->user;
+
+    scan_node(st, st->doc.root);
+
+    st->phase = PHASE_BESTANDTEILE;
+    if (!post_next_resource(win))
+        document_ready(win);
+    else
+        gui_invalidate();
+}
+
+static void do_load(struct window *win, const char *url)
+{
+    struct br_state *st = win->user;
+
     st->scroll = 0;
-    st->link_count = 0;
 
     if (strncasecmp(url, "start:", 6) == 0)
         load_start_page(st);
-    else if (strncasecmp(url, "datei:", 6) == 0)
-        load_local(st, url + 6);
-    else
-        finish_http(st);
+    else if (strncasecmp(url, "datei:", 6) == 0) {
+        if (!load_local(st, url + 6)) {
+            st->phase = PHASE_FERTIG;
+            gui_invalidate();
+            return;
+        }
+    } else if (!finish_http(st)) {
+        st->phase = PHASE_FERTIG;
+        gui_invalidate();
+        return;
+    }
 
-    ksnprintf(title, sizeof(title), "Browser - %s",
-              st->doc.title[0] ? st->doc.title : url);
-    gui_set_title(win, title);
-    gui_invalidate();
+    after_document(win);
 }
 
 static void browser_navigate(struct window *win, const char *url, bool remember)
 {
     struct br_state *st = win->user;
     char full[BR_URL_MAX + 1];
+
+    if (strncasecmp(url, "javascript:", 11) == 0) {
+        if (st->js)
+            js_run(st->js, url + 11, strlen(url + 11));
+        rebuild_page(win);
+        return;
+    }
+    if (strncasecmp(url, "mailto:", 7) == 0) {
+        ksnprintf(st->status, sizeof(st->status),
+                  "Nachrichten kann RetroOS nicht verschicken: %s", url + 7);
+        gui_invalidate();
+        return;
+    }
 
     /* Ohne Vorsatz ist http:// gemeint. */
     if (strncasecmp(url, "http://", 7) != 0 &&
@@ -343,13 +829,13 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
                     strncasecmp(full, "https://", 8) == 0;
 
     if (!from_net) {
-        /* Aus dem Dateisystem geht es sofort. */
         do_load(win, full);
         return;
     }
 
     if (!net_ready()) {
         strlcpy(st->status, "Keine Netzwerkverbindung.", sizeof(st->status));
+        st->phase = PHASE_FERTIG;
         gui_invalidate();
         return;
     }
@@ -363,13 +849,13 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
         return;
     }
 
-    /* Auftrag abgeben und weiterzeichnen - der Rest geschieht nebenher. */
     strlcpy(st->job.url, full, sizeof(st->job.url));
+    st->job.resource = -1;
     st->job.state = JOB_REQUESTED;
     wake_one(&st->job);
 
     strlcpy(st->status, "Lade ...", sizeof(st->status));
-    st->loading = true;
+    st->phase = PHASE_SEITE;
     gui_invalidate();
 }
 
@@ -386,7 +872,8 @@ static struct rect address_rect(struct window *win)
 {
     int32_t left = 4 + 3 * 32 + 6;
 
-    return rect_make(left, 5, gui_client_width(win) - left - 56, BR_TOOLBAR_H - 10);
+    return rect_make(left, 5, gui_client_width(win) - left - 56,
+                     BR_TOOLBAR_H - 10);
 }
 
 static struct rect go_rect(struct window *win)
@@ -402,183 +889,185 @@ static struct rect page_rect(struct window *win)
 }
 
 /* ------------------------------------------------------------------ */
-/* Seitenaufbau                                                        */
+/* Zeichnen der Seite                                                  */
 /* ------------------------------------------------------------------ */
 
-struct layout {
-    struct canvas *canvas;      /* NULL = nur messen */
-    struct br_state *state;
-    struct rect area;
-    int32_t x, y;
-    int32_t line_height;
-    bool    line_started;
-};
-
-static int32_t heading_scale(uint8_t level)
+/* Sucht vom Knoten aufwaerts einen Verweis. */
+static struct node *enclosing_link(struct node *node)
 {
-    if (level == 1) return 3;
-    if (level == 2) return 2;
-    return 1;
+    for (struct node *n = node; n; n = n->parent)
+        if (n->kind == NODE_ELEMENT && n->name &&
+            strcmp(n->name, "a") == 0 && node_attribute(n, "href"))
+            return n;
+    return NULL;
 }
 
-static void newline(struct layout *l)
+static void paint_border(struct canvas *c, const struct fragment *f)
 {
-    l->x = l->area.x + BR_MARGIN;
-    l->y += l->line_height;
-    l->line_height = BR_LINE;
-    l->line_started = false;
+    struct rect r = f->rect;
+
+    if (f->border[0] > 0)
+        gfx_fill(c, rect_make(r.x, r.y, r.w, f->border[0]),
+                 f->border_color[0]);
+    if (f->border[2] > 0)
+        gfx_fill(c, rect_make(r.x, r.y + r.h - f->border[2], r.w,
+                              f->border[2]), f->border_color[2]);
+    if (f->border[3] > 0)
+        gfx_fill(c, rect_make(r.x, r.y, f->border[3], r.h),
+                 f->border_color[3]);
+    if (f->border[1] > 0)
+        gfx_fill(c, rect_make(r.x + r.w - f->border[1], r.y, f->border[1],
+                              r.h), f->border_color[1]);
 }
 
-/* Zeichnet ein Wort und rueckt weiter; bricht am Rand um. */
-static void emit_word(struct layout *l, const char *word, size_t length,
-                      bool bold, uint8_t heading, bool link, const char *href)
+static void paint_fragment(struct canvas *c, struct br_state *st,
+                           const struct fragment *f, int32_t ox, int32_t oy)
 {
-    char buffer[256];
+    struct rect r = f->rect;
 
-    if (length == 0 || length >= sizeof(buffer))
-        return;
+    r.x += ox;
+    r.y += oy;
 
-    memcpy(buffer, word, length);
-    buffer[length] = '\0';
+    switch (f->kind) {
+    case FRAG_BOX:
+        if (f->has_background && r.w > 0 && r.h > 0)
+            gfx_fill(c, r, f->background);
+        if (f->border[0] || f->border[1] || f->border[2] || f->border[3]) {
+            struct fragment shifted = *f;
 
-    int32_t scale = heading ? heading_scale(heading) : 1;
-    int32_t width = gfx_text_width_scaled(buffer, scale);
-    int32_t height = FONT_HEIGHT * scale + 2;
-    int32_t limit = l->area.x + l->area.w - BR_MARGIN;
-
-    if (l->line_started && l->x + width > limit)
-        newline(l);
-
-    l->line_height = MAX(l->line_height, height);
-
-    if (l->canvas) {
-        uint32_t color = link ? COL_LINK : (heading ? COL_HEADING : COL_TEXT);
-        bool     heavy = bold || heading > 0;
-
-        /* Nur zeichnen, was ins Fenster faellt. */
-        if (l->y + height >= l->area.y && l->y <= l->area.y + l->area.h) {
-            gfx_text_scaled(l->canvas, l->x, l->y, buffer, color, scale, heavy);
-
-            if (link) {
-                gfx_hline(l->canvas, l->x, l->y + FONT_HEIGHT * scale,
-                          width, COL_LINK);
-
-                if (l->state->link_count < BR_MAX_LINKS) {
-                    struct link_area *area =
-                        &l->state->links[l->state->link_count++];
-
-                    /* Die Luecke zum naechsten Wort gehoert mit dazu -
-                     * sonst trifft man zwischen zwei Woertern ins Leere. */
-                    area->rect = rect_make(l->x, l->y,
-                                           width + FONT_WIDTH * scale, height);
-                    area->href = href;
-                }
-            }
+            shifted.rect = r;
+            paint_border(c, &shifted);
         }
-    }
+        break;
 
-    l->x += width + FONT_WIDTH * scale;   /* ein Leerzeichen breit */
-    l->line_started = true;
-}
-
-static void emit_text(struct layout *l, const struct html_item *item)
-{
-    const char *p = item->text;
-
-    if (!p)
-        return;
-
-    if (item->pre) {
-        /* Vorformatierter Text wird nicht umgebrochen. */
-        emit_word(l, p, strlen(p), item->bold, item->heading, false, NULL);
-        return;
-    }
-
-    while (*p) {
-        while (*p == ' ')
-            p++;
-        if (!*p)
+    case FRAG_TEXT: {
+        if (!f->text)
             break;
 
-        const char *start = p;
-        while (*p && *p != ' ')
-            p++;
+        uint32_t color = f->color;
 
-        emit_word(l, start, (size_t)(p - start), item->bold, item->heading,
-                  item->type == HTML_LINK, item->href);
+        gfx_text_sized(c, r.x, r.y, f->text, color, f->font_size, f->bold,
+                       f->italic, f->tracking);
+        if (f->underline)
+            gfx_hline(c, r.x, r.y + f->font_size, r.w, color);
+        if (f->strike)
+            gfx_hline(c, r.x, r.y + f->font_size / 2, r.w, color);
+        break;
+    }
+
+    case FRAG_IMAGE:
+        if (f->image) {
+            struct image scaled;
+
+            if (f->image->w == r.w && f->image->h == r.h) {
+                image_draw(c, r.x, r.y, f->image);
+            } else if (image_scale(f->image, r.w, r.h, &scaled)) {
+                image_draw(c, r.x, r.y, &scaled);
+                image_free(&scaled);
+            }
+        } else {
+            gfx_frame(c, r, COL_PLACE);
+            gfx_text_clipped(c, r.x + 4, r.y + MAX(r.h / 2 - 8, 2),
+                             f->text ? f->text : "Bild", COL_PLACE,
+                             MAX(r.w - 8, 8));
+        }
+        break;
+
+    case FRAG_BULLET:
+        gfx_fill(c, r, f->color);
+        break;
+
+    case FRAG_RULE:
+        gfx_fill(c, rect_make(r.x, r.y, r.w, MAX(r.h, 1)), f->color);
+        break;
+
+    case FRAG_FIELD: {
+        gfx_fill(c, r, RGB(0xFF, 0xFF, 0xFF));
+        gfx_bevel_thin(c, r, false);
+
+        bool active = st->focused && st->focused == f->node;
+        const char *text = f->node && f->node->value ? f->node->value
+                                                     : f->text;
+
+        if (text)
+            gfx_text_clipped(c, r.x + 4, r.y + (r.h - FONT_HEIGHT) / 2, text,
+                             f->node && f->node->value ? COL_TEXT : COL_PLACE,
+                             r.w - 8);
+        if (active) {
+            int32_t caret = r.x + 4 +
+                            (f->node->value
+                             ? gfx_text_width(f->node->value) : 0);
+
+            if (st->caret_on && caret < r.x + r.w - 2)
+                gfx_vline(c, caret, r.y + 3, r.h - 6, COL_TEXT);
+        }
+        break;
+    }
+
+    case FRAG_BUTTON:
+        widget_button(c, r, f->text ? f->text : "", false, true);
+        break;
+
+    case FRAG_CHECKBOX:
+        gfx_fill(c, r, RGB(0xFF, 0xFF, 0xFF));
+        gfx_bevel_thin(c, r, false);
+        if (f->node && f->node->checked) {
+            gfx_line(c, r.x + 3, r.y + r.h / 2, r.x + r.w / 2,
+                     r.y + r.h - 4, COL_TEXT);
+            gfx_line(c, r.x + r.w / 2, r.y + r.h - 4, r.x + r.w - 3,
+                     r.y + 3, COL_TEXT);
+        }
+        break;
     }
 }
 
-/* Laeuft einmal durch das Dokument - zum Zeichnen oder nur zum Messen. */
-static int32_t run_layout(struct window *win, struct canvas *canvas)
+static void paint_page(struct window *win, struct canvas *c)
 {
     struct br_state *st = win->user;
     struct rect area = page_rect(win);
-    struct layout l;
+    uint32_t background = COL_PAGE_BG;
 
-    memset(&l, 0, sizeof(l));
-    l.canvas = canvas;
-    l.state  = st;
-    l.area   = area;
-    l.x      = area.x + BR_MARGIN;
-    l.y      = area.y + BR_MARGIN - st->scroll;
-    l.line_height = BR_LINE;
+    if (st->doc.body && st->doc.body->style.has_background)
+        background = st->doc.body->style.background;
+    else if (st->doc.html && st->doc.html->style.has_background)
+        background = st->doc.html->style.background;
 
-    if (canvas)
-        st->link_count = 0;
+    gfx_fill(c, area, background);
+    gfx_bevel_thin(c, area, false);
 
-    for (size_t i = 0; i < st->doc.count; i++) {
-        const struct html_item *item = &st->doc.items[i];
+    struct canvas page = *c;
 
-        switch (item->type) {
-        case HTML_TEXT:
-        case HTML_LINK:
-            emit_text(&l, item);
-            break;
+    gfx_set_clip(&page, rect_intersect(c->clip,
+                                       rect_make(area.x + 2, area.y + 2,
+                                                 area.w - 4, area.h - 4)));
 
-        case HTML_BREAK:
-            newline(&l);
-            break;
-
-        case HTML_PARAGRAPH:
-            newline(&l);
-            l.y += 8;
-            break;
-
-        case HTML_RULE:
-            newline(&l);
-            l.y += 6;
-            if (canvas)
-                gfx_hline(canvas, area.x + BR_MARGIN, l.y,
-                          area.w - 2 * BR_MARGIN, COL_SHADOW);
-            l.y += 8;
-            break;
-
-        case HTML_BULLET:
-            newline(&l);
-            l.x += 16;
-            if (canvas && l.y >= area.y - BR_LINE && l.y <= area.y + area.h)
-                gfx_fill(canvas, rect_make(l.x - 10, l.y + 6, 4, 4), COL_TEXT);
-            l.line_started = true;
-            break;
-
-        case HTML_IMAGE: {
-            char label[160];
-
-            ksnprintf(label, sizeof(label), "[%s]", item->text ? item->text : "Bild");
-            emit_word(&l, label, strlen(label), false, 0, false, NULL);
-            break;
-        }
-        }
+    if (st->phase == PHASE_SEITE || st->phase == PHASE_BESTANDTEILE) {
+        gfx_text_sized(&page, area.x + BR_MARGIN, area.y + BR_MARGIN,
+                       st->phase == PHASE_SEITE ? "Lade ..."
+                                                : "Lade Bestandteile ...",
+                       COL_TEXT_DIM, 24, true, false, 0);
+        if (st->layout.count == 0)
+            return;
+    } else if (st->layout.count == 0) {
+        gfx_text(&page, area.x + BR_MARGIN, area.y + BR_MARGIN,
+                 "Keine Seite geladen.", COL_TEXT_DIM);
+        return;
     }
 
-    newline(&l);
-    return l.y - (area.y - st->scroll) + BR_MARGIN;
-}
+    int32_t ox = area.x + BR_MARGIN;
+    int32_t oy = area.y + BR_MARGIN - st->scroll;
+    int32_t top = area.y - 64;
+    int32_t bottom = area.y + area.h + 64;
 
-/* ------------------------------------------------------------------ */
-/* Zeichnen                                                            */
-/* ------------------------------------------------------------------ */
+    for (size_t i = 0; i < st->layout.count; i++) {
+        const struct fragment *f = &st->layout.items[i];
+        int32_t y = f->rect.y + oy;
+
+        if (y + f->rect.h < top || y > bottom)
+            continue;
+        paint_fragment(&page, st, f, ox, oy);
+    }
+}
 
 static void br_paint(struct window *win, struct canvas *c)
 {
@@ -610,40 +1099,27 @@ static void br_paint(struct window *win, struct canvas *c)
                  COL_SELECT_TEXT);
     } else {
         widget_field(&local, address, st->address,
-                     st->address_focus && st->caret_on ? st->address_cursor : -1,
+                     st->address_focus && st->caret_on ? st->address_cursor
+                                                       : -1,
                      st->address_focus);
     }
     widget_button(&local, go_rect(win), "Los", st->pressed == BR_GO, true);
 
-    /* Seite */
-    gfx_fill(&local, area, COL_PAGE_BG);
-    gfx_bevel_thin(&local, area, false);
-
-    struct canvas page = local;
-    gfx_set_clip(&page, rect_intersect(local.clip,
-                                       rect_make(area.x + 2, area.y + 2,
-                                                 area.w - 4, area.h - 4)));
-
-    if (st->loading) {
-        gfx_text_scaled(&page, area.x + BR_MARGIN, area.y + BR_MARGIN,
-                        "Lade ...", COL_TEXT_DIM, 2, true);
-    } else if (st->doc.count == 0) {
-        gfx_text(&page, area.x + BR_MARGIN, area.y + BR_MARGIN,
-                 "Keine Seite geladen.", COL_TEXT_DIM);
-    } else {
-        st->content_height = run_layout(win, &page);
-    }
+    paint_page(win, &local);
 
     int32_t visible = area.h;
+
     widget_vscroll(&local, rect_make(area.x + area.w, area.y,
                                      SCROLLBAR_WIDTH, area.h),
                    st->scroll / BR_LINE,
-                   MAX(st->content_height, visible) / BR_LINE,
+                   MAX(st->layout.height + 2 * BR_MARGIN, visible) / BR_LINE,
                    visible / BR_LINE);
 
     /* Statuszeile */
-    char right[48];
-    ksnprintf(right, sizeof(right), "%u Bausteine", (unsigned)st->doc.count);
+    char right[64];
+
+    ksnprintf(right, sizeof(right), "%u Stuecke",
+              (unsigned)st->layout.count);
     widget_statusbar(&local, rect_make(0, local.h - BR_STATUS_H,
                                        local.w, BR_STATUS_H),
                      st->status, right);
@@ -657,7 +1133,7 @@ static int32_t max_scroll(struct window *win)
 {
     struct br_state *st = win->user;
 
-    return MAX(st->content_height - page_rect(win).h + BR_MARGIN, 0);
+    return MAX(st->layout.height + 2 * BR_MARGIN - page_rect(win).h, 0);
 }
 
 static void br_action(struct window *win, int action)
@@ -669,7 +1145,8 @@ static void br_action(struct window *win, int action)
         if (st->history_len > 0) {
             char previous[BR_URL_MAX + 1];
 
-            strlcpy(previous, st->history[--st->history_len], sizeof(previous));
+            strlcpy(previous, st->history[--st->history_len],
+                    sizeof(previous));
             browser_navigate(win, previous, false);
         }
         break;
@@ -698,66 +1175,200 @@ static void br_address_key(struct window *win, const struct gui_event *ev)
     }
 
     if (st->address_selected && ev->ascii >= 32 &&
-        (unsigned char)ev->ascii != 127) {
+        (unsigned char)ev->ascii < 127) {
         st->address[0] = '\0';
         st->address_cursor = 0;
         st->address_selected = false;
         length = 0;
-    } else if (ev->key != KEY_ENTER && ev->key != KEY_ESCAPE) {
+    } else if (ev->ascii || ev->key) {
         st->address_selected = false;
     }
 
-    switch (ev->key) {
-    case KEY_ENTER:
+    if (ev->key == KEY_ESCAPE) {
+        st->address_focus = false;
+        strlcpy(st->address, st->url, sizeof(st->address));
+        gui_invalidate();
+        return;
+    }
+    if (ev->key == KEY_ENTER) {
         st->address_focus = false;
         browser_navigate(win, st->address, true);
         return;
-    case KEY_ESCAPE:
-        st->address_focus = false;
-        strlcpy(st->address, st->url, sizeof(st->address));
-        break;
-    case KEY_LEFT:
-        if (st->address_cursor > 0)
-            st->address_cursor--;
-        break;
-    case KEY_RIGHT:
-        if (st->address[st->address_cursor])
-            st->address_cursor++;
-        break;
-    case KEY_HOME:
-        st->address_cursor = 0;
-        break;
-    case KEY_END:
-        st->address_cursor = (int32_t)length;
-        break;
-    case KEY_BACKSPACE:
-        if (st->address_cursor > 0) {
-            memmove(&st->address[st->address_cursor - 1],
-                    &st->address[st->address_cursor],
-                    length - (size_t)st->address_cursor + 1);
-            st->address_cursor--;
-        }
-        break;
-    case KEY_DELETE:
-        if (st->address[st->address_cursor])
-            memmove(&st->address[st->address_cursor],
-                    &st->address[st->address_cursor + 1],
-                    length - (size_t)st->address_cursor);
-        break;
-    default:
-        if (ev->ascii >= 32 && (unsigned char)ev->ascii != 127 &&
-            length < BR_URL_MAX) {
-            memmove(&st->address[st->address_cursor + 1],
-                    &st->address[st->address_cursor],
-                    length - (size_t)st->address_cursor + 1);
-            st->address[st->address_cursor++] = ev->ascii;
-        } else {
-            return;
-        }
-        break;
     }
-    st->caret_on = true;
+    if (ev->key == KEY_BACKSPACE) {
+        if (st->address_cursor > 0) {
+            memmove(st->address + st->address_cursor - 1,
+                    st->address + st->address_cursor,
+                    length - st->address_cursor + 1);
+            st->address_cursor--;
+        }
+        gui_invalidate();
+        return;
+    }
+    if (ev->key == KEY_DELETE) {
+        if ((size_t)st->address_cursor < length)
+            memmove(st->address + st->address_cursor,
+                    st->address + st->address_cursor + 1,
+                    length - st->address_cursor);
+        gui_invalidate();
+        return;
+    }
+    if (ev->key == KEY_LEFT) {
+        st->address_cursor = MAX(st->address_cursor - 1, 0);
+        gui_invalidate();
+        return;
+    }
+    if (ev->key == KEY_RIGHT) {
+        st->address_cursor = MIN(st->address_cursor + 1, (int32_t)length);
+        gui_invalidate();
+        return;
+    }
+    if (ev->key == KEY_HOME) {
+        st->address_cursor = 0;
+        gui_invalidate();
+        return;
+    }
+    if (ev->key == KEY_END) {
+        st->address_cursor = (int32_t)length;
+        gui_invalidate();
+        return;
+    }
+
+    if (ev->ascii >= 32 && (unsigned char)ev->ascii != 127 &&
+        length + 1 < BR_URL_MAX) {
+        memmove(st->address + st->address_cursor + 1,
+                st->address + st->address_cursor,
+                length - st->address_cursor + 1);
+        st->address[st->address_cursor++] = ev->ascii;
+        gui_invalidate();
+    }
+}
+
+/* Text in ein Eingabefeld tippen. */
+static void field_key(struct window *win, const struct gui_event *ev)
+{
+    struct br_state *st = win->user;
+    struct node *node = st->focused;
+
+    if (!node)
+        return;
+
+    size_t length = node->value ? strlen(node->value) : 0;
+
+    if (ev->key == KEY_ESCAPE) {
+        st->focused = NULL;
+        gui_invalidate();
+        return;
+    }
+    if (ev->key == KEY_BACKSPACE) {
+        if (length > 0)
+            node->value[length - 1] = '\0';
+    } else if (ev->key == KEY_ENTER) {
+        if (st->js)
+            js_dispatch_event(st->js, node, "change");
+        st->focused = NULL;
+    } else if (ev->ascii >= 32 && (unsigned char)ev->ascii != 127) {
+        char *bigger = kmalloc(length + 2);
+
+        if (bigger) {
+            if (node->value)
+                memcpy(bigger, node->value, length);
+            bigger[length] = ev->ascii;
+            bigger[length + 1] = '\0';
+            kfree(node->value);
+            node->value = bigger;
+        }
+    } else {
+        return;
+    }
+
+    if (st->js)
+        js_dispatch_event(st->js, node, "input");
+    st->needs_layout = true;
     gui_invalidate();
+}
+
+/* Wandelt Fensterkoordinaten in Dokumentkoordinaten. */
+static bool to_document(struct window *win, int32_t x, int32_t y,
+                        int32_t *dx, int32_t *dy)
+{
+    struct br_state *st = win->user;
+    struct rect area = page_rect(win);
+
+    if (!rect_contains(area, x, y))
+        return false;
+    *dx = x - (area.x + BR_MARGIN);
+    *dy = y - (area.y + BR_MARGIN) + st->scroll;
+    return true;
+}
+
+static void click_node(struct window *win, struct node *node)
+{
+    struct br_state *st = win->user;
+
+    if (!node)
+        return;
+
+    /* Erst die Behandlung durch das Skript - sie kann die Seite umbauen. */
+    bool handled = false;
+
+    if (st->js) {
+        for (struct node *n = node; n; n = n->parent) {
+            if (js_dispatch_event(st->js, n, "click"))
+                handled = true;
+            if (n->kind == NODE_ELEMENT && n->name &&
+                strcmp(n->name, "body") == 0)
+                break;
+        }
+    }
+
+    /* Ankreuzfelder und Eingabefelder. */
+    if (node->kind == NODE_ELEMENT && node->name) {
+        const char *type = node_attribute(node, "type");
+
+        if (strcmp(node->name, "input") == 0 && type &&
+            (strcasecmp(type, "checkbox") == 0 ||
+             strcasecmp(type, "radio") == 0)) {
+            node->checked = !node->checked;
+            if (st->js)
+                js_dispatch_event(st->js, node, "change");
+            st->needs_layout = true;
+        } else if (strcmp(node->name, "input") == 0 ||
+                   strcmp(node->name, "textarea") == 0) {
+            st->focused = node;
+        }
+    }
+
+    if (st->has_pending) {
+        char target[BR_URL_MAX + 1];
+
+        st->has_pending = false;
+        resolve_url(st->url, st->pending_url, target, sizeof(target));
+        browser_navigate(win, target, true);
+        return;
+    }
+
+    if (handled) {
+        /* Das Skript hat entschieden. Nur neu aufbauen. */
+        rebuild_page(win);
+        return;
+    }
+
+    struct node *link = enclosing_link(node);
+
+    if (link) {
+        const char *href = node_attribute(link, "href");
+        char target[BR_URL_MAX + 1];
+
+        resolve_url(st->url, href, target, sizeof(target));
+        browser_navigate(win, target, true);
+        return;
+    }
+
+    if (st->needs_layout || st->needs_restyle) {
+        relayout(win);
+        gui_invalidate();
+    }
 }
 
 static void br_event(struct window *win, const struct gui_event *ev)
@@ -765,7 +1376,7 @@ static void br_event(struct window *win, const struct gui_event *ev)
     struct br_state *st = win->user;
 
     switch (ev->type) {
-    case EV_MOUSE_DOWN:
+    case EV_MOUSE_DOWN: {
         if (ev->y < BR_TOOLBAR_H) {
             for (int i = 0; i < BR_HOME + 1; i++) {
                 if (rect_contains(button_rect(i), ev->x, ev->y)) {
@@ -779,6 +1390,7 @@ static void br_event(struct window *win, const struct gui_event *ev)
                 gui_invalidate();
                 return;
             }
+
             bool hit = rect_contains(address_rect(win), ev->x, ev->y);
 
             if (hit && !st->address_focus)
@@ -791,6 +1403,7 @@ static void br_event(struct window *win, const struct gui_event *ev)
         struct rect scroll = rect_make(page_rect(win).x + page_rect(win).w,
                                        page_rect(win).y, SCROLLBAR_WIDTH,
                                        page_rect(win).h);
+
         if (rect_contains(scroll, ev->x, ev->y)) {
             int32_t step = page_rect(win).h / 2;
 
@@ -799,26 +1412,24 @@ static void br_event(struct window *win, const struct gui_event *ev)
             else if (ev->y >= scroll.y + scroll.h - SCROLLBAR_WIDTH)
                 st->scroll = MIN(st->scroll + BR_LINE * 3, max_scroll(win));
             else
-                st->scroll = CLAMP(((ev->y - scroll.y) * st->content_height) /
-                                   MAX(scroll.h, 1) - step, 0, max_scroll(win));
+                st->scroll = CLAMP(((ev->y - scroll.y) *
+                                    (st->layout.height + 2 * BR_MARGIN)) /
+                                   MAX(scroll.h, 1) - step, 0,
+                                   max_scroll(win));
             gui_invalidate();
             return;
         }
 
-        /* Verweis getroffen? */
-        for (size_t i = 0; i < st->link_count; i++) {
-            if (rect_contains(st->links[i].rect, ev->x, ev->y)) {
-                char target[BR_URL_MAX + 1];
-
-                resolve_url(st->url, st->links[i].href, target, sizeof(target));
-                st->address_focus = false;
-                browser_navigate(win, target, true);
-                return;
-            }
-        }
         st->address_focus = false;
+        st->focused = NULL;
+
+        int32_t dx, dy;
+
+        if (to_document(win, ev->x, ev->y, &dx, &dy))
+            click_node(win, layout_hit(&st->layout, dx, dy));
         gui_invalidate();
         break;
+    }
 
     case EV_MOUSE_UP: {
         int pressed = st->pressed;
@@ -844,17 +1455,38 @@ static void br_event(struct window *win, const struct gui_event *ev)
             br_address_key(win, ev);
             return;
         }
+        if (st->focused) {
+            field_key(win, ev);
+            return;
+        }
         switch (ev->key) {
-        case KEY_DOWN:     st->scroll = MIN(st->scroll + BR_LINE, max_scroll(win)); break;
-        case KEY_UP:       st->scroll = MAX(st->scroll - BR_LINE, 0); break;
-        case KEY_PAGEDOWN: st->scroll = MIN(st->scroll + page_rect(win).h - BR_LINE,
-                                            max_scroll(win)); break;
-        case KEY_PAGEUP:   st->scroll = MAX(st->scroll - page_rect(win).h + BR_LINE, 0); break;
-        case KEY_HOME:     st->scroll = 0; break;
-        case KEY_END:      st->scroll = max_scroll(win); break;
-        case KEY_F5:       br_action(win, BR_RELOAD); return;
-        case KEY_BACKSPACE: br_action(win, BR_BACK); return;
-        default: return;
+        case KEY_DOWN:
+            st->scroll = MIN(st->scroll + BR_LINE, max_scroll(win));
+            break;
+        case KEY_UP:
+            st->scroll = MAX(st->scroll - BR_LINE, 0);
+            break;
+        case KEY_PAGEDOWN:
+            st->scroll = MIN(st->scroll + page_rect(win).h - BR_LINE,
+                             max_scroll(win));
+            break;
+        case KEY_PAGEUP:
+            st->scroll = MAX(st->scroll - page_rect(win).h + BR_LINE, 0);
+            break;
+        case KEY_HOME:
+            st->scroll = 0;
+            break;
+        case KEY_END:
+            st->scroll = max_scroll(win);
+            break;
+        case KEY_F5:
+            br_action(win, BR_RELOAD);
+            return;
+        case KEY_BACKSPACE:
+            br_action(win, BR_BACK);
+            return;
+        default:
+            return;
         }
         gui_invalidate();
         break;
@@ -862,23 +1494,58 @@ static void br_event(struct window *win, const struct gui_event *ev)
     case EV_TICK:
         st->caret_on = !st->caret_on;
 
-        /* Ist der Arbeits-Thread fertig, wird die Seite jetzt gesetzt. */
-        if (st->loading && st->job.state == JOB_DONE) {
-            st->loading = false;
+        /* Ist der Arbeits-Thread fertig, wird jetzt ausgewertet. */
+        if (st->job.state == JOB_DONE) {
+            int32_t index = st->job.resource;
+
             st->job.state = JOB_IDLE;
-            do_load(win, st->job.url);
+
+            if (index < 0) {
+                do_load(win, st->job.url);
+            } else if ((size_t)index < st->resource_count) {
+                finish_resource(st, &st->resources[index]);
+                if (!post_next_resource(win))
+                    document_ready(win);
+                gui_invalidate();
+            }
             return;
         }
-        if (st->loading)
-            gui_invalidate();   /* Anzeige "Lade ..." lebendig halten */
-        if (st->address_focus)
+
+        /* Zeitgeber der Skripte bedienen. */
+        if (st->js && st->phase == PHASE_FERTIG) {
+            if (js_run_timers(st->js, timer_ms())) {
+                if (st->has_pending) {
+                    char target[BR_URL_MAX + 1];
+
+                    st->has_pending = false;
+                    resolve_url(st->url, st->pending_url, target,
+                                sizeof(target));
+                    browser_navigate(win, target, true);
+                    return;
+                }
+                if (st->needs_layout || st->needs_restyle) {
+                    relayout(win);
+                    gui_invalidate();
+                }
+            }
+        }
+
+        if (st->phase == PHASE_SEITE || st->phase == PHASE_BESTANDTEILE)
+            gui_invalidate();
+        if (st->address_focus || st->focused)
             gui_invalidate();
         break;
 
-    case EV_RESIZED:
+    case EV_RESIZED: {
+        struct rect area = page_rect(win);
+        int32_t width = MAX(area.w - 2 * BR_MARGIN - 4, 80);
+
+        if (width != st->layout_width && st->phase == PHASE_FERTIG)
+            relayout(win);
         st->scroll = MIN(st->scroll, max_scroll(win));
         gui_invalidate();
         break;
+    }
 
     default:
         break;
@@ -905,12 +1572,17 @@ static void br_close(struct window *win)
     if (st->job.state == JOB_DONE && st->job.ok)
         http_response_free(&st->job.response);
 
-    html_free(&st->doc);
+    layout_free(&st->layout);
+    css_free(st->sheet);
+    js_destroy(st->js);
+    release_resources(st);
+    document_free(&st->doc);
     kfree(st);
     win->user = NULL;
 }
 
-/* Oeffnet eine Adresse - in einem vorhandenen Fenster, wenn eines offen ist. */
+/* Oeffnet eine Adresse - in einem vorhandenen Fenster, wenn eines offen
+ * ist. */
 void browser_open(const char *url)
 {
     struct window *win = gui_find_by_paint(br_paint);
@@ -938,8 +1610,10 @@ void app_browser(void)
     static int32_t cascade;
     int32_t offset = (cascade++ % 4) * 26;
 
-    struct window *win = gui_create_window("Browser", 120 + offset, 50 + offset,
-                                           760, 560, WF_RESIZABLE, ICON_BROWSER);
+    struct window *win = gui_create_window("Browser", 120 + offset,
+                                           50 + offset, 820, 600,
+                                           WF_RESIZABLE, ICON_BROWSER);
+
     if (!win) {
         kfree(st);
         return;
@@ -947,6 +1621,8 @@ void app_browser(void)
 
     st->pressed = -1;
     st->caret_on = true;
+    st->job.resource = -1;
+    document_init(&st->doc);
 
     win->user     = st;
     win->on_paint = br_paint;

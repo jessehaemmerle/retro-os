@@ -68,6 +68,18 @@ void gfx_text_scaled(struct canvas *c, int32_t x, int32_t y, const char *s,
                      uint32_t color, int32_t scale, bool bold);
 int32_t gfx_text_width_scaled(const char *s, int32_t scale);
 
+/* Frei skalierte Schrift: cell_w mal cell_h Pixel je Zeichen. Die
+ * Bitmapschrift wird dabei abgetastet, kursiv entsteht durch Scheren. */
+void gfx_glyph_sized(struct canvas *c, int32_t x, int32_t y, unsigned char ch,
+                     uint32_t color, int32_t cell_w, int32_t cell_h,
+                     bool bold, bool italic);
+/* Zeichenbreite ist size/2, Zeilenhoehe size; tracking ist der
+ * zusaetzliche Abstand zwischen den Zeichen. */
+void gfx_text_sized(struct canvas *c, int32_t x, int32_t y, const char *s,
+                    uint32_t color, int32_t size, bool bold, bool italic,
+                    int32_t tracking);
+int32_t gfx_text_width_sized(const char *s, int32_t size, int32_t tracking);
+
 /* --- Flaechen kopieren --- */
 void gfx_blit(struct canvas *dst, int32_t x, int32_t y, const struct canvas *src);
 

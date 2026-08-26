@@ -308,3 +308,69 @@ void gfx_blit(struct canvas *dst, int32_t x, int32_t y, const struct canvas *src
                (size_t)area.w * 4);
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* Frei skalierte Schrift                                              */
+/* ------------------------------------------------------------------ */
+
+/* Die eingebaute Schrift ist 8 mal 16 Pixel gross. Fuer beliebige
+ * Groessen wird sie beim Zeichnen abgetastet: jede Zielzeile holt sich
+ * die naechstgelegene Quellzeile. Kursiv entsteht durch Scheren,
+ * fett durch ein zusaetzliches Pixel nach rechts. */
+void gfx_glyph_sized(struct canvas *c, int32_t x, int32_t y, unsigned char ch,
+                     uint32_t color, int32_t cell_w, int32_t cell_h,
+                     bool bold, bool italic)
+{
+    if (cell_w <= 0 || cell_h <= 0)
+        return;
+    if (ch == ' ' || ch < FONT_FIRST)
+        return;
+
+    /* In Originalgroesse ohne Umweg zeichnen - das bleibt scharf. */
+    if (cell_w == FONT_WIDTH && cell_h == FONT_HEIGHT && !italic) {
+        gfx_char(c, x, y, ch, color, bold);
+        return;
+    }
+
+    const uint8_t *glyph = font_glyph(ch);
+
+    for (int32_t ty = 0; ty < cell_h; ty++) {
+        int32_t sy = ty * FONT_HEIGHT / cell_h;
+        uint8_t row = glyph[sy];
+
+        if (bold)
+            row |= (uint8_t)(row >> 1);
+        if (row == 0)
+            continue;
+
+        int32_t shear = italic ? (cell_h - 1 - ty) / 4 : 0;
+
+        for (int32_t tx = 0; tx < cell_w; tx++) {
+            int32_t sx = tx * FONT_WIDTH / cell_w;
+
+            if (row & (0x80u >> sx))
+                gfx_pixel(c, x + tx + shear, y + ty, color);
+        }
+    }
+}
+
+void gfx_text_sized(struct canvas *c, int32_t x, int32_t y, const char *s,
+                    uint32_t color, int32_t size, bool bold, bool italic,
+                    int32_t tracking)
+{
+    int32_t cell_w = MAX(size / 2, 1);
+    int32_t cell_h = MAX(size, 1);
+
+    for (; *s; s++) {
+        gfx_glyph_sized(c, x, y, (unsigned char)*s, color, cell_w, cell_h,
+                        bold, italic);
+        x += cell_w + tracking;
+    }
+}
+
+int32_t gfx_text_width_sized(const char *s, int32_t size, int32_t tracking)
+{
+    int32_t cell_w = MAX(size / 2, 1);
+
+    return (int32_t)strlen(s) * (cell_w + tracking);
+}
