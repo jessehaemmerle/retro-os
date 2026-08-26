@@ -1,0 +1,348 @@
+/* icons.c - Symbolbilder als Textgrafik.
+ *
+ * Zeichenlegende:
+ *   ' ' durchsichtig   '.' schwarz     'w' hellgrau   'W' weiss
+ *   'g' grau           'G' dunkelgrau  'y' gelb       'Y' dunkelgelb
+ *   'b' blau           'B' dunkelblau  'r' rot        'c' cyan
+ *   'n' braun          'e' gruen
+ */
+
+#include "icons.h"
+
+static uint32_t palette(char c)
+{
+    switch (c) {
+    case '.': return RGB(0x00, 0x00, 0x00);
+    case 'w': return RGB(0xD0, 0xD0, 0xD0);
+    case 'W': return RGB(0xFF, 0xFF, 0xFF);
+    case 'g': return RGB(0x9A, 0x9A, 0x9A);
+    case 'G': return RGB(0x5A, 0x5A, 0x5A);
+    case 'y': return RGB(0xF5, 0xC8, 0x4B);
+    case 'Y': return RGB(0xC0, 0x92, 0x1E);
+    case 'b': return RGB(0x4A, 0x90, 0xD9);
+    case 'B': return RGB(0x1B, 0x47, 0x8C);
+    case 'r': return RGB(0xD0, 0x40, 0x30);
+    case 'c': return RGB(0x7E, 0xD8, 0xE8);
+    case 'n': return RGB(0x8A, 0x5A, 0x2B);
+    case 'e': return RGB(0x3F, 0xA0, 0x50);
+    default:  return 0;
+    }
+}
+
+static const char *icons[ICON_COUNT][ICON_SIZE] = {
+    [ICON_FOLDER] = {
+        "                ",
+        "                ",
+        "  .....         ",
+        " .yyyyy.        ",
+        ".yYYYYYy....... ",
+        ".yyyyyyyyyyyyy. ",
+        ".yYYYYYYYYYYYy. ",
+        ".yyyyyyyyyyyyy. ",
+        ".yYYYYYYYYYYYy. ",
+        ".yyyyyyyyyyyyy. ",
+        ".yYYYYYYYYYYYy. ",
+        ".yyyyyyyyyyyyy. ",
+        ".YYYYYYYYYYYYY. ",
+        " ............   ",
+        "                ",
+        "                ",
+    },
+    [ICON_FOLDER_OPEN] = {
+        "                ",
+        "                ",
+        "  .....         ",
+        " .yyyyy.        ",
+        ".yYYYYYy....... ",
+        ".yyyyyyyyyyyyy. ",
+        ".yy..........yy.",
+        ".y.nnnnnnnnnn.y.",
+        ".y.nyyyyyyyyn.y.",
+        " .nyyyyyyyyyyn. ",
+        " .nyyyyyyyyyyn. ",
+        "  .nyyyyyyyyn.  ",
+        "  .nnnnnnnnnn.  ",
+        "   ..........   ",
+        "                ",
+        "                ",
+    },
+    [ICON_FILE] = {
+        "                ",
+        "  ........      ",
+        "  .WWWWWW..     ",
+        "  .WWWWWW.g.    ",
+        "  .WWWWWW....   ",
+        "  .WWWWWWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  ..........g   ",
+        "   ggggggggg    ",
+        "                ",
+    },
+    [ICON_FILE_TEXT] = {
+        "                ",
+        "  ........      ",
+        "  .WWWWWW..     ",
+        "  .WWWWWW.g.    ",
+        "  .WWWWWW....   ",
+        "  .WbbbbbbWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WbbbbbbWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WbbbbbbWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  .WbbbbWWWg.   ",
+        "  .WWWWWWWWg.   ",
+        "  ..........g   ",
+        "   ggggggggg    ",
+        "                ",
+    },
+    [ICON_DISK] = {
+        "                ",
+        " .............. ",
+        " .GGGGGGGGGGGG. ",
+        " .G..........G. ",
+        " .G.WWWWWWWW.G. ",
+        " .G.WWWWWWWW.G. ",
+        " .G..........G. ",
+        " .GGGGGGGGGGGG. ",
+        " .G..........G. ",
+        " .G.wwwwwwww.G. ",
+        " .G.w......w.G. ",
+        " .G.w......w.G. ",
+        " .G.wwwwwwww.G. ",
+        " .............. ",
+        "                ",
+        "                ",
+    },
+    [ICON_COMPUTER] = {
+        "                ",
+        "  ...........   ",
+        "  .GGGGGGGGG.   ",
+        "  .G.......G.   ",
+        "  .G.bbbbb.G.   ",
+        "  .G.bcccb.G.   ",
+        "  .G.bbbbb.G.   ",
+        "  .G.......G.   ",
+        "  .GGGGGGGGG.   ",
+        "  ...........   ",
+        "     .....      ",
+        "   .........    ",
+        "  .wwwwwwwww.   ",
+        "  ...........   ",
+        "                ",
+        "                ",
+    },
+    [ICON_TERMINAL] = {
+        "                ",
+        " .............. ",
+        " .GGGGGGGGGGGG. ",
+        " .G..........G. ",
+        " .G.e........G. ",
+        " .G..e.......G. ",
+        " .G.e........G. ",
+        " .G..........G. ",
+        " .G.eeeee....G. ",
+        " .G..........G. ",
+        " .G..........G. ",
+        " .G..........G. ",
+        " .GGGGGGGGGGGG. ",
+        " .............. ",
+        "                ",
+        "                ",
+    },
+    [ICON_EDITOR] = {
+        "                ",
+        "  ........      ",
+        "  .WWWWWW..     ",
+        "  .WWWWWW.w.    ",
+        "  .WWWWWW....   ",
+        "  .WWWWWWWWW.   ",
+        "  .WWWWWWW.y.   ",
+        "  .WWWWWW.yY.   ",
+        "  .WWWWW.yY..   ",
+        "  .WWWW.yY.W.   ",
+        "  .WWW.yY.WW.   ",
+        "  .WW..Y.WWW.   ",
+        "  .WWW..WWWW.   ",
+        "  ...........   ",
+        "                ",
+        "                ",
+    },
+    [ICON_INFO] = {
+        "                ",
+        "     ......     ",
+        "   ..bbbbbb..   ",
+        "  .bbbbbbbbbb.  ",
+        " .bbbbWWbbbbbb. ",
+        " .bbbbWWbbbbbb. ",
+        " .bbbbbbbbbbbb. ",
+        " .bbbWWWbbbbbb. ",
+        " .bbbbWWbbbbbb. ",
+        " .bbbbWWbbbbbb. ",
+        " .bbbWWWWbbbbb. ",
+        "  .bbbbbbbbbb.  ",
+        "   ..bbbbbb..   ",
+        "     ......     ",
+        "                ",
+        "                ",
+    },
+    [ICON_TRASH] = {
+        "                ",
+        "    ........    ",
+        "   ..........   ",
+        "  ............  ",
+        "  .gggggggggg.  ",
+        "  .g.g.g.g.gg.  ",
+        "  .g.g.g.g.gg.  ",
+        "  .g.g.g.g.gg.  ",
+        "  .g.g.g.g.gg.  ",
+        "  .g.g.g.g.gg.  ",
+        "  .g.g.g.g.gg.  ",
+        "  .gggggggggg.  ",
+        "   ..........   ",
+        "                ",
+        "                ",
+        "                ",
+    },
+    [ICON_UP] = {
+        "                ",
+        "       ..       ",
+        "      .WW.      ",
+        "     .WWWW.     ",
+        "    .WWWWWW.    ",
+        "   .WWWWWWWW.   ",
+        "  .WWW.WW.WWW.  ",
+        "  ....WWWW....  ",
+        "     .WWWW.     ",
+        "     .WWWW.     ",
+        "     .WWWW.     ",
+        "     .WWWW.     ",
+        "     ......     ",
+        "                ",
+        "                ",
+        "                ",
+    },
+    [ICON_BACK] = {
+        "                ",
+        "                ",
+        "       ..       ",
+        "      .W.       ",
+        "     .WW.       ",
+        "    .WWW.       ",
+        "   .WWWWWWWW.   ",
+        "  .WWWWWWWWWW.  ",
+        "   .WWWWWWWW.   ",
+        "    .WWW.       ",
+        "     .WW.       ",
+        "      .W.       ",
+        "       ..       ",
+        "                ",
+        "                ",
+        "                ",
+    },
+    [ICON_HOME] = {
+        "                ",
+        "       ..       ",
+        "      .rr.      ",
+        "     .rrrr.     ",
+        "    .rrrrrr.    ",
+        "   .rrrrrrrr.   ",
+        "  .rrrrrrrrrr.  ",
+        " .rrrrrrrrrrrr. ",
+        "  .WWWWWWWWWW.  ",
+        "  .W.bb..bb.W.  ",
+        "  .W.bb..bb.W.  ",
+        "  .WWWW.nWWWW.  ",
+        "  .WWWW.nWWWW.  ",
+        "  ............  ",
+        "                ",
+        "                ",
+    },
+    [ICON_NEW_FOLDER] = {
+        "                ",
+        "        e       ",
+        "  ..... eee     ",
+        " .yyyyy.eeeee   ",
+        ".yYYYYYy.eee..  ",
+        ".yyyyyyyyeeyy.  ",
+        ".yYYYYYYYeYYy.  ",
+        ".yyyyyyyyyyyy.  ",
+        ".yYYYYYYYYYYy.  ",
+        ".yyyyyyyyyyyy.  ",
+        ".YYYYYYYYYYYY.  ",
+        " ...........    ",
+        "                ",
+        "                ",
+        "                ",
+        "                ",
+    },
+    [ICON_NEW_FILE] = {
+        "                ",
+        "  ......  e     ",
+        "  .WWWW.  eee   ",
+        "  .WWWW.eeeeeee ",
+        "  .WWWWW. eee   ",
+        "  .WWWWWW. e    ",
+        "  .WWWWWWW.     ",
+        "  .WWWWWWW.     ",
+        "  .WWWWWWW.     ",
+        "  .WWWWWWW.     ",
+        "  .WWWWWWW.     ",
+        "  .WWWWWWW.     ",
+        "  .........     ",
+        "                ",
+        "                ",
+        "                ",
+    },
+    [ICON_SETTINGS] = {
+        "                ",
+        "     .....      ",
+        "   ..GGGGG..    ",
+        "  .GGG...GGG.   ",
+        " .GG..www..GG.  ",
+        " .G..wwwww..G.  ",
+        " .G.ww...ww.G.  ",
+        " .G.w.....w.G.  ",
+        " .G.ww...ww.G.  ",
+        " .G..wwwww..G.  ",
+        " .GG..www..GG.  ",
+        "  .GGG...GGG.   ",
+        "   ..GGGGG..    ",
+        "     .....      ",
+        "                ",
+        "                ",
+    },
+};
+
+void icon_draw(struct canvas *c, int32_t x, int32_t y, enum icon_id id, int32_t scale)
+{
+    if (id >= ICON_COUNT || scale < 1)
+        return;
+
+    const char **rows = icons[id];
+    if (!rows[0])
+        return;
+
+    for (int32_t row = 0; row < ICON_SIZE; row++) {
+        const char *line = rows[row];
+
+        for (int32_t col = 0; col < ICON_SIZE && line[col]; col++) {
+            uint32_t color = palette(line[col]);
+
+            if (!color)
+                continue;
+
+            if (scale == 1)
+                gfx_pixel(c, x + col, y + row, color);
+            else
+                gfx_fill(c, rect_make(x + col * scale, y + row * scale,
+                                      scale, scale), color);
+        }
+    }
+}

@@ -1,0 +1,17 @@
+# Build-Artefakte
+build/
+*.o
+*.d
+*.elf
+*.bin
+*.iso
+*.img
+
+# Extern bezogener Bootloader
+third_party/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

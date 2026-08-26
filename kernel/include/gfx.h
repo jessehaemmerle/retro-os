@@ -1,0 +1,69 @@
+/* gfx.h - Zeichenprimitive auf einer Pixelflaeche. */
+#ifndef GFX_H
+#define GFX_H
+
+#include "retro.h"
+
+#define RGB(r, g, b) ((uint32_t)(((r) << 16) | ((g) << 8) | (b)))
+
+struct rect {
+    int32_t x, y, w, h;
+};
+
+struct canvas {
+    uint32_t   *px;
+    int32_t     w, h;
+    int32_t     stride;     /* Pixel je Zeile */
+    struct rect clip;       /* Zeichnungen ausserhalb werden verworfen */
+};
+
+/* --- Rechtecke --- */
+static inline struct rect rect_make(int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    struct rect r = { x, y, w, h };
+    return r;
+}
+
+bool rect_contains(struct rect r, int32_t x, int32_t y);
+bool rect_intersects(struct rect a, struct rect b);
+struct rect rect_intersect(struct rect a, struct rect b);
+
+/* --- Bildschirm --- */
+bool gfx_init(void);
+struct canvas *gfx_screen(void);       /* Backbuffer                        */
+void gfx_flush(void);                  /* Backbuffer -> Framebuffer         */
+void gfx_flush_rect(struct rect r);
+
+/* --- Clipping --- */
+void gfx_set_clip(struct canvas *c, struct rect r);
+void gfx_reset_clip(struct canvas *c);
+
+/* --- Primitive --- */
+void gfx_pixel(struct canvas *c, int32_t x, int32_t y, uint32_t color);
+void gfx_fill(struct canvas *c, struct rect r, uint32_t color);
+void gfx_frame(struct canvas *c, struct rect r, uint32_t color);
+void gfx_hline(struct canvas *c, int32_t x, int32_t y, int32_t len, uint32_t color);
+void gfx_vline(struct canvas *c, int32_t x, int32_t y, int32_t len, uint32_t color);
+void gfx_line(struct canvas *c, int32_t x0, int32_t y0,
+              int32_t x1, int32_t y1, uint32_t color);
+void gfx_gradient_v(struct canvas *c, struct rect r, uint32_t top, uint32_t bottom);
+void gfx_gradient_h(struct canvas *c, struct rect r, uint32_t left, uint32_t right);
+
+/* Klassischer 3D-Rahmen: raised = herausstehend, sonst eingelassen. */
+void gfx_bevel(struct canvas *c, struct rect r, bool raised);
+void gfx_bevel_thin(struct canvas *c, struct rect r, bool raised);
+
+/* --- Text --- */
+void gfx_char(struct canvas *c, int32_t x, int32_t y, unsigned char ch,
+              uint32_t color, bool bold);
+void gfx_text(struct canvas *c, int32_t x, int32_t y, const char *s, uint32_t color);
+void gfx_text_bold(struct canvas *c, int32_t x, int32_t y, const char *s, uint32_t color);
+/* Text, der bei max_w Pixeln mit "..." abgeschnitten wird. */
+void gfx_text_clipped(struct canvas *c, int32_t x, int32_t y, const char *s,
+                      uint32_t color, int32_t max_w);
+int32_t gfx_text_width(const char *s);
+
+/* --- Flaechen kopieren --- */
+void gfx_blit(struct canvas *dst, int32_t x, int32_t y, const struct canvas *src);
+
+#endif /* GFX_H */
