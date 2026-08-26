@@ -10,6 +10,7 @@
 #include "arch.h"
 #include "kstring.h"
 #include "mm.h"
+#include "tls.h"
 
 #define HTTP_MAX_BODY     (512 * 1024)
 #define HTTP_CHUNK        8192
@@ -17,16 +18,21 @@
 #define HTTP_MAX_REDIRECT 4
 
 bool url_split(const char *url, char *host, size_t host_size,
-               uint16_t *port, char *path, size_t path_size)
+               uint16_t *port, char *path, size_t path_size, bool *secure)
 {
     const char *p = url;
+    bool https = false;
 
-    *port = 80;
-
-    if (strncmp(p, "http://", 7) == 0)
+    if (strncmp(p, "http://", 7) == 0) {
         p += 7;
-    else if (strncmp(p, "https://", 8) == 0)
-        return false;               /* wird vom Aufrufer gemeldet */
+    } else if (strncmp(p, "https://", 8) == 0) {
+        p += 8;
+        https = true;
+    }
+
+    *port = https ? 443 : 80;
+    if (secure)
+        *secure = https;
 
     size_t n = 0;
     while (*p && *p != '/' && *p != ':' && n + 1 < host_size)
@@ -125,21 +131,57 @@ static uint32_t decode_chunked(char *body, uint32_t length)
     return write;
 }
 
+/* Ein Kanal ist entweder eine schlichte TCP-Verbindung oder eine
+ * verschluesselte darauf. Der Rest des Ablaufs bleibt derselbe. */
+struct channel {
+    struct tcp_socket     *socket;
+    struct tls_connection *tls;
+};
+
+static int channel_send(struct channel *channel, const void *data,
+                        uint32_t length)
+{
+    if (channel->tls)
+        return tls_send(channel->tls, data, length);
+    return tcp_send(channel->socket, data, length);
+}
+
+static int channel_receive(struct channel *channel, void *buffer,
+                           uint32_t capacity, uint32_t timeout_ms)
+{
+    if (channel->tls)
+        return tls_receive(channel->tls, buffer, capacity, timeout_ms);
+    return tcp_receive(channel->socket, buffer, capacity, timeout_ms);
+}
+
+static bool channel_finished(struct channel *channel)
+{
+    if (channel->tls)
+        return tls_finished(channel->tls);
+    return tcp_finished(channel->socket);
+}
+
+static void channel_close(struct channel *channel)
+{
+    if (channel->tls)
+        tls_close(channel->tls);
+    if (channel->socket)
+        tcp_close(channel->socket);
+}
+
 static bool fetch_once(const char *url, struct http_response *out,
                        char *redirect, size_t redirect_size)
 {
     char host[128], path[512];
     uint16_t port;
+    bool secure = false;
 
     redirect[0] = '\0';
 
-    if (!url_split(url, host, sizeof(host), &port, path, sizeof(path))) {
-        if (strncmp(url, "https://", 8) == 0)
-            strlcpy(out->error, "HTTPS wird nicht unterstuetzt (nur HTTP).",
-                    sizeof(out->error));
-        else
-            strlcpy(out->error, "Die Adresse ist unvollstaendig.",
-                    sizeof(out->error));
+    if (!url_split(url, host, sizeof(host), &port, path, sizeof(path),
+                   &secure)) {
+        strlcpy(out->error, "Die Adresse ist unvollstaendig.",
+                sizeof(out->error));
         return false;
     }
 
@@ -150,11 +192,28 @@ static bool fetch_once(const char *url, struct http_response *out,
         return false;
     }
 
-    struct tcp_socket *sock = tcp_connect(address, port, 4000);
-    if (!sock) {
+    struct channel channel = { NULL, NULL };
+
+    channel.socket = tcp_connect(address, port, 5000);
+    if (!channel.socket) {
         ksnprintf(out->error, sizeof(out->error),
                   "Keine Verbindung zu %s:%u.", host, port);
         return false;
+    }
+
+    if (secure) {
+        char reason[96];
+
+        strlcpy(reason, "unbekannter Fehler", sizeof(reason));
+        channel.tls = tls_connect(channel.socket, host, reason, sizeof(reason));
+
+        if (!channel.tls) {
+            tcp_close(channel.socket);
+            ksnprintf(out->error, sizeof(out->error), "%s", reason);
+            return false;
+        }
+        strlcpy(out->security, tls_description(channel.tls),
+                sizeof(out->security));
     }
 
     char request[768];
@@ -167,8 +226,8 @@ static bool fetch_once(const char *url, struct http_response *out,
         "Connection: close\r\n"
         "\r\n", path, host);
 
-    if (tcp_send(sock, request, (uint32_t)request_length) < 0) {
-        tcp_close(sock);
+    if (channel_send(&channel, request, (uint32_t)request_length) < 0) {
+        channel_close(&channel);
         strlcpy(out->error, "Die Anfrage konnte nicht gesendet werden.",
                 sizeof(out->error));
         return false;
@@ -180,7 +239,7 @@ static bool fetch_once(const char *url, struct http_response *out,
     uint32_t length = 0;
 
     if (!buffer) {
-        tcp_close(sock);
+        channel_close(&channel);
         strlcpy(out->error, "Zu wenig Speicher.", sizeof(out->error));
         return false;
     }
@@ -201,17 +260,17 @@ static bool fetch_once(const char *url, struct http_response *out,
             capacity = bigger;
         }
 
-        int n = tcp_receive(sock, buffer + length, HTTP_CHUNK, 700);
+        int n = channel_receive(&channel, buffer + length, HTTP_CHUNK, 700);
         if (n > 0)
             length += (uint32_t)n;
 
-        if (tcp_finished(sock) && n <= 0)
+        if (channel_finished(&channel) && n <= 0)
             break;
         if (timer_ms() > deadline)
             break;
     }
 
-    tcp_close(sock);
+    channel_close(&channel);
 
     if (length == 0) {
         kfree(buffer);
@@ -312,16 +371,22 @@ bool http_get(const char *url, struct http_response *out)
         if (redirect[0] == '/') {
             char host[128], path[512];
             uint16_t port;
+            bool secure = false;
 
-            if (!url_split(current, host, sizeof(host), &port, path, sizeof(path)))
+            if (!url_split(current, host, sizeof(host), &port, path,
+                           sizeof(path), &secure))
                 return false;
 
+            const char *scheme = secure ? "https" : "http";
+            uint16_t standard = secure ? 443 : 80;
             char combined[512];
-            if (port == 80)
-                ksnprintf(combined, sizeof(combined), "http://%s%s", host, redirect);
+
+            if (port == standard)
+                ksnprintf(combined, sizeof(combined), "%s://%s%s", scheme,
+                          host, redirect);
             else
-                ksnprintf(combined, sizeof(combined), "http://%s:%u%s", host,
-                          port, redirect);
+                ksnprintf(combined, sizeof(combined), "%s://%s:%u%s", scheme,
+                          host, port, redirect);
             strlcpy(current, combined, sizeof(current));
         } else {
             strlcpy(current, redirect, sizeof(current));

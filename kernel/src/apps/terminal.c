@@ -250,7 +250,10 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
     }
 
     char full[320];
-    if (strncasecmp(url, "http://", 7) != 0)
+
+    /* Ohne Schema wird http angenommen; https bleibt unangetastet. */
+    if (strncasecmp(url, "http://", 7) != 0 &&
+        strncasecmp(url, "https://", 8) != 0)
         ksnprintf(full, sizeof(full), "http://%s", url);
     else
         strlcpy(full, url, sizeof(full));
@@ -264,6 +267,8 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
 
     term_printf(st, C_HIGHLIGHT, "%d, %u Byte, %s", response.status,
                 (unsigned)response.body_length, response.content_type);
+    if (response.security[0])
+        term_printf(st, C_HIGHLIGHT, "Verschluesselt: %s", response.security);
 
     if (target) {
         struct fs_node *file = fs_lookup(st->cwd, target);

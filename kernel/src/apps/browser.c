@@ -123,7 +123,10 @@ static void resolve_url(const char *base, const char *href, char *out,
     }
 
     if (href[0] == '/' && href[1] == '/') {
-        ksnprintf(out, size, "http:%s", href);
+        /* "//rechner/pfad" uebernimmt das Schema der aktuellen Seite. */
+        bool secure = strncasecmp(base, "https://", 8) == 0;
+
+        ksnprintf(out, size, "%s:%s", secure ? "https" : "http", href);
         return;
     }
 
@@ -145,17 +148,23 @@ static void resolve_url(const char *base, const char *href, char *out,
 
     char host[128], path[512];
     uint16_t port;
+    bool secure = false;
 
-    if (!url_split(base, host, sizeof(host), &port, path, sizeof(path))) {
+    if (!url_split(base, host, sizeof(host), &port, path, sizeof(path),
+                   &secure)) {
         strlcpy(out, href, size);
         return;
     }
 
+    /* Ein Verweis ohne Schema bleibt beim Schema der aktuellen Seite. */
+    const char *scheme = secure ? "https" : "http";
+    uint16_t standard = secure ? 443 : 80;
     char prefix[160];
-    if (port == 80)
-        ksnprintf(prefix, sizeof(prefix), "http://%s", host);
+
+    if (port == standard)
+        ksnprintf(prefix, sizeof(prefix), "%s://%s", scheme, host);
     else
-        ksnprintf(prefix, sizeof(prefix), "http://%s:%u", host, port);
+        ksnprintf(prefix, sizeof(prefix), "%s://%s:%u", scheme, host, port);
 
     if (href[0] == '/') {
         ksnprintf(out, size, "%s%s", prefix, href);
@@ -189,7 +198,8 @@ static const char start_page[] =
     "<h2>Hinweise</h2>"
     "<ul>"
     "<li>Adressen ohne Vorsatz werden als <b>http://</b> gelesen.</li>"
-    "<li>HTTPS wird nicht unterstuetzt - dazu fehlt die Verschluesselung.</li>"
+    "<li>HTTPS wird unterstuetzt: TLS 1.3 mit X25519 und AES-GCM oder "
+    "ChaCha20-Poly1305, mit Pruefung der Zertifikatskette.</li>"
     "<li>Bilder werden als Platzhalter angezeigt.</li>"
     "</ul>"
     "</body></html>";
@@ -252,9 +262,15 @@ static bool finish_http(struct br_state *st)
     else
         html_parse(&st->doc, response->body, response->body_length);
 
-    ksnprintf(st->status, sizeof(st->status), "%d - %u Byte - %s",
-              response->status, (unsigned)response->body_length,
-              response->content_type);
+    if (response->security[0])
+        ksnprintf(st->status, sizeof(st->status), "%d - %u Byte - %s - %s",
+                  response->status, (unsigned)response->body_length,
+                  response->content_type, response->security);
+    else
+        ksnprintf(st->status, sizeof(st->status),
+                  "%d - %u Byte - %s - unverschluesselt",
+                  response->status, (unsigned)response->body_length,
+                  response->content_type);
 
     http_response_free(response);
     return true;

@@ -16,6 +16,7 @@
 #include "io.h"
 #include "mm.h"
 #include "net.h"
+#include "pki.h"
 #include "pci.h"
 #include "serial.h"
 #include "process.h"
@@ -81,6 +82,7 @@ NORETURN void kmain(void)
     thread_current()->priority = PRIO_HIGH;   /* die Oberflaeche */
 
     /* Netzwerk (bringt seinen eigenen Thread mit) */
+    trust_store_init();
     net_init();
 
     gui_init();

@@ -53,11 +53,14 @@ ULIB_OBJ := $(UDIR)/lib/ulib.o $(UDIR)/lib/start.o $(UDIR)/lib/syscall.o
 UELF     := $(patsubst %,$(UDIR)/%.elf,$(UPROGS))
 UEMBED   := $(patsubst %,$(UOBJDIR)/%.elf.o,$(UPROGS))
 
+# Die Wurzelzertifikate werden ebenfalls fest eingebaut.
+TRUSTOBJ := $(BUILD)/obj/data/wurzelzertifikate.der.o
+
 CFILES := $(shell find kernel/src -name '*.c' | sort)
 SFILES := $(shell find kernel/src -name '*.S' | sort)
 OBJS   := $(patsubst kernel/src/%.c,$(BUILD)/obj/%.c.o,$(CFILES)) \
           $(patsubst kernel/src/%.S,$(BUILD)/obj/%.S.o,$(SFILES)) \
-          $(UEMBED)
+          $(UEMBED) $(TRUSTOBJ)
 DEPS   := $(OBJS:.o=.d)
 
 .PHONY: all kernel iso run run-uefi run-plain disk clean distclean limine
@@ -97,6 +100,12 @@ $(UOBJDIR)/%.elf.o: $(UDIR)/%.elf
 	@echo "  EMBED   $<"
 	@cd $(UDIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
 	    $*.elf $(CURDIR)/$@
+
+$(TRUSTOBJ): data/wurzelzertifikate.der
+	@mkdir -p $(dir $@)
+	@echo "  EMBED   $<"
+	@cd data && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
+	    wurzelzertifikate.der $(CURDIR)/$@
 
 $(KERNEL): $(OBJS) kernel/linker.ld
 	@mkdir -p $(dir $@)

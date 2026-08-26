@@ -161,13 +161,15 @@ struct http_response {
     uint32_t body_length;
     char     content_type[64];
     char     error[96];
+    char     security[64];  /* leer bei http, sonst die Verschluesselung */
 };
 
 bool http_get(const char *url, struct http_response *out);
 void http_response_free(struct http_response *response);
 
-/* Zerlegt eine Adresse in ihre Bestandteile. */
+/* Zerlegt eine Adresse in ihre Bestandteile. secure meldet, ob es sich um
+ * https handelt; ohne Portangabe gilt 80 bzw. 443. */
 bool url_split(const char *url, char *host, size_t host_size,
-               uint16_t *port, char *path, size_t path_size);
+               uint16_t *port, char *path, size_t path_size, bool *secure);
 
 #endif /* NET_H */

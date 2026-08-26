@@ -15,3 +15,6 @@ third_party/
 .idea/
 *.swp
 .DS_Store
+
+# Testprogramm der Wirtsmaschine
+tests/krypto-test
