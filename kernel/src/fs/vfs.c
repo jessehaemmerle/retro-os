@@ -1,16 +1,35 @@
-/* ramfs.c - Dateisystem im Arbeitsspeicher.
+/* vfs.c - der Dateibaum von RetroOS.
  *
- * Jeder Knoten ist ein Ordner oder eine Datei; Ordner verketten ihre Kinder
- * einfach hintereinander. Dateiinhalte liegen als Heap-Puffer vor, der beim
- * Schreiben verdoppelt wird. Fuer ein System, dessen gesamter Datenbestand in
- * den RAM passt, ist das voellig ausreichend - und es kommt ohne Blockgeraet,
- * Cache oder Journal aus.
+ * Der Baum kennt zwei Sorten von Knoten. Knoten im Arbeitsspeicher halten
+ * ihren Inhalt direkt im Heap; sie bilden die Wurzel und alles darunter, was
+ * nach einem Neustart wieder im Auslieferungszustand sein soll. Knoten auf
+ * einem Datentraeger spiegeln Eintraege eines FAT32-Dateisystems: sie werden
+ * erst gelesen, wenn jemand hinsieht, und jede Aenderung geht sofort auf die
+ * Platte.
+ *
+ * Nach aussen sieht man den Unterschied nicht - Dateimanager, Editor und
+ * Konsole arbeiten mit denselben Funktionen, egal wo eine Datei liegt.
  */
 
 #include "vfs.h"
+#include "block.h"
 #include "kstring.h"
 #include "mm.h"
 #include "rtc.h"
+
+static struct fat_volume disk_volume;
+static struct fs_node   *disk_mount_point;
+static char              disk_label[32];
+
+static void fat_load_children(struct fs_node *dir);
+
+/* Stellt sicher, dass ein Ordner von der Platte eingelesen wurde. */
+static void ensure_loaded(struct fs_node *dir)
+{
+    if (dir && dir->type == FS_DIR && dir->backend == FS_BACKEND_FAT &&
+        !dir->children_loaded)
+        fat_load_children(dir);
+}
 
 static struct fs_node *root;
 static size_t node_count;
@@ -82,6 +101,8 @@ struct fs_node *fs_find_child(struct fs_node *dir, const char *name)
     if (!dir || dir->type != FS_DIR)
         return NULL;
 
+    ensure_loaded(dir);
+
     for (struct fs_node *it = dir->first_child; it; it = it->next_sibling) {
         if (strcasecmp(it->name, name) == 0)
             return it;
@@ -101,6 +122,21 @@ struct fs_node *fs_create(struct fs_node *dir, const char *name, enum fs_type ty
     struct fs_node *n = node_new(name, type);
     if (!n)
         return NULL;
+
+    if (dir->backend == FS_BACKEND_FAT) {
+        struct fat_dirent entry;
+
+        if (!fat_create(&disk_volume, dir->fat_cluster, name,
+                        type == FS_DIR, &entry)) {
+            kfree(n);
+            return NULL;
+        }
+
+        n->backend         = FS_BACKEND_FAT;
+        n->fat_cluster     = entry.first_cluster;
+        n->fat_ref         = entry.ref;
+        n->children_loaded = (type == FS_DIR);
+    }
 
     link_child(dir, n);
     stamp(dir);
@@ -123,9 +159,33 @@ static void free_subtree(struct fs_node *node)
     node_count--;
 }
 
+/* Loescht einen Plattenknoten samt Inhalt - Ordner von innen nach aussen. */
+static bool fat_remove_recursive(struct fs_node *node)
+{
+    if (node->type == FS_DIR) {
+        ensure_loaded(node);
+
+        struct fs_node *child = node->first_child;
+        while (child) {
+            struct fs_node *next = child->next_sibling;
+
+            if (!fat_remove_recursive(child))
+                return false;
+            child = next;
+        }
+    }
+    return fat_delete(&disk_volume, &node->fat_ref, node->fat_cluster,
+                      node->type == FS_DIR);
+}
+
 bool fs_remove(struct fs_node *node)
 {
     if (!node || node == root || node->readonly)
+        return false;
+    if (node == disk_mount_point)
+        return false;
+
+    if (node->backend == FS_BACKEND_FAT && !fat_remove_recursive(node))
         return false;
 
     struct fs_node *parent = node->parent;
@@ -144,6 +204,21 @@ bool fs_rename(struct fs_node *node, const char *name)
     struct fs_node *clash = fs_find_child(node->parent, name);
     if (clash && clash != node)
         return false;
+
+    if (node->backend == FS_BACKEND_FAT) {
+        struct fat_dirent entry;
+
+        memset(&entry, 0, sizeof(entry));
+        strlcpy(entry.name, node->name, sizeof(entry.name));
+        entry.is_dir        = node->type == FS_DIR;
+        entry.first_cluster = node->fat_cluster;
+        entry.size          = (uint32_t)node->size;
+        entry.ref           = node->fat_ref;
+
+        if (!fat_rename(&disk_volume, &entry, name))
+            return false;
+        node->fat_ref = entry.ref;
+    }
 
     strlcpy(node->name, name, sizeof(node->name));
     stamp(node);
@@ -193,6 +268,16 @@ bool fs_write(struct fs_node *file, const void *data, size_t size)
 {
     if (!file || file->type != FS_FILE || file->readonly)
         return false;
+
+    if (file->backend == FS_BACKEND_FAT) {
+        uint32_t cluster = file->fat_cluster;
+
+        if (!fat_write_file(&disk_volume, &file->fat_ref, &cluster,
+                            data, (uint32_t)size))
+            return false;
+        file->fat_cluster = cluster;
+    }
+
     if (!ensure_capacity(file, size + 1))
         return false;
 
@@ -207,12 +292,24 @@ bool fs_append(struct fs_node *file, const void *data, size_t size)
 {
     if (!file || file->type != FS_FILE || file->readonly)
         return false;
+    if (!fs_load(file))
+        return false;
     if (!ensure_capacity(file, file->size + size + 1))
         return false;
 
     memcpy(file->data + file->size, data, size);
     file->size += size;
     file->data[file->size] = '\0';
+
+    if (file->backend == FS_BACKEND_FAT) {
+        uint32_t cluster = file->fat_cluster;
+
+        if (!fat_write_file(&disk_volume, &file->fat_ref, &cluster,
+                            file->data, (uint32_t)file->size))
+            return false;
+        file->fat_cluster = cluster;
+    }
+
     stamp(file);
     return true;
 }
@@ -256,6 +353,8 @@ size_t fs_child_count(struct fs_node *dir)
 
     if (!dir || dir->type != FS_DIR)
         return 0;
+
+    ensure_loaded(dir);
     for (struct fs_node *it = dir->first_child; it; it = it->next_sibling)
         n++;
     return n;
@@ -275,6 +374,8 @@ size_t fs_list(struct fs_node *dir, struct fs_node **out, size_t max)
 
     if (!dir || dir->type != FS_DIR)
         return 0;
+
+    ensure_loaded(dir);
 
     for (struct fs_node *it = dir->first_child; it && n < max; it = it->next_sibling)
         out[n++] = it;
@@ -339,6 +440,11 @@ size_t fs_total_size(struct fs_node *node)
     if (node->type == FS_FILE)
         return node->size;
 
+    /* Nicht eingelesene Plattenordner bleiben aussen vor - sonst wuerde
+     * eine Statuszeile die ganze Platte durchsuchen. */
+    if (node->backend == FS_BACKEND_FAT && !node->children_loaded)
+        return 0;
+
     size_t total = 0;
     for (struct fs_node *it = node->first_child; it; it = it->next_sibling)
         total += fs_total_size(it);
@@ -398,3 +504,151 @@ void fs_init(void)
     kprintf("Dateisystem : %u Eintraege, %u Bytes\n",
             (unsigned)node_count, (unsigned)fs_bytes_used());
 }
+
+/* ------------------------------------------------------------------ */
+/* Datentraeger einhaengen                                             */
+/* ------------------------------------------------------------------ */
+
+static void load_child_cb(void *user, const struct fat_dirent *entry)
+{
+    struct fs_node *dir = user;
+    struct fs_node *n = kzalloc(sizeof(struct fs_node));
+
+    if (!n)
+        return;
+
+    strlcpy(n->name, entry->name, sizeof(n->name));
+    n->type        = entry->is_dir ? FS_DIR : FS_FILE;
+    n->readonly    = entry->read_only;
+    n->size        = entry->size;
+    n->backend     = FS_BACKEND_FAT;
+    n->fat_cluster = entry->first_cluster;
+    n->fat_ref     = entry->ref;
+
+    n->mtime_day   = entry->day;
+    n->mtime_month = entry->month;
+    n->mtime_year  = entry->year;
+    n->mtime_hour  = entry->hour;
+    n->mtime_min   = entry->minute;
+
+    node_count++;
+    link_child(dir, n);
+}
+
+static void fat_load_children(struct fs_node *dir)
+{
+    dir->children_loaded = true;
+    fat_list_dir(&disk_volume, dir->fat_cluster, load_child_cb, dir);
+}
+
+bool fs_load(struct fs_node *file)
+{
+    if (!file || file->type != FS_FILE)
+        return false;
+    if (file->backend != FS_BACKEND_FAT)
+        return true;
+    if (file->data)
+        return true;
+
+    uint8_t *buf = kmalloc(file->size + 1);
+    if (!buf)
+        return false;
+
+    if (file->size > 0 &&
+        !fat_read_file(&disk_volume, file->fat_cluster,
+                       (uint32_t)file->size, buf)) {
+        kfree(buf);
+        return false;
+    }
+
+    buf[file->size] = '\0';
+    file->data     = buf;
+    file->capacity = file->size + 1;
+    return true;
+}
+
+static bool attach_mount_point(void)
+{
+    /* Einen eventuell vorhandenen alten Einhaengepunkt entfernen. */
+    struct fs_node *old = fs_find_child(root, "Festplatte");
+    if (old) {
+        old->readonly = false;
+        struct fs_node *parent_backup = old->parent;
+        UNUSED(parent_backup);
+
+        /* Nur den Baum im Speicher loesen, nichts auf der Platte anfassen. */
+        old->backend = FS_BACKEND_RAM;
+        disk_mount_point = NULL;
+        fs_remove(old);
+    }
+
+    struct fs_node *mount = fs_create(root, "Festplatte", FS_DIR);
+    if (!mount)
+        return false;
+
+    mount->backend         = FS_BACKEND_FAT;
+    mount->fat_cluster     = disk_volume.root_cluster;
+    mount->children_loaded = false;
+    mount->readonly        = true;   /* der Einhaengepunkt selbst bleibt */
+
+    disk_mount_point = mount;
+    return true;
+}
+
+bool fs_mount_disk(void)
+{
+    struct block_device *dev = block_primary();
+
+    if (!dev)
+        return false;
+
+    if (!fat_mount(dev, &disk_volume)) {
+        kprintf("Datentraeger: kein FAT32 gefunden - \"formatieren\" hilft\n");
+        return false;
+    }
+
+    if (!attach_mount_point())
+        return false;
+
+    ksnprintf(disk_label, sizeof(disk_label), "%s",
+              disk_volume.label[0] ? disk_volume.label : dev->name);
+
+    kprintf("Datentraeger: %s eingehaengt unter /Festplatte (%u MiB frei)\n",
+            disk_label,
+            (unsigned)(fat_free_bytes(&disk_volume) / (1024 * 1024)));
+    return true;
+}
+
+bool fs_format_disk(const char *label)
+{
+    struct block_device *dev = block_primary();
+
+    if (!dev)
+        return false;
+
+    /* Vor dem Formatieren alle Knoten der Platte vergessen. */
+    if (disk_mount_point) {
+        struct fs_node *child = disk_mount_point->first_child;
+
+        while (child) {
+            struct fs_node *next = child->next_sibling;
+
+            child->backend = FS_BACKEND_RAM;
+            child->readonly = false;
+            fs_remove(child);
+            child = next;
+        }
+        disk_mount_point->children_loaded = false;
+    }
+    disk_volume.mounted = false;
+
+    if (!fat_format(dev, label && label[0] ? label : "RETROOS"))
+        return false;
+
+    return fs_mount_disk();
+}
+
+bool fs_disk_mounted(void)          { return disk_volume.mounted; }
+struct fat_volume *fs_disk_volume(void) { return &disk_volume; }
+struct fs_node *fs_disk_root(void)  { return disk_mount_point; }
+const char *fs_disk_name(void)      { return disk_label; }

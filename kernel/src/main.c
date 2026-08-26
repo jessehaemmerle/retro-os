@@ -7,12 +7,15 @@
 
 #include "retro.h"
 #include "arch.h"
+#include "block.h"
 #include "boot.h"
 #include "fb.h"
 #include "gui.h"
 #include "input.h"
 #include "io.h"
 #include "mm.h"
+#include "net.h"
+#include "pci.h"
 #include "serial.h"
 #include "vfs.h"
 
@@ -48,6 +51,10 @@ NORETURN void kmain(void)
     keyboard_init();
     sti();
 
+    /* Busse und Datentraeger */
+    pci_init();
+    storage_init();
+
     /* Grafik */
     if (!fb_init())
         panic("Es wurde kein nutzbarer Framebuffer gefunden.");
@@ -58,6 +65,11 @@ NORETURN void kmain(void)
 
     /* Daten und Oberflaeche */
     fs_init();
+    fs_mount_disk();
+
+    /* Netzwerk */
+    net_init();
+
     gui_init();
 
     kprintf("Oberflaeche : bereit\n\n");

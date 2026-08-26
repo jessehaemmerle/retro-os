@@ -28,6 +28,9 @@ enum icon_id {
     ICON_NEW_FOLDER,
     ICON_NEW_FILE,
     ICON_SETTINGS,
+    ICON_BROWSER,
+    ICON_RELOAD,
+    ICON_NETWORK,
     ICON_COUNT
 };
 

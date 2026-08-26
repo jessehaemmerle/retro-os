@@ -5,7 +5,9 @@
 #include "boot.h"
 #include "font.h"
 #include "kstring.h"
+#include "block.h"
 #include "mm.h"
+#include "net.h"
 #include "theme.h"
 #include "widgets.h"
 
@@ -126,6 +128,71 @@ static void sys_paint(struct window *win, struct canvas *c)
 
     ksnprintf(buf, sizeof(buf), "%u", (unsigned)gui_window_count());
     row(&local, y, "Offene Fenster", buf);
+    y += 30;
+
+    gfx_text_bold(&local, 16, y, "Datentraeger", COL_SELECT);
+    y += 22;
+
+    if (block_device_count() == 0) {
+        row(&local, y, "Laufwerk", "keines gefunden");
+        y += 18;
+    } else {
+        struct block_device *d = block_device_at(0);
+
+        ksnprintf(buf, sizeof(buf), "%s (%u MiB)", d->model,
+                  (unsigned)(d->sector_count * d->sector_size / (1024 * 1024)));
+        row(&local, y, d->name, buf);
+        y += 18;
+
+        if (fs_disk_mounted()) {
+            struct fat_volume *vol = fs_disk_volume();
+            uint64_t total = fat_total_bytes(vol);
+            uint64_t used  = total - fat_free_bytes(vol);
+
+            ksnprintf(buf, sizeof(buf), "FAT32 \"%s\" unter /Festplatte",
+                      fs_disk_name());
+            row(&local, y, "Dateisystem", buf);
+            y += 18;
+            draw_bar(&local, 176, y, MAX(local.w - 200, 80), used, total,
+                     RGB(0xC0, 0x80, 0x30));
+            y += 24;
+        } else {
+            row(&local, y, "Dateisystem", "nicht eingehaengt");
+            y += 18;
+        }
+    }
+
+    y += 12;
+    gfx_text_bold(&local, 16, y, "Netzwerk", COL_SELECT);
+    y += 22;
+
+    if (!g_netif.up) {
+        row(&local, y, "Karte", "keine gefunden");
+        return;
+    }
+
+    row(&local, y, "Karte", e1000_model());
+    y += 18;
+
+    mac_format(&g_netif.mac, buf, sizeof(buf));
+    row(&local, y, "Hardware-Adresse", buf);
+    y += 18;
+
+    if (net_ready()) {
+        char ip[16], gw[16];
+
+        ip_format(g_netif.ip, ip, sizeof(ip));
+        ip_format(g_netif.gateway, gw, sizeof(gw));
+        ksnprintf(buf, sizeof(buf), "%s (Gateway %s)", ip, gw);
+        row(&local, y, "IP-Adresse", buf);
+        y += 18;
+
+        ksnprintf(buf, sizeof(buf), "%u empfangen, %u gesendet",
+                  (unsigned)g_netif.rx_packets, (unsigned)g_netif.tx_packets);
+        row(&local, y, "Pakete", buf);
+    } else {
+        row(&local, y, "IP-Adresse", "keine (DHCP ohne Antwort)");
+    }
 }
 
 static void sys_event(struct window *win, const struct gui_event *ev)
@@ -160,7 +227,7 @@ void app_sysinfo(void)
 
     read_cpu(st);
 
-    struct window *win = gui_create_window("Systeminformation", 0, 0, 560, 400,
+    struct window *win = gui_create_window("Systeminformation", 0, 0, 600, 640,
                                            WF_CENTER | WF_RESIZABLE, ICON_COMPUTER);
     if (!win) {
         kfree(st);
@@ -172,7 +239,7 @@ void app_sysinfo(void)
     win->on_event = sys_event;
     win->on_close = sys_close;
     win->min_w    = 420;
-    win->min_h    = 300;
+    win->min_h    = 380;
 
     gui_focus_window(win);
 }

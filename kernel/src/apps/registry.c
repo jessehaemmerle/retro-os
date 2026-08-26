@@ -10,6 +10,7 @@
 const struct app_entry app_list[] = {
     { "Dateimanager",      ICON_FOLDER_OPEN, app_filemanager, true  },
     { "Editor",            ICON_EDITOR,      app_editor,      true  },
+    { "Browser",           ICON_BROWSER,     app_browser,     true  },
     { "Konsole",           ICON_TERMINAL,    app_terminal,    true  },
     { "Systeminformation", ICON_COMPUTER,    app_sysinfo,     true  },
     { "Ueber RetroOS",     ICON_INFO,        app_about,       false },

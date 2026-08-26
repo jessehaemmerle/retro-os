@@ -3,6 +3,7 @@
 #define VFS_H
 
 #include "retro.h"
+#include "fat.h"
 
 #define FS_NAME_MAX 63
 #define FS_PATH_MAX 256
@@ -10,6 +11,12 @@
 enum fs_type {
     FS_FILE,
     FS_DIR,
+};
+
+/* Woher ein Knoten stammt: aus dem Arbeitsspeicher oder von der Platte. */
+enum fs_backend {
+    FS_BACKEND_RAM,
+    FS_BACKEND_FAT,
 };
 
 struct fs_node {
@@ -28,10 +35,32 @@ struct fs_node {
     uint16_t        mtime_hour, mtime_min;
     uint8_t         mtime_day, mtime_month;
     uint16_t        mtime_year;
+
+    /* --- nur fuer Knoten auf einem Datentraeger --- */
+    uint8_t         backend;
+    bool            children_loaded;   /* Ordner erst bei Bedarf einlesen */
+    uint32_t        fat_cluster;
+    struct fat_entry_ref fat_ref;
 };
 
 void fs_init(void);
 struct fs_node *fs_root(void);
+
+/* Haengt den ersten gefundenen Datentraeger unter /Festplatte ein.
+ * Liefert false, wenn keine Platte da ist oder sie kein FAT32 enthaelt. */
+bool fs_mount_disk(void);
+bool fs_disk_mounted(void);
+struct fat_volume *fs_disk_volume(void);
+struct fs_node    *fs_disk_root(void);
+const char        *fs_disk_name(void);
+
+/* Formatiert den ersten Datentraeger neu und haengt ihn ein. Alle Daten
+ * darauf gehen dabei verloren. */
+bool fs_format_disk(const char *label);
+
+/* Sorgt dafuer, dass node->data den Dateiinhalt enthaelt. Bei Dateien im
+ * Arbeitsspeicher ein Nichts-Tun, bei Dateien auf der Platte ein Lesevorgang. */
+bool fs_load(struct fs_node *file);
 
 /* Pfade werden immer absolut ("/ordner/datei") oder relativ zu base gelesen. */
 struct fs_node *fs_lookup(struct fs_node *base, const char *path);

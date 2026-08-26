@@ -259,6 +259,42 @@ void gfx_text_clipped(struct canvas *c, int32_t x, int32_t y, const char *s,
     gfx_text(c, x + room * FONT_WIDTH, y, "...", color);
 }
 
+void gfx_text_scaled(struct canvas *c, int32_t x, int32_t y, const char *s,
+                     uint32_t color, int32_t scale, bool bold)
+{
+    if (scale <= 1) {
+        if (bold)
+            gfx_text_bold(c, x, y, s, color);
+        else
+            gfx_text(c, x, y, s, color);
+        return;
+    }
+
+    for (; *s; s++, x += FONT_WIDTH * scale) {
+        const uint8_t *glyph = font_glyph((unsigned char)*s);
+
+        for (int32_t row = 0; row < FONT_HEIGHT; row++) {
+            uint32_t bits = glyph[row];
+
+            if (bold)
+                bits |= bits >> 1;
+            if (!bits)
+                continue;
+
+            for (int32_t col = 0; col < FONT_WIDTH; col++) {
+                if (bits & (0x80 >> col))
+                    gfx_fill(c, rect_make(x + col * scale, y + row * scale,
+                                          scale, scale), color);
+            }
+        }
+    }
+}
+
+int32_t gfx_text_width_scaled(const char *s, int32_t scale)
+{
+    return (int32_t)strlen(s) * FONT_WIDTH * MAX(scale, 1);
+}
+
 void gfx_blit(struct canvas *dst, int32_t x, int32_t y, const struct canvas *src)
 {
     struct rect area = rect_intersect(rect_make(x, y, src->w, src->h), dst->clip);

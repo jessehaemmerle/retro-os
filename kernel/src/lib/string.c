@@ -107,6 +107,18 @@ int strcasecmp(const char *a, const char *b)
     return (int)(uint8_t)lower(*a) - (int)(uint8_t)lower(*b);
 }
 
+int strncasecmp(const char *a, const char *b, size_t n)
+{
+    while (n && *a && lower(*a) == lower(*b)) {
+        a++;
+        b++;
+        n--;
+    }
+    if (n == 0)
+        return 0;
+    return (int)(uint8_t)lower(*a) - (int)(uint8_t)lower(*b);
+}
+
 char *strcpy(char *dst, const char *src)
 {
     char *d = dst;

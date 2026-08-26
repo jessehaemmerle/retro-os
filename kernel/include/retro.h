@@ -28,6 +28,13 @@ static inline void *phys_to_virt(uint64_t phys)
     return (void *)(phys + g_hhdm_offset);
 }
 
+/* Nur fuer Zeiger gueltig, die aus phys_to_virt() stammen - also alles,
+ * was ueber PMM und Heap vergeben wurde. Geraete mit DMA brauchen das. */
+static inline uint64_t virt_to_phys(const void *virt)
+{
+    return (uint64_t)virt - g_hhdm_offset;
+}
+
 /* Ausgaben auf die serielle Debug-Konsole. */
 void kprintf(const char *fmt, ...);
 int  ksnprintf(char *buf, size_t size, const char *fmt, ...);

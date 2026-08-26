@@ -431,6 +431,12 @@ static struct window *editor_new(struct fs_node *file)
     st->pressed = -1;
     st->caret_on = true;
 
+    if (file && !fs_load(file)) {
+        gui_close_window(win);
+        dialog_message("Editor", "Die Datei laesst sich nicht lesen.");
+        return NULL;
+    }
+
     size_t initial = file ? file->size : 0;
     if (!ed_reserve(st, initial + 256)) {
         gui_close_window(win);

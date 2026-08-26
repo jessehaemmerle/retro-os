@@ -151,6 +151,8 @@ static void ensure_visible(struct window *win)
 
 static enum icon_id entry_icon(const struct fs_node *node)
 {
+    if (node == fs_disk_root())
+        return ICON_DISK;
     if (node->type == FS_DIR)
         return ICON_FOLDER;
     return fs_is_text(node) ? ICON_FILE_TEXT : ICON_FILE;

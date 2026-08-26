@@ -99,6 +99,25 @@ void initfs_populate(struct fs_node *root)
         "Die Programme von RetroOS sind fest in den Kernel eingebaut.\n"
         "Sie werden ueber das Startmenue geoeffnet.\n", true);
 
+    put(docs, "beispiel.html",
+        "<html>\n"
+        "<head><title>Beispielseite</title></head>\n"
+        "<body>\n"
+        "<h1>Eine Seite aus dem Dateisystem</h1>\n"
+        "<p>Diese Datei liegt unter <b>/Dokumente/beispiel.html</b> und wird\n"
+        "vom Browser aus dem Dateisystem geladen - ganz ohne Netzwerk.</p>\n"
+        "<h2>Was der Browser kann</h2>\n"
+        "<ul>\n"
+        "<li>Ueberschriften, Absaetze und Aufzaehlungen</li>\n"
+        "<li>Fett ausgezeichneten <b>Text</b></li>\n"
+        "<li>Verweise, etwa zurueck zur <a href=\"start:\">Startseite</a></li>\n"
+        "<li>Seiten aus dem Netz ueber HTTP</li>\n"
+        "</ul>\n"
+        "<hr>\n"
+        "<p>Umlaute funktionieren auch: Gr&uuml;&szlig;e aus RetroOS.</p>\n"
+        "</body>\n"
+        "</html>\n", false);
+
     /* --- Medien --- */
     put(media, "liesmich.txt",
         "Hier waeren Bilder und Klaenge zu Hause.\n"

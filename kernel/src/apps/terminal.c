@@ -7,6 +7,8 @@
 
 #include "apps.h"
 #include "arch.h"
+#include "block.h"
+#include "net.h"
 #include "boot.h"
 #include "font.h"
 #include "kstring.h"
@@ -119,6 +121,12 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  laufzeit         Zeit seit dem Start");
     term_line(st, C_NORMAL, "  datum            Datum und Uhrzeit");
     term_line(st, C_NORMAL, "  version          Systemversion");
+    term_line(st, C_NORMAL, "  netz             Netzwerkeinstellungen");
+    term_line(st, C_NORMAL, "  ping <ziel>      Erreichbarkeit pruefen");
+    term_line(st, C_NORMAL, "  aufloesen <name> Namen in eine Adresse wandeln");
+    term_line(st, C_NORMAL, "  holen <adresse> [datei]  Seite abrufen/speichern");
+    term_line(st, C_NORMAL, "  platte           Datentraeger anzeigen");
+    term_line(st, C_NORMAL, "  formatieren      Datentraeger neu formatieren");
     term_line(st, C_NORMAL, "  leeren           Bildschirm loeschen");
     term_line(st, C_NORMAL, "  neustart         Rechner neu starten");
 }
@@ -169,6 +177,11 @@ static void cmd_cat(struct term_state *st, const char *arg)
         return;
     }
 
+    if (!fs_load(f)) {
+        term_printf(st, C_ERROR, "cat: \"%s\" laesst sich nicht lesen", arg);
+        return;
+    }
+
     if (!f->data || f->size == 0) {
         term_line(st, C_NORMAL, "(leere Datei)");
         return;
@@ -207,6 +220,170 @@ static void cmd_memory(struct term_state *st)
     term_printf(st, C_HIGHLIGHT, "Dateisystem");
     term_printf(st, C_NORMAL, "  %u Eintraege, %u Bytes",
                 (unsigned)fs_node_count(), (unsigned)fs_bytes_used());
+}
+
+/* Holt eine Seite und zeigt sie an oder legt sie als Datei ab. */
+static void cmd_fetch(struct term_state *st, const char *url, const char *target)
+{
+    struct http_response response;
+
+    if (!url) {
+        term_line(st, C_ERROR, "holen: <adresse> [datei]");
+        return;
+    }
+
+    char full[320];
+    if (strncasecmp(url, "http://", 7) != 0)
+        ksnprintf(full, sizeof(full), "http://%s", url);
+    else
+        strlcpy(full, url, sizeof(full));
+
+    term_printf(st, C_NORMAL, "Rufe %s ab ...", full);
+
+    if (!http_get(full, &response)) {
+        term_printf(st, C_ERROR, "holen: %s", response.error);
+        return;
+    }
+
+    term_printf(st, C_HIGHLIGHT, "%d, %u Byte, %s", response.status,
+                (unsigned)response.body_length, response.content_type);
+
+    if (target) {
+        struct fs_node *file = fs_lookup(st->cwd, target);
+
+        if (!file)
+            file = fs_create(st->cwd, target, FS_FILE);
+
+        if (!file || file->type != FS_FILE) {
+            term_printf(st, C_ERROR, "holen: %s laesst sich nicht anlegen", target);
+        } else if (!fs_write(file, response.body, response.body_length)) {
+            term_printf(st, C_ERROR, "holen: %s laesst sich nicht schreiben", target);
+        } else {
+            term_printf(st, C_HIGHLIGHT, "Gespeichert als %s", target);
+        }
+    } else {
+        /* Ohne Zieldatei die ersten Zeilen anzeigen. */
+        const char *p = response.body;
+        const char *end = response.body + response.body_length;
+        char line[TERM_COLS];
+
+        for (int i = 0; i < 20 && p < end; i++) {
+            size_t n = 0;
+
+            while (p < end && *p != '\n' && n < TERM_COLS - 1)
+                line[n++] = *p++;
+            line[n] = '\0';
+            if (p < end && *p == '\n')
+                p++;
+            term_line(st, C_NORMAL, line);
+        }
+        if (p < end)
+            term_line(st, C_HIGHLIGHT, "... (gekuerzt)");
+    }
+
+    http_response_free(&response);
+}
+
+static void cmd_disk(struct term_state *st)
+{
+    if (block_device_count() == 0) {
+        term_line(st, C_ERROR, "Kein Datentraeger gefunden.");
+        return;
+    }
+
+    for (size_t i = 0; i < block_device_count(); i++) {
+        struct block_device *d = block_device_at(i);
+
+        term_printf(st, C_HIGHLIGHT, "%s: %s", d->name, d->model);
+        term_printf(st, C_NORMAL, "  %u Sektoren zu %u Byte (%u MiB)",
+                    (unsigned)d->sector_count, (unsigned)d->sector_size,
+                    (unsigned)(d->sector_count * d->sector_size / (1024 * 1024)));
+    }
+
+    if (!fs_disk_mounted()) {
+        term_line(st, C_ERROR, "Kein FAT32-Dateisystem eingehaengt.");
+        return;
+    }
+
+    struct fat_volume *vol = fs_disk_volume();
+    char total[24], freetext[24];
+
+    fs_format_size(total, sizeof(total), (size_t)fat_total_bytes(vol));
+    fs_format_size(freetext, sizeof(freetext), (size_t)fat_free_bytes(vol));
+
+    term_printf(st, C_HIGHLIGHT, "Eingehaengt: /Festplatte (%s)", fs_disk_name());
+    term_printf(st, C_NORMAL, "  Dateisystem : FAT32, %u Byte je Cluster",
+                (unsigned)vol->cluster_bytes);
+    term_printf(st, C_NORMAL, "  Groesse     : %s", total);
+    term_printf(st, C_NORMAL, "  frei        : %s", freetext);
+}
+
+static void cmd_network(struct term_state *st)
+{
+    char text[24];
+
+    if (!g_netif.up) {
+        term_line(st, C_ERROR, "Keine Netzwerkkarte gefunden.");
+        return;
+    }
+
+    mac_format(&g_netif.mac, text, sizeof(text));
+    term_printf(st, C_HIGHLIGHT, "%s", e1000_model());
+    term_printf(st, C_NORMAL, "  Hardware-Adresse : %s", text);
+
+    if (!net_ready()) {
+        term_line(st, C_ERROR, "  Keine IP-Adresse (DHCP ohne Antwort).");
+        return;
+    }
+
+    ip_format(g_netif.ip, text, sizeof(text));
+    term_printf(st, C_NORMAL, "  IP-Adresse       : %s", text);
+    ip_format(g_netif.netmask, text, sizeof(text));
+    term_printf(st, C_NORMAL, "  Netzmaske        : %s", text);
+    ip_format(g_netif.gateway, text, sizeof(text));
+    term_printf(st, C_NORMAL, "  Gateway          : %s", text);
+    ip_format(g_netif.dns, text, sizeof(text));
+    term_printf(st, C_NORMAL, "  Namensserver     : %s", text);
+    term_printf(st, C_NORMAL, "  Empfangen        : %u Pakete, %u Byte",
+                (unsigned)g_netif.rx_packets, (unsigned)g_netif.rx_bytes);
+    term_printf(st, C_NORMAL, "  Gesendet         : %u Pakete, %u Byte",
+                (unsigned)g_netif.tx_packets, (unsigned)g_netif.tx_bytes);
+}
+
+static void cmd_ping(struct term_state *st, const char *target)
+{
+    ip_addr_t addr;
+    char text[16];
+
+    if (!target) {
+        term_line(st, C_ERROR, "ping: Ziel fehlt");
+        return;
+    }
+    if (!net_ready()) {
+        term_line(st, C_ERROR, "ping: keine Netzwerkverbindung");
+        return;
+    }
+    if (!dns_resolve(target, &addr)) {
+        term_printf(st, C_ERROR, "ping: %s nicht gefunden", target);
+        return;
+    }
+
+    ip_format(addr, text, sizeof(text));
+    term_printf(st, C_HIGHLIGHT, "Ping an %s (%s):", target, text);
+
+    int received = 0;
+    for (int i = 0; i < 4; i++) {
+        uint32_t rtt = 0;
+
+        if (icmp_ping(addr, 1500, &rtt)) {
+            term_printf(st, C_NORMAL, "  Antwort von %s: Zeit %u ms", text,
+                        (unsigned)rtt);
+            received++;
+        } else {
+            term_line(st, C_ERROR, "  Zeitueberschreitung");
+        }
+    }
+    term_printf(st, C_HIGHLIGHT, "  %d von 4 Antworten", received);
 }
 
 static void term_prompt_line(struct term_state *st, const char *cmd)
@@ -348,6 +525,45 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "version") || !strcasecmp(cmd, "ver")) {
         term_line(st, C_HIGHLIGHT, "RetroOS 1.0 (x86-64)");
+
+    } else if (!strcasecmp(cmd, "netz") || !strcasecmp(cmd, "ipconfig")) {
+        cmd_network(st);
+
+    } else if (!strcasecmp(cmd, "ping")) {
+        cmd_ping(st, a1);
+
+    } else if (!strcasecmp(cmd, "aufloesen") || !strcasecmp(cmd, "nslookup")) {
+        ip_addr_t addr;
+
+        if (!a1) {
+            term_line(st, C_ERROR, "aufloesen: Name fehlt");
+        } else if (dns_resolve(a1, &addr)) {
+            char text[16];
+            ip_format(addr, text, sizeof(text));
+            term_printf(st, C_HIGHLIGHT, "%s hat die Adresse %s", a1, text);
+        } else {
+            term_printf(st, C_ERROR, "aufloesen: %s nicht gefunden", a1);
+        }
+
+    } else if (!strcasecmp(cmd, "holen") || !strcasecmp(cmd, "wget")) {
+        cmd_fetch(st, a1, argc > 2 ? argv[2] : NULL);
+
+    } else if (!strcasecmp(cmd, "platte")) {
+        cmd_disk(st);
+
+    } else if (!strcasecmp(cmd, "formatieren")) {
+        if (!a1 || strcasecmp(a1, "wirklich") != 0) {
+            term_line(st, C_ERROR,
+                      "Das loescht alle Daten auf dem Datentraeger.");
+            term_line(st, C_NORMAL,
+                      "Zum Bestaetigen: formatieren wirklich [Bezeichnung]");
+        } else {
+            term_line(st, C_NORMAL, "Formatiere ...");
+            if (fs_format_disk(argc > 2 ? argv[2] : "RETROOS"))
+                term_line(st, C_HIGHLIGHT, "Fertig. /Festplatte ist wieder da.");
+            else
+                term_line(st, C_ERROR, "Formatieren fehlgeschlagen.");
+        }
 
     } else if (!strcasecmp(cmd, "leeren") || !strcasecmp(cmd, "clear") ||
                !strcasecmp(cmd, "cls")) {

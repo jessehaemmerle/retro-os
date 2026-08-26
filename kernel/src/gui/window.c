@@ -19,6 +19,7 @@
 #include "font.h"
 #include "kstring.h"
 #include "mm.h"
+#include "net.h"
 #include "theme.h"
 
 #define CURSOR_W 12
@@ -778,6 +779,9 @@ NORETURN void gui_run(void)
 
     for (;;) {
         bool activity = false;
+
+        /* Eingegangene Pakete abholen, bevor Eingaben verarbeitet werden. */
+        net_poll();
 
         while (keyboard_poll(&ke)) {
             handle_key(&ke);

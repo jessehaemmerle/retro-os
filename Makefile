@@ -37,7 +37,7 @@ OBJS   := $(patsubst kernel/src/%.c,$(BUILD)/obj/%.c.o,$(CFILES)) \
           $(patsubst kernel/src/%.S,$(BUILD)/obj/%.S.o,$(SFILES))
 DEPS   := $(OBJS:.o=.d)
 
-.PHONY: all kernel iso run run-uefi clean distclean limine
+.PHONY: all kernel iso run run-uefi run-plain disk clean distclean limine
 
 all: iso
 
@@ -86,8 +86,30 @@ run: iso
 run-uefi: iso
 	@scripts/run.sh --uefi
 
+# Ohne Festplatte und ohne Netzwerk - zeigt, dass beides optional ist.
+run-plain: iso
+	@scripts/run.sh --no-disk --no-net
+
+# Legt eine leere Festplattendatei an. Sie entsteht sonst beim ersten
+# "make run" von selbst; hier laesst sich die Groesse vorgeben:
+#   make disk DISK_MB=512
+DISK    := $(BUILD)/festplatte.img
+DISK_MB ?= 256
+
+disk: $(DISK)
+
+$(DISK):
+	@mkdir -p $(BUILD)
+	@echo "  DISK    $@ ($(DISK_MB) MiB)"
+	@qemu-img create -f raw $@ $(DISK_MB)M >/dev/null 2>&1 || \
+	 dd if=/dev/zero of=$@ bs=1M count=$(DISK_MB) status=none
+	@mkfs.vfat -F 32 -n RETROOS $@ >/dev/null 2>&1 || \
+	 echo "  Hinweis: In RetroOS \"formatieren wirklich\" ausfuehren."
+
+
+# Die Festplattendatei bleibt erhalten - sie enthaelt die Daten des Nutzers.
 clean:
-	@rm -rf $(BUILD) $(ISO)
+	@rm -rf $(BUILD)/obj $(KERNEL) $(ISO_ROOT) $(ISO)
 
 distclean: clean
 	@rm -rf third_party

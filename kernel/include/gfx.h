@@ -63,6 +63,11 @@ void gfx_text_clipped(struct canvas *c, int32_t x, int32_t y, const char *s,
                       uint32_t color, int32_t max_w);
 int32_t gfx_text_width(const char *s);
 
+/* Vergroesserte Schrift fuer Ueberschriften - jedes Pixel wird zum Quadrat. */
+void gfx_text_scaled(struct canvas *c, int32_t x, int32_t y, const char *s,
+                     uint32_t color, int32_t scale, bool bold);
+int32_t gfx_text_width_scaled(const char *s, int32_t scale);
+
 /* --- Flaechen kopieren --- */
 void gfx_blit(struct canvas *dst, int32_t x, int32_t y, const struct canvas *src);
 
