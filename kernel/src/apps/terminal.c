@@ -6,6 +6,7 @@
  */
 
 #include "apps.h"
+#include "usb.h"
 #include "arch.h"
 #include "block.h"
 #include "net.h"
@@ -143,6 +144,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  aufloesen <name> Namen in eine Adresse wandeln");
     term_line(st, C_NORMAL, "  holen <adresse> [datei]  Seite abrufen/speichern");
     term_line(st, C_NORMAL, "  platte           Datentraeger anzeigen");
+    term_line(st, C_NORMAL, "  usb              Geraete am USB-Bus anzeigen");
     term_line(st, C_NORMAL, "  formatieren      Datentraeger neu formatieren");
     term_line(st, C_NORMAL, "  leeren           Bildschirm loeschen");
     term_line(st, C_NORMAL, "  neustart         Rechner neu starten");
@@ -304,6 +306,45 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
     }
 
     http_response_free(&response);
+}
+
+/* Zeigt, was am USB-Bus haengt. */
+static void cmd_usb(struct term_state *st)
+{
+    char line[128];
+
+    if (usb_device_count() == 0) {
+        term_line(st, C_NORMAL, "Keine USB-Geraete gefunden.");
+        return;
+    }
+
+    for (size_t i = 0; i < usb_device_count(); i++) {
+        const struct usb_device_info *info =
+            usb_device_details(usb_device_at(i));
+
+        if (!info)
+            continue;
+
+        const char *art = "Geraet";
+
+        if (info->interface_class == USB_CLASS_HID) {
+            if (info->interface_protocol == HID_PROTOCOL_KEYBOARD)
+                art = "Tastatur";
+            else if (info->interface_protocol == HID_PROTOCOL_MOUSE)
+                art = "Maus";
+            else
+                art = "Eingabegeraet";
+        }
+
+        ksnprintf(line, sizeof(line), "Anschluss %u: %s", info->port, art);
+        term_line(st, C_HIGHLIGHT, line);
+        ksnprintf(line, sizeof(line),
+                  "  %04x:%04x, Klasse %u.%u.%u, %s, %u Byte je Paket",
+                  info->vendor_id, info->product_id, info->interface_class,
+                  info->interface_subclass, info->interface_protocol,
+                  usb_speed_name(info->speed), info->max_packet);
+        term_line(st, C_NORMAL, line);
+    }
 }
 
 static void cmd_disk(struct term_state *st)
@@ -698,6 +739,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "platte")) {
         cmd_disk(st);
+
+    } else if (!strcasecmp(cmd, "usb")) {
+        cmd_usb(st);
 
     } else if (!strcasecmp(cmd, "formatieren")) {
         if (!a1 || strcasecmp(a1, "wirklich") != 0) {

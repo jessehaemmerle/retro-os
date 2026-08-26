@@ -6,6 +6,11 @@ Treibern, eigenem Fenstersystem, einem dauerhaften Dateisystem auf der
 Festplatte, einem TCP/IP-Stapel mit TLS 1.3 und einem Browser, der HTML,
 CSS, Bilder und JavaScript versteht.
 
+Unter der Haube ist RetroOS auf heutiger Hardware zu Hause: USB-Tastatur
+und -Maus am xHCI-Controller, NVMe-SSDs und SATA-Platten, GPT-Partitionen,
+APIC und MSI statt des Interruptcontrollers von 1976. Retro ist allein
+die Oberfläche – so soll es auch sein.
+
 Kein Linux-Unterbau, keine libc, kein fremdes GUI-Toolkit, keine
 Netzwerk- oder Kryptobibliothek, keine Browser-Engine. Übernommen wurde
 allein der Bootloader
@@ -32,11 +37,16 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 ├───────────────────────────────┤  TCP · UDP · DHCP · DNS · ICMP       │
 │  Seitenverwaltung · Heap      │  IPv4 · ARP · Ethernet               │
 ├───────────────────────────────┼──────────────────────────────────────┤
-│  Blockgeräte: AHCI · ATA      │  Netzwerkkarte: Intel e1000          │
+│  Partitionen: GPT · MBR       │  Netzwerkkarte: Intel e1000          │
+│  Blockgeräte: NVMe · AHCI ·   ├──────────────────────────────────────┤
+│  ATA                          │  USB: xHCI · HID-Tastatur und -Maus  │
 ├───────────────────────────────┴──────────────────────────────────────┤
-│  PS/2-Tastatur · PS/2-Maus · PIT · RTC · UART · PCI · ACPI           │
+│  PS/2 (falls vorhanden) · RTC · UART · PCIe · ACPI                   │
 ├──────────────────────────────────────────────────────────────────────┤
-│  Kern: GDT · IDT · TSS · PIC · Systemaufrufe (SYSCALL/SYSRET)        │
+│  Unterbrechungen: lokaler APIC · IOAPIC · MSI/MSI-X · 8259A ersatz-  │
+│  weise · Zeitgeber des APIC, sonst PIT                               │
+├──────────────────────────────────────────────────────────────────────┤
+│  Kern: GDT · IDT · TSS · Systemaufrufe (SYSCALL/SYSRET)              │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -64,11 +74,14 @@ per UEFI, aus einem virtuellen Laufwerk ebenso wie von einem USB-Stick.
 sudo dd if=retroos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-> Auf echter Hardware erwartet RetroOS eine PS/2-Tastatur und -Maus (die
-> meisten Notebooks emulieren das für ihre eingebauten Geräte; sonst hilft
-> die BIOS-Einstellung „USB Legacy Support"), einen SATA-Controller im
-> AHCI-Modus oder einen IDE-Controller sowie eine Intel-Netzwerkkarte der
-> Reihe 8254x/8257x.
+> Auf echter Hardware kommt RetroOS mit USB-Tastatur und -Maus an einem
+> xHCI-Controller zurecht – also mit dem, was ein heutiges Notebook
+> mitbringt. Ist noch ein PS/2-Anschluss da, wird er ebenfalls benutzt;
+> fehlt er, sagen das die ACPI-Tabellen und RetroOS klopft gar nicht erst
+> an. Als Datenträger dienen NVMe-SSDs, SATA-Platten am AHCI-Controller
+> oder ältere IDE-Laufwerke, jeweils mit GPT- oder MBR-Partitionstabelle.
+> Beim Netzwerk ist RetroOS noch wählerisch: es braucht eine
+> Intel-Netzwerkkarte der Reihe 8254x/8257x.
 
 ## Bedienung
 
@@ -113,6 +126,7 @@ mit Knöpfen.
 | `programme` | die eingebauten Programme auflisten |
 | `threads` | laufende Threads mit Zustand und Rechenzeit |
 | `platte` | Laufwerke und eingehängtes Dateisystem |
+| `usb` | Geräte am USB-Bus mit Klasse und Geschwindigkeit |
 | `formatieren wirklich [Name]` | Datenträger neu mit FAT32 formatieren |
 | `netz` | IP-Adresse, Gateway, Namensserver, Paketzähler |
 | `ping <ziel>` | Erreichbarkeit prüfen |
@@ -123,7 +137,7 @@ mit Knöpfen.
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
 also so, wie es ein Betriebssystem tut.
 
-![Systeminformation und Startmenü](docs/systeminfo.png)
+![Systeminformation: APIC, NVMe und USB-Eingabe auf einem Rechner ohne PS/2](docs/systeminfo.png)
 
 ## Was drinsteckt
 
@@ -131,14 +145,17 @@ also so, wie es ein Betriebssystem tut.
 | --- | --- |
 | **Start** | Limine-Protokoll, Higher-Half-Kernel bei `0xffffffff80000000` |
 | **CPU** | eigene GDT mit TSS, IDT mit 48 Vektoren, Ausnahmebehandlung mit Panik-Ausgabe |
-| **Interrupts** | 8259A-PIC auf Vektor 32–47 umgelegt, PIT als 1000-Hz-Systemtakt |
+| **Interrupts** | lokaler APIC, IOAPIC samt Umlegungen aus der MADT, MSI und MSI-X für PCIe; 8259A als Rückfallebene |
+| **Systemtakt** | Zeitgeber des lokalen APIC mit 1000 Hz, gegen den PIT ausgezählt; sonst der PIT selbst |
 | **Scheduler** | präemptiv, Zeitscheiben von 20 ms, drei Prioritäten, Schlafen und Warten |
 | **Prozesse** | ELF64-Lader, eigener Adressraum je Prozess, Ring 3, Systemaufrufe über `SYSCALL`/`SYSRET` |
 | **Speicher** | Bitmap-Allokator für Seitenrahmen, vierstufige Seitentabellen, Heap mit Blockverschmelzung |
-| **Busse** | PCI-Erkennung über Konfigurationsmechanismus 1 |
-| **Datenträger** | AHCI-Treiber (SATA, DMA) mit ATA-PIO als Rückfallebene |
+| **Busse** | PCI und PCIe über Konfigurationsmechanismus 1, 64-Bit-Adressbereiche, Fähigkeitenliste |
+| **Datenträger** | NVMe über PCIe mit eigenen Warteschlangen, AHCI (SATA, DMA), ATA-PIO als Rückfallebene |
+| **Partitionen** | GPT samt Sicherungstabelle, MBR mit erweiterten Abschnitten, roher Datenträger |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
-| **Eingabe** | 8042-Controller, Tastatur mit deutscher Belegung inkl. AltGr, Maus mit Scrollrad |
+| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung, Unterbrechungsendpunkte |
+| **Eingabe** | USB-Tastatur und -Maus im Boot-Protokoll, dazu der 8042-Controller, wo es ihn noch gibt; deutsche Belegung inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
 | **Netzwerk** | Intel-e1000-Treiber, Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, HTTP/1.1 |
@@ -189,6 +206,32 @@ keine Registersätze retten muss. Der Bereich reicht von etwa plus/minus
 140 Billionen bei einer Genauigkeit von 1/65536 – für Seitenskripte,
 Zeitangaben und Koordinaten mehr als genug.
 
+### Alt und neu nebeneinander
+
+RetroOS sucht sich zur Laufzeit aus, welchen Weg es nimmt – ohne dass
+dafür zwei Fassungen gebaut werden müssten:
+
+| Aufgabe | bevorzugt | Rückfallebene |
+| --- | --- | --- |
+| Unterbrechungen | lokaler APIC und IOAPIC | 8259A-PIC |
+| Unterbrechung eines PCIe-Geräts | MSI oder MSI-X | Leitung im IOAPIC bzw. PIC |
+| Systemtakt | Zeitgeber des lokalen APIC | PIT |
+| Eingabe | USB-HID am xHCI | PS/2 am 8042 |
+| Datenträger | NVMe | AHCI, dann ATA-PIO |
+| Aufteilung | GPT | MBR, sonst roher Datenträger |
+
+Ob es einen PS/2-Anschluss gibt, verrät die FADT in ihren
+Boot-Kennzeichen; wo die Angabe fehlt, klopft RetroOS vorsichtig an und
+wartet mit begrenzter Geduld. Das ist kein Schönheitsfehler, sondern
+notwendig: An einem Rechner ohne 8042 liest man am Statusport lauter
+Einsen, und ein Treiber, der darauf wartet, dass sie verschwinden,
+wartet für immer.
+
+Der Zeitgeber des lokalen APIC läuft mit einem Takt, der nirgends
+verzeichnet ist. Er wird deshalb beim Start einmal gegen Kanal 2 des PIT
+ausgezählt – die einzige Stelle, an der der alte Baustein noch gebraucht
+wird, und selbst die nur zum Nachmessen.
+
 ### Wie die Teile zusammenspielen
 
 Der Dateibaum kennt zwei Sorten von Knoten. Alles unterhalb von
@@ -238,17 +281,19 @@ kernel/
   linker.ld           Speicheraufteilung des Kernels
   src/
     main.c            Startreihenfolge des Systems
-    arch/             GDT, IDT, Interrupt-Stubs, PIC, PIT, ACPI, Systemaufrufe
+    arch/             GDT, IDT, Interrupt-Stubs, APIC, IOAPIC, PIC, Zeitgeber,
+                      ACPI, Systemaufrufe
     mm/               Seitenverwaltung, Adressräume und Heap
     sched/            Threads und präemptiver Scheduler
     proc/             ELF64-Lader und Prozesse in Ring 3
-    drivers/          Framebuffer, PS/2, Tastatur, Maus, RTC, UART,
-                      PCI, AHCI, ATA, Blockgeräte, e1000
-    fs/               Dateibaum, FAT32, Startbestand des RAM-Teils
+    drivers/          Framebuffer, PS/2, Tastatur, Maus, RTC, UART, PCI,
+                      NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID, e1000
+    fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand
     net/              Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, TLS, HTTP
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
     gfx/              DEFLATE, PNG, JPEG, GIF, BMP, Skalieren und Zeichnen
+    lib/              Zeichenketten, Ausgabe, 128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
     apps/             Dateimanager, Browser, Dokumentbaum, HTML-Leser,
@@ -281,12 +326,21 @@ PMM         : 508 MiB verwaltet, 508 MiB frei
 Heap        : 260 KiB bereit
 Adressraum  : Kernel-Tabelle bei 0x000000001ff46000
 ACPI        : PM1a 0x604, S5 = 0/0
-PCI         : 6 Geraete gefunden
-  00:31.2  8086:2922  SATA-Controller (AHCI)
-Datentraeger: sata0 - QEMU HARDDISK, 128 MiB
-Maus        : Typ 3, 4-Byte-Pakete
-Dateisystem : 32 Eintraege, 474351 Bytes
-Datentraeger: RETROOS eingehaengt unter /Festplatte (125 MiB frei)
+APIC        : 1 Kern, 1 IOAPIC mit 24 Eingaengen
+APIC-Timer  : 1000 Hz, 62598 Takte je Millisekunde
+PS/2        : laut ACPI nicht vorhanden
+PCI         : 7 Geraete gefunden
+  00:02.0  1b36:000d  USB-Controller
+  00:03.0  1b36:0010  NVMe-Controller
+Datentraeger: nvme0 - QEMU NVMe Ctrl, 256 MiB
+USB         : xHCI mit 8 Anschluessen, 8 Steckplaetzen, MSI
+USB         : Anschluss 5, 0627:0001, Klasse 3.1.1, High Speed
+USB         : Tastatur angemeldet
+USB         : Anschluss 6, 0627:0001, Klasse 3.1.2, High Speed
+USB         : Maus angemeldet
+Dateisystem : 28 Eintraege, 171835 Bytes
+Datentraeger: GPT, Abschnitt 2 ab Sektor 34816
+Datentraeger: RETROOS eingehaengt unter /Festplatte (235 MiB frei)
 Scheduler   : bereit, Zeitscheibe 20 ms
 Systemaufrufe: bereit (14 Nummern)
 Zertifikate : 152 Wurzeln geladen
@@ -306,6 +360,18 @@ Wirtsrechner; unter QEMUs Benutzer-Netzwerk ist er aus RetroOS heraus als
 ```sh
 cd /pfad/zu/seiten && python3 -m http.server 8000
 # in RetroOS:  http://10.0.2.2:8000
+```
+
+Wer die modernen Wege ausprobieren will, gibt QEMU die passenden Geräte
+mit – ganz ohne PS/2, mit USB-Eingabe und einer NVMe-SSD:
+
+```sh
+qemu-system-x86_64 -M q35,i8042=off -m 512M -cdrom retroos.iso -boot d \
+  -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 \
+  -device usb-mouse,bus=xhci.0 \
+  -drive file=platte.img,if=none,id=nvm0,format=raw \
+  -device nvme,serial=RETRO0001,drive=nvm0 \
+  -netdev user,id=n0 -device e1000,netdev=n0 -serial stdio
 ```
 
 ## Lizenz

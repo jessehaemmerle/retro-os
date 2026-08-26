@@ -6,6 +6,7 @@
  */
 
 .section .text
+.altmacro
 .extern isr_dispatch
 
 .macro ISR_NOERR num
@@ -74,6 +75,30 @@ ISR_NOERR 44
 ISR_NOERR 45
 ISR_NOERR 46
 ISR_NOERR 47
+
+/* Vektoren 48-95 vergibt der Kern selbst - fuer MSI und MSI-X der
+ * PCIe-Geraete sowie den Zeitgeber des lokalen APIC. */
+.irp num, 48, 49, 50, 51, 52, 53, 54, 55
+ISR_NOERR %\num
+.endr
+.irp num, 56, 57, 58, 59, 60, 61, 62, 63
+ISR_NOERR %\num
+.endr
+.irp num, 64, 65, 66, 67, 68, 69, 70, 71
+ISR_NOERR %\num
+.endr
+.irp num, 72, 73, 74, 75, 76, 77, 78, 79
+ISR_NOERR %\num
+.endr
+.irp num, 80, 81, 82, 83, 84, 85, 86, 87
+ISR_NOERR %\num
+.endr
+.irp num, 88, 89, 90, 91, 92, 93, 94, 95
+ISR_NOERR %\num
+.endr
+
+/* Vektor 255 faengt die Fehlmeldungen des lokalen APIC ab. */
+ISR_NOERR 255
 
 isr_common:
     pushq %rax

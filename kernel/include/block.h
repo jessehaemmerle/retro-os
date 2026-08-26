@@ -5,7 +5,7 @@
 #include "retro.h"
 
 #define BLOCK_SECTOR_SIZE 512
-#define BLOCK_MAX_DEVICES 4
+#define BLOCK_MAX_DEVICES 8
 
 struct block_device;
 
@@ -37,5 +37,6 @@ void storage_init(void);
 
 void ahci_init(void);
 void ata_init(void);
+void nvme_init(void);
 
 #endif /* BLOCK_H */

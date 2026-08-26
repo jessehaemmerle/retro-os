@@ -16,7 +16,8 @@ struct pci_device {
     uint8_t  prog_if;
     uint8_t  irq_line;
 
-    uint32_t bar[6];        /* Basisadressen, bereits maskiert */
+    uint64_t bar[6];        /* Basisadressen, bereits maskiert */
+    uint64_t bar_size[6];   /* Groesse des Bereichs in Bytes    */
     bool     bar_is_io[6];
 };
 
@@ -36,6 +37,21 @@ void     pci_write16(const struct pci_device *dev, uint8_t offset, uint16_t valu
 
 /* Busmaster und Speicherzugriff freischalten - noetig fuer DMA-Geraete. */
 void pci_enable_bus_master(const struct pci_device *dev);
+
+/* Sucht eine Faehigkeit in der verketteten Liste des Geraets.
+ * Gibt den Versatz im Konfigurationsraum zurueck, sonst 0. */
+uint8_t pci_find_capability(const struct pci_device *dev, uint8_t id);
+
+#define PCI_CAP_MSI  0x05
+#define PCI_CAP_MSIX 0x11
+
+/* Legt die Unterbrechung des Geraets auf einen Vektor - ueber MSI-X,
+ * sonst MSI. Beides schreibt der Chipsatz als Speicherzugriff, es
+ * braucht also keine Leitung im IOAPIC. */
+bool pci_enable_msi(const struct pci_device *dev, uint8_t vector);
+
+/* Schaltet die alte Unterbrechungsleitung ab bzw. wieder an. */
+void pci_set_intx(const struct pci_device *dev, bool enabled);
 
 const char *pci_class_name(uint8_t class_code, uint8_t subclass);
 

@@ -148,6 +148,17 @@ static void keyboard_irq(struct registers *regs)
     if (!key)
         return;
 
+    keyboard_inject(key, pressed);
+}
+
+/* Erzeugt aus einer Taste das Ereignis und legt es in die Warteschlange.
+ * Den Weg gehen beide Tastaturen - die am PS/2-Anschluss und die am
+ * USB-Bus; ab hier unterscheidet der Rest des Systems sie nicht mehr. */
+void keyboard_inject(uint16_t key, bool pressed)
+{
+    if (!key)
+        return;
+
     update_mods(key, pressed);
 
     struct key_event ev = { .key = key, .ascii = 0, .mods = mods,
@@ -158,6 +169,7 @@ static void keyboard_irq(struct registers *regs)
 
         if (c >= 'a' && c <= 'z') {
             bool upper = (mods & MOD_SHIFT) != 0;
+
             if (mods & MOD_CAPS)
                 upper = !upper;
             if (upper)
@@ -174,7 +186,11 @@ void keyboard_init(void)
 {
     q_head = q_tail = 0;
     mods = 0;
-    irq_install(1, keyboard_irq);
+
+    /* Ohne 8042 gibt es nichts anzumelden - dann kommen die Tasten
+     * ueber den USB-Bus herein. */
+    if (ps2_present())
+        irq_install(1, keyboard_irq);
 }
 
 bool keyboard_poll(struct key_event *out)

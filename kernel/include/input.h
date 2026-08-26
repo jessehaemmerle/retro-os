@@ -42,16 +42,27 @@ struct mouse_state {
     bool    left, right, middle;
 };
 
-/* PS/2-Controller und die beiden Geraete einrichten. */
-void ps2_init(void);
+/* PS/2-Controller und die beiden Geraete einrichten. Gibt false zurueck,
+ * wenn der Rechner gar keinen mehr hat - dann uebernimmt USB. */
+bool ps2_init(void);
+bool ps2_present(void);
 
 void keyboard_init(void);
 bool keyboard_poll(struct key_event *out);
 uint8_t keyboard_mods(void);
 
+/* Eine Taste von einem anderen Treiber - etwa der USB-Tastatur. */
+void keyboard_inject(uint16_t key, bool pressed);
+
 void mouse_init(int32_t screen_w, int32_t screen_h);
 /* Liefert true, wenn sich seit dem letzten Aufruf etwas geaendert hat. */
 bool mouse_poll(struct mouse_state *out);
 void mouse_set_position(int32_t x, int32_t y);
+
+/* Bewegung von einem anderen Treiber - etwa der USB-Maus. */
+void mouse_inject(int32_t dx, int32_t dy, int8_t scroll,
+                  bool left, bool right, bool middle);
+void mouse_inject_absolute(int32_t x, int32_t y, int8_t scroll,
+                           bool left, bool right, bool middle);
 
 #endif /* INPUT_H */

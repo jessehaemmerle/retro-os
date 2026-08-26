@@ -21,13 +21,13 @@ struct idt_ptr {
     uint64_t base;
 } PACKED;
 
-#define IDT_ENTRIES 256
-#define IRQ_BASE    32
-#define IRQ_COUNT   16
-
 static struct idt_entry idt[IDT_ENTRIES];
 static struct idt_ptr   idtr;
-static irq_handler_t    irq_handlers[IRQ_COUNT];
+
+/* Die Behandlung haengt am Vektor, nicht mehr an der IRQ-Nummer: MSI
+ * kennt keine IRQ-Leitungen, sondern schreibt gleich einen Vektor. */
+static irq_handler_t    handlers[IDT_ENTRIES];
+static bool             vector_taken[IDT_ENTRIES];
 
 /* Die Stubs aus isr.S. */
 #define DECL(n) extern void isr##n(void)
@@ -37,15 +37,28 @@ DECL(16); DECL(17); DECL(18); DECL(19); DECL(20); DECL(21); DECL(22); DECL(23);
 DECL(24); DECL(25); DECL(26); DECL(27); DECL(28); DECL(29); DECL(30); DECL(31);
 DECL(32); DECL(33); DECL(34); DECL(35); DECL(36); DECL(37); DECL(38); DECL(39);
 DECL(40); DECL(41); DECL(42); DECL(43); DECL(44); DECL(45); DECL(46); DECL(47);
+DECL(48); DECL(49); DECL(50); DECL(51); DECL(52); DECL(53); DECL(54); DECL(55);
+DECL(56); DECL(57); DECL(58); DECL(59); DECL(60); DECL(61); DECL(62); DECL(63);
+DECL(64); DECL(65); DECL(66); DECL(67); DECL(68); DECL(69); DECL(70); DECL(71);
+DECL(72); DECL(73); DECL(74); DECL(75); DECL(76); DECL(77); DECL(78); DECL(79);
+DECL(80); DECL(81); DECL(82); DECL(83); DECL(84); DECL(85); DECL(86); DECL(87);
+DECL(88); DECL(89); DECL(90); DECL(91); DECL(92); DECL(93); DECL(94); DECL(95);
+DECL(255);
 #undef DECL
 
-static void *stubs[48] = {
+static void *stubs[IRQ_VECTOR_TOP] = {
     isr0,  isr1,  isr2,  isr3,  isr4,  isr5,  isr6,  isr7,
     isr8,  isr9,  isr10, isr11, isr12, isr13, isr14, isr15,
     isr16, isr17, isr18, isr19, isr20, isr21, isr22, isr23,
     isr24, isr25, isr26, isr27, isr28, isr29, isr30, isr31,
     isr32, isr33, isr34, isr35, isr36, isr37, isr38, isr39,
     isr40, isr41, isr42, isr43, isr44, isr45, isr46, isr47,
+    isr48, isr49, isr50, isr51, isr52, isr53, isr54, isr55,
+    isr56, isr57, isr58, isr59, isr60, isr61, isr62, isr63,
+    isr64, isr65, isr66, isr67, isr68, isr69, isr70, isr71,
+    isr72, isr73, isr74, isr75, isr76, isr77, isr78, isr79,
+    isr80, isr81, isr82, isr83, isr84, isr85, isr86, isr87,
+    isr88, isr89, isr90, isr91, isr92, isr93, isr94, isr95,
 };
 
 static const char *exception_name[32] = {
@@ -75,10 +88,12 @@ static void set_gate(int vec, void *handler)
 void idt_init(void)
 {
     memset(idt, 0, sizeof(idt));
-    memset(irq_handlers, 0, sizeof(irq_handlers));
+    memset(handlers, 0, sizeof(handlers));
+    memset(vector_taken, 0, sizeof(vector_taken));
 
-    for (int i = 0; i < 48; i++)
+    for (int i = 0; i < IRQ_VECTOR_TOP; i++)
         set_gate(i, stubs[i]);
+    set_gate(IRQ_VECTOR_SPURIOUS, isr255);
 
     idtr.limit = sizeof(idt) - 1;
     idtr.base  = (uint64_t)&idt;
@@ -93,19 +108,52 @@ void irq_install(uint8_t irq, irq_handler_t handler)
     if (irq >= IRQ_COUNT)
         return;
 
-    irq_handlers[irq] = handler;
-    pic_mask(irq, false);
+    handlers[IRQ_BASE + irq] = handler;
+    vector_taken[IRQ_BASE + irq] = true;
+    irq_unmask(irq);
+}
+
+void irq_install_vector(uint8_t vector, irq_handler_t handler)
+{
+    if (vector < IRQ_BASE || vector >= IRQ_VECTOR_TOP)
+        return;
+    handlers[vector] = handler;
+    vector_taken[vector] = true;
+}
+
+int32_t irq_alloc_vector(irq_handler_t handler)
+{
+    for (int32_t v = IRQ_VECTOR_DYNAMIC; v < IRQ_VECTOR_TOP; v++) {
+        if (vector_taken[v])
+            continue;
+        vector_taken[v] = true;
+        handlers[v] = handler;
+        return v;
+    }
+    return -1;
+}
+
+void irq_free_vector(uint8_t vector)
+{
+    if (vector < IRQ_VECTOR_DYNAMIC || vector >= IRQ_VECTOR_TOP)
+        return;
+    vector_taken[vector] = false;
+    handlers[vector] = NULL;
 }
 
 void isr_dispatch(struct registers *regs)
 {
-    if (regs->int_no >= IRQ_BASE && regs->int_no < IRQ_BASE + IRQ_COUNT) {
-        uint8_t irq = (uint8_t)(regs->int_no - IRQ_BASE);
+    /* Eine Fehlmeldung des lokalen APIC braucht keine Quittung. */
+    if (regs->int_no == IRQ_VECTOR_SPURIOUS)
+        return;
 
-        if (irq_handlers[irq])
-            irq_handlers[irq](regs);
+    if (regs->int_no >= IRQ_BASE && regs->int_no < IRQ_VECTOR_TOP) {
+        uint32_t vector = (uint32_t)regs->int_no;
 
-        pic_send_eoi(irq);
+        if (handlers[vector])
+            handlers[vector](regs);
+
+        irq_send_eoi((uint8_t)vector);
 
         /* Erst quittieren, dann umschalten - sonst bleibt der Controller
          * haengen, waehrend ein anderer Thread laeuft. */

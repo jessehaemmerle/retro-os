@@ -7,6 +7,8 @@
 
 #include "retro.h"
 #include "acpi.h"
+#include "apic.h"
+#include "usb.h"
 #include "arch.h"
 #include "block.h"
 #include "boot.h"
@@ -52,16 +54,22 @@ NORETURN void kmain(void)
     heap_init();
     vmm_init();
 
+    /* Unterbrechungen: der APIC, wo es ihn gibt. Dafuer muessen die
+     * ACPI-Tabellen schon gelesen sein - dort steht, wo er liegt. */
+    acpi_init();
+    if (apic_init())
+        pic_disable();
+
     /* Zeit und Eingabe */
-    pit_init(1000);
+    timer_init(1000);
     ps2_init();
     keyboard_init();
     sti();
 
     /* Busse und Datentraeger */
-    acpi_init();
     pci_init();
     storage_init();
+    xhci_init();
 
     /* Grafik */
     if (!fb_init())
@@ -79,6 +87,9 @@ NORETURN void kmain(void)
     thread_init();
     syscall_init();
     process_init();
+
+    /* Die Eingabegeraete am USB-Bus brauchen einen eigenen Thread. */
+    usb_start_polling();
     thread_current()->priority = PRIO_HIGH;   /* die Oberflaeche */
 
     /* Netzwerk (bringt seinen eigenen Thread mit) */

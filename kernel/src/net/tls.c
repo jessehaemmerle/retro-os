@@ -536,7 +536,7 @@ static bool check_certificate_verify(const struct certificate *server,
     uint16_t signature_length = get16(message + 6);
     const uint8_t *signature = message + 8;
 
-    if (8 + signature_length > length) {
+    if ((uint32_t)signature_length + 8u > length) {
         strlcpy(error, "Die Unterschrift des Servers ist unvollstaendig.",
                 error_size);
         return false;

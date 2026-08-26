@@ -55,6 +55,10 @@ struct fat_dirent {
 typedef void (*fat_dir_cb)(void *user, const struct fat_dirent *entry);
 
 bool fat_mount(struct block_device *dev, struct fat_volume *vol);
+
+/* Haengt genau den Abschnitt ab diesem Sektor ein - fuer Partitionen. */
+bool fat_mount_at(struct block_device *dev, uint64_t lba,
+                  struct fat_volume *vol);
 bool fat_format(struct block_device *dev, const char *label);
 
 bool fat_list_dir(struct fat_volume *vol, uint32_t dir_cluster,

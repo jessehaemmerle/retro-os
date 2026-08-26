@@ -6,6 +6,7 @@
  */
 
 #include "input.h"
+#include "acpi.h"
 #include "io.h"
 #include "ps2.h"
 
@@ -60,13 +61,55 @@ uint8_t ps2_mouse_command(uint8_t byte)
     return ps2_read_data();
 }
 
-void ps2_init(void)
+static bool present;
+
+bool ps2_present(void)
 {
+    return present;
+}
+
+/* Leert den Ausgabepuffer - mit Begrenzung. Fehlt der Baustein, liest
+ * man an Port 0x64 lauter Einsen und wuerde sonst ewig kreisen. */
+static void drain_output(void)
+{
+    for (int i = 0; i < 32; i++) {
+        uint8_t status = inb(PS2_STATUS);
+
+        if (status == 0xFF || !(status & STATUS_OUTPUT_FULL))
+            return;
+        (void)inb(PS2_DATA);
+    }
+}
+
+bool ps2_init(void)
+{
+    present = false;
+
+    /* Moderne Rechner sagen in den ACPI-Tabellen, dass sie keinen
+     * 8042 mehr haben. Dann wird gar nicht erst angeklopft. */
+    if (!acpi_has_ps2()) {
+        kprintf("PS/2        : laut ACPI nicht vorhanden\n");
+        return false;
+    }
+
+    /* Ein fehlender Baustein antwortet mit lauter Einsen. */
+    if (inb(PS2_STATUS) == 0xFF) {
+        kprintf("PS/2        : kein Controller gefunden\n");
+        return false;
+    }
+
     /* Beide Ports voruebergehend abschalten und den Puffer leeren. */
     ps2_write_cmd(0xAD);
     ps2_write_cmd(0xA7);
-    while (inb(PS2_STATUS) & STATUS_OUTPUT_FULL)
-        (void)inb(PS2_DATA);
+    drain_output();
+
+    /* Selbsttest: der Controller muss mit 0x55 antworten. */
+    ps2_write_cmd(0xAA);
+    if (!ps2_wait_read() || inb(PS2_DATA) != 0x55) {
+        kprintf("PS/2        : Selbsttest fehlgeschlagen\n");
+        return false;
+    }
+    drain_output();
 
     /* Konfiguration lesen, Interrupts fuer beide Ports einschalten,
      * Scancode-Uebersetzung auf Satz 1 aktiviert lassen. */
@@ -83,4 +126,7 @@ void ps2_init(void)
     /* Ports wieder aktivieren. */
     ps2_write_cmd(0xAE);
     ps2_write_cmd(0xA8);
+
+    present = true;
+    return true;
 }

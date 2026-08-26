@@ -6,6 +6,7 @@
 
 #include "arch.h"
 #include "io.h"
+#include "apic.h"
 
 #define PIC1_CMD  0x20
 #define PIC1_DATA 0x21
@@ -60,4 +61,47 @@ void pic_send_eoi(uint8_t irq)
     if (irq >= 8)
         outb(PIC2_CMD, 0x20);
     outb(PIC1_CMD, 0x20);
+}
+
+/* ------------------------------------------------------------------ */
+/* Gemeinsame Schnittstelle fuer 8259A und APIC                        */
+/* ------------------------------------------------------------------ */
+
+/* Der Rest des Kerns soll nicht wissen muessen, welcher Baustein die
+ * Unterbrechungen zustellt. Diese drei Funktionen entscheiden das. */
+
+void pic_disable(void)
+{
+    /* Alle Leitungen stilllegen; der APIC uebernimmt. */
+    outb(PIC1_DATA, 0xFF);
+    outb(PIC2_DATA, 0xFF);
+}
+
+void irq_unmask(uint8_t irq)
+{
+    if (apic_available()) {
+        ioapic_route(irq, (uint8_t)(IRQ_BASE + irq));
+        ioapic_mask(irq, false);
+        return;
+    }
+    pic_mask(irq, false);
+}
+
+void irq_mask(uint8_t irq)
+{
+    if (apic_available()) {
+        ioapic_mask(irq, true);
+        return;
+    }
+    pic_mask(irq, true);
+}
+
+void irq_send_eoi(uint8_t vector)
+{
+    if (apic_available()) {
+        apic_send_eoi();
+        return;
+    }
+    if (vector >= IRQ_BASE && vector < IRQ_BASE + IRQ_COUNT)
+        pic_send_eoi((uint8_t)(vector - IRQ_BASE));
 }

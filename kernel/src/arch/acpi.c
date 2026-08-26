@@ -103,6 +103,10 @@ struct fadt {
 
 static struct acpi_info info;
 
+/* Wurzel der Tabellenliste, damit spaetere Abfragen sie wiederfinden. */
+static uint64_t table_root;
+static bool     table_use_xsdt;
+
 /* Je nach Fassung des Bootloader-Protokolls kommt die Adresse des RSDP
  * physisch oder bereits als Zeiger in der direkten Abbildung. Beides wird
  * hier auf dieselbe Form gebracht. */
@@ -218,12 +222,21 @@ void acpi_init(void)
     bool use_xsdt = rsdp->v1.revision >= 2 && rsdp->xsdt_address != 0;
 
     root = use_xsdt ? rsdp->xsdt_address : rsdp->v1.rsdt_address;
+    table_root = root;
+    table_use_xsdt = use_xsdt;
 
     const struct fadt *fadt = (const struct fadt *)find_table(root, use_xsdt,
                                                               "FACP");
     if (!fadt) {
         kprintf("ACPI        : keine FADT gefunden\n");
         return;
+    }
+
+    /* Ab Fassung 2 sind die Boot-Kennzeichen verbindlich. */
+    if (fadt->header.revision >= 2 ||
+        fadt->header.length >= sizeof(struct fadt)) {
+        info.boot_flags = fadt->boot_architecture_flags;
+        info.boot_flags_valid = true;
     }
 
     info.pm1a_control = fadt->pm1a_control_block;
@@ -320,4 +333,20 @@ bool acpi_reset(void)
         io_wait();
 
     return false;
+}
+
+/* Sucht eine Tabelle anhand ihrer vierstelligen Kennung, etwa "APIC"
+ * fuer die MADT oder "HPET" fuer den Hochleistungszeitgeber. */
+const void *acpi_find_table(const char *signature)
+{
+    if (!table_root || !signature)
+        return NULL;
+    return find_table(table_root, table_use_xsdt, signature);
+}
+
+bool acpi_has_ps2(void)
+{
+    if (!info.boot_flags_valid)
+        return true;            /* keine Angabe - dann eben probieren */
+    return (info.boot_flags & ACPI_BOOT_8042) != 0;
 }

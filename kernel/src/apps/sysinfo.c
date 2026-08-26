@@ -1,6 +1,9 @@
 /* sysinfo.c - Systeminformationen und das "Ueber"-Fenster. */
 
 #include "apps.h"
+#include "apic.h"
+#include "input.h"
+#include "usb.h"
 #include "arch.h"
 #include "boot.h"
 #include "font.h"
@@ -75,6 +78,7 @@ static void sys_paint(struct window *win, struct canvas *c)
     struct canvas local = gui_client_canvas(win, c);
     const struct boot_info *bi = boot_info();
     char buf[96];
+    char label[32];
     int32_t y = 14;
 
     gfx_fill(&local, rect_make(0, 0, local.w, local.h), COL_FACE);
@@ -83,7 +87,16 @@ static void sys_paint(struct window *win, struct canvas *c)
     y += 22;
     row(&local, y, "Hersteller", st->cpu_vendor);           y += 18;
     row(&local, y, "Modell", st->cpu_brand);                y += 18;
-    row(&local, y, "Betriebsart", "Long Mode (64 Bit)");    y += 28;
+    row(&local, y, "Betriebsart", "Long Mode (64 Bit)");    y += 18;
+
+    if (apic_available())
+        ksnprintf(buf, sizeof(buf), "APIC, %u Kern%s%s",
+                  (unsigned)apic_cpu_count(),
+                  apic_cpu_count() == 1 ? "" : "e",
+                  timer_uses_apic() ? ", eigener Zeitgeber" : "");
+    else
+        strlcpy(buf, "8259A-PIC mit PIT", sizeof(buf));
+    row(&local, y, "Unterbrechungen", buf);                 y += 28;
 
     gfx_text_bold(&local, 16, y, "Speicher", COL_SELECT);
     y += 22;
@@ -154,12 +167,22 @@ static void sys_paint(struct window *win, struct canvas *c)
         row(&local, y, "Laufwerk", "keines gefunden");
         y += 18;
     } else {
-        struct block_device *d = block_device_at(0);
+        /* Ein heutiger Rechner hat oft mehrere - NVMe und SATA
+         * nebeneinander. Alle auffuehren. */
+        for (size_t i = 0; i < block_device_count(); i++) {
+            struct block_device *d = block_device_at(i);
+            uint64_t mib = d->sector_count * d->sector_size / (1024 * 1024);
 
-        ksnprintf(buf, sizeof(buf), "%s (%u MiB)", d->model,
-                  (unsigned)(d->sector_count * d->sector_size / (1024 * 1024)));
-        row(&local, y, d->name, buf);
-        y += 18;
+            if (mib >= 1024)
+                ksnprintf(buf, sizeof(buf), "%s (%u,%u GiB)", d->model,
+                          (unsigned)(mib / 1024),
+                          (unsigned)((mib % 1024) * 10 / 1024));
+            else
+                ksnprintf(buf, sizeof(buf), "%s (%u MiB)", d->model,
+                          (unsigned)mib);
+            row(&local, y, d->name, buf);
+            y += 18;
+        }
 
         if (fs_disk_mounted()) {
             struct fat_volume *vol = fs_disk_volume();
@@ -175,6 +198,43 @@ static void sys_paint(struct window *win, struct canvas *c)
             y += 24;
         } else {
             row(&local, y, "Dateisystem", "nicht eingehaengt");
+            y += 18;
+        }
+    }
+
+    y += 12;
+    gfx_text_bold(&local, 16, y, "Eingabe", COL_SELECT);
+    y += 22;
+
+    row(&local, y, "PS/2-Anschluss",
+        ps2_present() ? "Tastatur und Maus" : "nicht vorhanden");
+    y += 18;
+
+    if (usb_device_count() == 0) {
+        row(&local, y, "USB", "keine Geraete");
+        y += 18;
+    } else {
+        for (size_t i = 0; i < usb_device_count(); i++) {
+            const struct usb_device_info *info =
+                usb_device_details(usb_device_at(i));
+
+            if (!info)
+                continue;
+
+            const char *art = "Geraet";
+
+            if (info->interface_class == USB_CLASS_HID) {
+                if (info->interface_protocol == HID_PROTOCOL_KEYBOARD)
+                    art = "Tastatur";
+                else if (info->interface_protocol == HID_PROTOCOL_MOUSE)
+                    art = "Maus";
+            }
+            ksnprintf(buf, sizeof(buf), "%s, %04x:%04x, %s", art,
+                      info->vendor_id, info->product_id,
+                      usb_speed_name(info->speed));
+            ksnprintf(label, sizeof(label), "USB-Anschluss %u",
+                      (unsigned)info->port);
+            row(&local, y, label, buf);
             y += 18;
         }
     }

@@ -67,6 +67,46 @@ static void handle_packet(void)
     dirty = true;
 }
 
+/* Bewegung und Tasten von aussen uebernehmen - der Weg der USB-Maus.
+ * Die Zaehlweise ist dieselbe wie beim PS/2-Paket: nach rechts und nach
+ * unten positiv. */
+void mouse_inject(int32_t dx, int32_t dy, int8_t scroll,
+                  bool left, bool right, bool middle)
+{
+    pos_x = CLAMP(pos_x + dx, 0, limit_x);
+    pos_y = CLAMP(pos_y + dy, 0, limit_y);
+
+    acc_dx += dx;
+    acc_dy += dy;
+    acc_scroll = (int8_t)(acc_scroll + scroll);
+
+    btn_left = left;
+    btn_right = right;
+    btn_middle = middle;
+
+    dirty = true;
+}
+
+/* Eine absolute Zeigerposition, wie sie ein Grafiktablett meldet -
+ * damit die Maus im Fenster des Emulators sofort passt. */
+void mouse_inject_absolute(int32_t x, int32_t y, int8_t scroll,
+                           bool left, bool right, bool middle)
+{
+    int32_t nx = CLAMP(x, 0, limit_x);
+    int32_t ny = CLAMP(y, 0, limit_y);
+
+    acc_dx += nx - pos_x;
+    acc_dy += ny - pos_y;
+    pos_x = nx;
+    pos_y = ny;
+
+    acc_scroll = (int8_t)(acc_scroll + scroll);
+    btn_left = left;
+    btn_right = right;
+    btn_middle = middle;
+    dirty = true;
+}
+
 static void mouse_irq(struct registers *regs)
 {
     UNUSED(regs);
@@ -96,8 +136,15 @@ void mouse_init(int32_t screen_w, int32_t screen_h)
 {
     limit_x = screen_w - 1;
     limit_y = screen_h - 1;
-    pos_x   = screen_w / 2;
-    pos_y   = screen_h / 2;
+    pos_x = screen_w / 2;
+    pos_y = screen_h / 2;
+
+    /* Die Maus am PS/2-Anschluss gibt es nur, wenn der Controller da
+     * ist. Sonst bleibt es bei der USB-Maus. */
+    if (!ps2_present()) {
+        kprintf("Maus        : keine am PS/2-Anschluss\n");
+        return;
+    }
 
     ps2_mouse_command(0xF6);      /* Standardwerte                        */
 

@@ -14,6 +14,7 @@
  */
 
 #include "fat.h"
+#include "partition.h"
 #include "kstring.h"
 #include "mm.h"
 #include "rtc.h"
@@ -922,7 +923,8 @@ static bool parse_bpb(struct fat_volume *vol, const uint8_t *sector,
     return vol->cluster_count > 0;
 }
 
-bool fat_mount(struct block_device *dev, struct fat_volume *vol)
+bool fat_mount_at(struct block_device *dev, uint64_t lba,
+                  struct fat_volume *vol)
 {
     uint8_t sector[512];
 
@@ -930,36 +932,38 @@ bool fat_mount(struct block_device *dev, struct fat_volume *vol)
     vol->dev = dev;
     invalidate_fat_cache();
 
-    if (!block_read(dev, 0, 1, sector))
+    if (!block_read(dev, lba, 1, sector))
+        return false;
+    if (!parse_bpb(vol, sector, lba))
         return false;
 
-    /* Erst ohne Partitionstabelle versuchen ... */
-    if (parse_bpb(vol, sector, 0)) {
-        vol->mounted = true;
+    vol->mounted = true;
+    return true;
+}
+
+bool fat_mount(struct block_device *dev, struct fat_volume *vol)
+{
+    /* Erst ohne Tabelle versuchen - ein roher Datentraeger traegt sein
+     * Dateisystem gleich im ersten Sektor. */
+    if (fat_mount_at(dev, 0, vol))
         return true;
-    }
 
-    /* ... dann die vier Eintraege der MBR-Partitionstabelle. */
-    if (rd16(sector, 510) != 0xAA55)
-        return false;
+    struct partition table[PARTITION_MAX];
+    enum partition_scheme scheme;
+    size_t count = partition_scan(dev, table, PARTITION_MAX, &scheme);
 
-    for (int i = 0; i < 4; i++) {
-        const uint8_t *part = &sector[446 + i * 16];
-        uint8_t  type  = part[4];
-        uint32_t start = rd32(part, 8);
-
-        if (type == 0 || start == 0)
-            continue;
-        /* 0x0B/0x0C sind FAT32, 0x0E FAT16-LBA - alle mit BPB an Position 0. */
-        if (type != 0x0B && type != 0x0C && type != 0x0E && type != 0x06)
-            continue;
-
-        uint8_t boot[512];
-        if (!block_read(dev, start, 1, boot))
-            continue;
-        if (parse_bpb(vol, boot, start)) {
-            vol->mounted = true;
-            return true;
+    /* Zuerst die Abschnitte, die nach FAT aussehen, dann alle uebrigen -
+     * manche Tabellen tragen die Kennung falsch ein. */
+    for (int pass = 0; pass < 2; pass++) {
+        for (size_t i = 0; i < count; i++) {
+            if ((pass == 0) != table[i].is_fat)
+                continue;
+            if (fat_mount_at(dev, table[i].start, vol)) {
+                kprintf("Datentraeger: %s, Abschnitt %u ab Sektor %llu\n",
+                        partition_scheme_name(scheme), (unsigned)(i + 1),
+                        (unsigned long long)table[i].start);
+                return true;
+            }
         }
     }
     return false;
