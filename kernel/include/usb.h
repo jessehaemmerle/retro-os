@@ -75,9 +75,25 @@ void xhci_init(void);
 size_t usb_device_count(void);
 struct usb_device *usb_device_at(size_t index);
 
+/* Eine Uebertragung auf einem Massenendpunkt - fuer Speichergeraete. */
+bool usb_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
+              uint32_t length, bool in, uint32_t *transferred);
+
+/* Richtet die beiden Massenendpunkte ein, die beim Lesen der
+ * Konfiguration gefunden wurden. */
+bool usb_setup_bulk_from_config(struct usb_device *dev);
+
+/* Loescht den Haltezustand eines Endpunkts nach einem Fehler. */
+bool usb_clear_halt(struct usb_device *dev, uint8_t endpoint);
+
+#define USB_CLASS_STORAGE      0x08
+#define STORAGE_SUBCLASS_SCSI  0x06
+#define STORAGE_PROTOCOL_BULK  0x50
+
 /* Wird vom Controller gerufen, sobald ein Geraet bereit ist. */
 void usb_hid_attach(struct usb_device *dev);
 void usb_hid_poll_all(void);
+void usb_storage_attach(struct usb_device *dev);
 
 /* Der Thread, der die Eingabegeraete abfragt. */
 void usb_start_polling(void);

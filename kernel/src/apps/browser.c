@@ -459,7 +459,7 @@ static void relayout(struct window *win)
 
     if (st->needs_restyle) {
         collect_styles(st);
-        css_apply(st->sheet, st->doc.root, 16);
+        css_apply(st->sheet, st->doc.root, 16, width, area.h);
         st->needs_restyle = false;
     }
 
@@ -477,8 +477,11 @@ static void rebuild_page(struct window *win)
 
     st->needs_restyle = true;
     if (!st->scripts_ran) {
+        struct rect area = page_rect(win);
+
         collect_styles(st);
-        css_apply(st->sheet, st->doc.root, 16);
+        css_apply(st->sheet, st->doc.root, 16,
+                  MAX(area.w - 2 * BR_MARGIN - 4, 80), area.h);
         st->needs_restyle = false;
         run_scripts(win);
         st->scripts_ran = true;

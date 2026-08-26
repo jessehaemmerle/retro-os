@@ -327,13 +327,22 @@ static void cmd_usb(struct term_state *st)
 
         const char *art = "Geraet";
 
-        if (info->interface_class == USB_CLASS_HID) {
+        switch (info->interface_class) {
+        case USB_CLASS_HID:
             if (info->interface_protocol == HID_PROTOCOL_KEYBOARD)
                 art = "Tastatur";
             else if (info->interface_protocol == HID_PROTOCOL_MOUSE)
                 art = "Maus";
             else
                 art = "Eingabegeraet";
+            break;
+        case USB_CLASS_STORAGE: art = "Speicher";  break;
+        case 0x09:              art = "Verteiler"; break;
+        case 0x01:              art = "Ton";       break;
+        case 0x02:              art = "Netzwerk";  break;
+        case 0x07:              art = "Drucker";   break;
+        case 0x0E:              art = "Kamera";    break;
+        default: break;
         }
 
         ksnprintf(line, sizeof(line), "Anschluss %u: %s", info->port, art);

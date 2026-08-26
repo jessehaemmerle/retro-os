@@ -223,11 +223,16 @@ static void sys_paint(struct window *win, struct canvas *c)
 
             const char *art = "Geraet";
 
-            if (info->interface_class == USB_CLASS_HID) {
+            switch (info->interface_class) {
+            case USB_CLASS_HID:
                 if (info->interface_protocol == HID_PROTOCOL_KEYBOARD)
                     art = "Tastatur";
                 else if (info->interface_protocol == HID_PROTOCOL_MOUSE)
                     art = "Maus";
+                break;
+            case USB_CLASS_STORAGE: art = "Speicher";  break;
+            case 0x09:              art = "Verteiler"; break;
+            default: break;
             }
             ksnprintf(buf, sizeof(buf), "%s, %04x:%04x, %s", art,
                       info->vendor_id, info->product_id,

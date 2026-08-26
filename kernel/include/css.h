@@ -13,8 +13,10 @@ void               css_free(struct stylesheet *sheet);
 /* Nimmt weitere Regeln auf; darf mehrfach aufgerufen werden. */
 void css_add(struct stylesheet *sheet, const char *text, size_t length);
 
-/* Berechnet fuer jeden Knoten den Stil und legt ihn im Baum ab. */
-void css_apply(struct stylesheet *sheet, struct node *root, int32_t base_size);
+/* Berechnet fuer jeden Knoten den Stil und legt ihn im Baum ab.
+ * Die Sichtfeldgroesse wird fuer Angaben in vw und vh gebraucht. */
+void css_apply(struct stylesheet *sheet, struct node *root, int32_t base_size,
+               int32_t viewport_w, int32_t viewport_h);
 
 /* Liest eine einzelne Eigenschaftsliste, wie sie im style-Attribut steht. */
 void css_apply_inline(struct style *style, const char *text,

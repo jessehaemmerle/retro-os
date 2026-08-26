@@ -6,10 +6,11 @@ Treibern, eigenem Fenstersystem, einem dauerhaften Dateisystem auf der
 Festplatte, einem TCP/IP-Stapel mit TLS 1.3 und einem Browser, der HTML,
 CSS, Bilder und JavaScript versteht.
 
-Unter der Haube ist RetroOS auf heutiger Hardware zu Hause: USB-Tastatur
-und -Maus am xHCI-Controller, NVMe-SSDs und SATA-Platten, GPT-Partitionen,
-APIC und MSI statt des Interruptcontrollers von 1976. Retro ist allein
-die Oberfläche – so soll es auch sein.
+Unter der Haube ist RetroOS auf heutiger Hardware zu Hause: USB-Tastatur,
+-Maus und -Sticks am xHCI-Controller, auch hinter einem Verteiler,
+NVMe-SSDs und SATA-Platten, GPT-Partitionen, APIC und MSI statt des
+Interruptcontrollers von 1976. Retro ist allein die Oberfläche – so soll
+es auch sein.
 
 Kein Linux-Unterbau, keine libc, kein fremdes GUI-Toolkit, keine
 Netzwerk- oder Kryptobibliothek, keine Browser-Engine. Übernommen wurde
@@ -39,7 +40,8 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 ├───────────────────────────────┼──────────────────────────────────────┤
 │  Partitionen: GPT · MBR       │  Netzwerkkarte: Intel e1000          │
 │  Blockgeräte: NVMe · AHCI ·   ├──────────────────────────────────────┤
-│  ATA                          │  USB: xHCI · HID-Tastatur und -Maus  │
+│  ATA · USB-Speicher           │  USB: xHCI · Verteiler · HID-Tastatur│
+│                               │  und -Maus · Massenspeicher (SCSI)   │
 ├───────────────────────────────┴──────────────────────────────────────┤
 │  PS/2 (falls vorhanden) · RTC · UART · PCIe · ACPI                   │
 ├──────────────────────────────────────────────────────────────────────┤
@@ -137,7 +139,7 @@ mit Knöpfen.
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
 also so, wie es ein Betriebssystem tut.
 
-![Systeminformation: APIC, NVMe und USB-Eingabe auf einem Rechner ohne PS/2](docs/systeminfo.png)
+![Systeminformation: APIC, drei Datenträger und USB-Geräte hinter einem Verteiler – auf einem Rechner ohne PS/2](docs/systeminfo.png)
 
 ## Was drinsteckt
 
@@ -151,10 +153,10 @@ also so, wie es ein Betriebssystem tut.
 | **Prozesse** | ELF64-Lader, eigener Adressraum je Prozess, Ring 3, Systemaufrufe über `SYSCALL`/`SYSRET` |
 | **Speicher** | Bitmap-Allokator für Seitenrahmen, vierstufige Seitentabellen, Heap mit Blockverschmelzung |
 | **Busse** | PCI und PCIe über Konfigurationsmechanismus 1, 64-Bit-Adressbereiche, Fähigkeitenliste |
-| **Datenträger** | NVMe über PCIe mit eigenen Warteschlangen, AHCI (SATA, DMA), ATA-PIO als Rückfallebene |
+| **Datenträger** | NVMe über PCIe mit eigenen Warteschlangen, AHCI (SATA, DMA), ATA-PIO, USB-Speicher über SCSI |
 | **Partitionen** | GPT samt Sicherungstabelle, MBR mit erweiterten Abschnitten, roher Datenträger |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
-| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung, Unterbrechungsendpunkte |
+| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte |
 | **Eingabe** | USB-Tastatur und -Maus im Boot-Protokoll, dazu der 8042-Controller, wo es ihn noch gibt; deutsche Belegung inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
@@ -217,7 +219,7 @@ dafür zwei Fassungen gebaut werden müssten:
 | Unterbrechung eines PCIe-Geräts | MSI oder MSI-X | Leitung im IOAPIC bzw. PIC |
 | Systemtakt | Zeitgeber des lokalen APIC | PIT |
 | Eingabe | USB-HID am xHCI | PS/2 am 8042 |
-| Datenträger | NVMe | AHCI, dann ATA-PIO |
+| Datenträger | NVMe | AHCI, dann ATA-PIO, dann USB-Speicher |
 | Aufteilung | GPT | MBR, sonst roher Datenträger |
 
 Ob es einen PS/2-Anschluss gibt, verrät die FADT in ihren
@@ -231,6 +233,13 @@ Der Zeitgeber des lokalen APIC läuft mit einem Takt, der nirgends
 verzeichnet ist. Er wird deshalb beim Start einmal gegen Kanal 2 des PIT
 ausgezählt – die einzige Stelle, an der der alte Baustein noch gebraucht
 wird, und selbst die nur zum Nachmessen.
+
+Am USB-Bus hängt selten alles unmittelbar an der Wurzel: In einem
+Notebook sitzt zwischen Chipsatz und Tastatur meist noch ein Verteiler.
+Damit der Controller ein Gerät dahinter überhaupt ansprechen kann,
+braucht er eine Wegbeschreibung – vier Bit je Ebene, bis zu fünf Ebenen
+tief. RetroOS zählt deshalb rekursiv auf: Wird ein Verteiler gefunden,
+werden dessen Anschlüsse auf demselben Weg abgesucht.
 
 ### Wie die Teile zusammenspielen
 
@@ -269,7 +278,7 @@ cd tests && make
 | **Kryptografie** | 68 Prüfungen gegen FIPS 180-4, RFC 4231, RFC 5869, RFC 8439, FIPS 197, NIST GCM, RFC 7748, RFC 8448 und echte OpenSSL-Signaturen |
 | **Bilder** | 13 Prüfungen: PNG in allen Farbtypen und Bittiefen samt Adam7, GIF verschränkt, BMP, JPEG gegen libjpeg |
 | **JavaScript** | 55 kleine Programme mit erwarteter Ausgabe |
-| **Dokumentbaum** | 78 Prüfungen zu Zerteiler, Kaskade, Umbruch, Skripten am Baum und Zeitgebern |
+| **Dokumentbaum** | 83 Prüfungen zu Zerteiler, Kaskade, Umbruch, Skripten am Baum und Zeitgebern |
 
 Die Testbilder erzeugt `make testbilder` neu (benötigt Pillow).
 
@@ -287,7 +296,8 @@ kernel/
     sched/            Threads und präemptiver Scheduler
     proc/             ELF64-Lader und Prozesse in Ring 3
     drivers/          Framebuffer, PS/2, Tastatur, Maus, RTC, UART, PCI,
-                      NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID, e1000
+                      NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID,
+                      USB-Speicher, e1000
     fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand
     net/              Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, TLS, HTTP
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
@@ -367,8 +377,12 @@ mit – ganz ohne PS/2, mit USB-Eingabe und einer NVMe-SSD:
 
 ```sh
 qemu-system-x86_64 -M q35,i8042=off -m 512M -cdrom retroos.iso -boot d \
-  -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0 \
-  -device usb-mouse,bus=xhci.0 \
+  -device qemu-xhci,id=xhci \
+  -device usb-hub,bus=xhci.0,port=2 \
+  -device usb-kbd,bus=xhci.0,port=2.1 \
+  -device usb-mouse,bus=xhci.0,port=2.2 \
+  -drive file=stick.img,if=none,id=stick,format=raw \
+  -device usb-storage,bus=xhci.0,port=3,drive=stick \
   -drive file=platte.img,if=none,id=nvm0,format=raw \
   -device nvme,serial=RETRO0001,drive=nvm0 \
   -netdev user,id=n0 -device e1000,netdev=n0 -serial stdio

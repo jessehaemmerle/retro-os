@@ -624,8 +624,10 @@ bool fs_mount_disk(void)
 {
     struct block_device *dev = block_primary();
 
-    if (!dev)
+    if (!dev) {
+        kprintf("Datentraeger: keiner gefunden\n");
         return false;
+    }
 
     if (!fat_mount(dev, &disk_volume)) {
         kprintf("Datentraeger: kein FAT32 gefunden - \"formatieren\" hilft\n");

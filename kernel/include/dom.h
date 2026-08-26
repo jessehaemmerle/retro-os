@@ -83,6 +83,9 @@ struct style {
     struct length left, top, right, bottom;
     bool     nowrap;
     bool     rounded_forced;
+
+    /* "margin: 0 auto" ruecht den Kasten in die Mitte. */
+    bool     margin_auto_left, margin_auto_right;
 };
 
 struct node {

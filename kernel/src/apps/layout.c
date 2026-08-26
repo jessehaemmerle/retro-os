@@ -700,13 +700,17 @@ static int32_t layout_block(struct engine *e, struct node *node, int32_t x,
         box_width += border_x + padding_x;
     box_width = MAX(box_width, border_x + padding_x);
 
-    /* Ein Block mit fester Breite und automatischem Rand wird zentriert. */
+    /* Ein Block mit fester Breite und "auto" an beiden Seiten steht in
+     * der Mitte - so bekommen unzaehlige Seiten ihren Textblock
+     * mittig auf die Flaeche. */
     int32_t box_x = x + margin_left;
 
-    if (st->width.unit != LEN_AUTO && box_width < outer_available &&
-        st->margin[3] == 0 && st->margin[1] == 0 &&
-        st->align == ALIGN_CENTER)
-        box_x = x + (available - box_width) / 2;
+    if (st->width.unit != LEN_AUTO && box_width < available) {
+        if (st->margin_auto_left && st->margin_auto_right)
+            box_x = x + (available - box_width) / 2;
+        else if (st->margin_auto_left)
+            box_x = x + available - box_width;
+    }
 
     int32_t box_y = y + st->margin[0];
 

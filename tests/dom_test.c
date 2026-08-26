@@ -98,7 +98,7 @@ static void expect_style(const char *name, const char *html,
         dom_raw_text(style, text, sizeof(text));
         css_add(sheet, text, strlen(text));
     }
-    css_apply(sheet, doc.root, 16);
+    css_apply(sheet, doc.root, 16, 800, 600);
 
     if (dom_query(doc.root, selector, found, 4) == 0) {
         bad(name, "nichts gefunden");
@@ -171,7 +171,7 @@ static void expect_layout(const char *name, const char *html, int32_t width,
         dom_raw_text(style, text, sizeof(text));
         css_add(sheet, text, strlen(text));
     }
-    css_apply(sheet, doc.root, 16);
+    css_apply(sheet, doc.root, 16, width, 600);
     layout_run(&out, doc.body, width, NULL, NULL);
 
     if (out.height < min_height || out.height > max_height) {
@@ -211,7 +211,7 @@ static void expect_place(const char *name, const char *html, int32_t width,
         dom_raw_text(style, text, sizeof(text));
         css_add(sheet, text, strlen(text));
     }
-    css_apply(sheet, doc.root, 16);
+    css_apply(sheet, doc.root, 16, width, 600);
     layout_run(&out, doc.body, width, NULL, NULL);
 
     int32_t got = -100000;
@@ -464,6 +464,16 @@ int main(void)
                  "<style>:root { --mass: 12px }"
                  "p { font-size: calc(var(--mass) * 2) }</style><p>x</p>",
                  "p", "font-size", 24);
+    expect_style("Breite in Sichtfeldeinheiten",
+                 "<style>p { width: 60vw }</style><p>x</p>", "p",
+                 "width", 480);              /* 60 % von 800 */
+    expect_style("Hoehe in Sichtfeldeinheiten",
+                 "<style>p { margin-top: 15vh }</style><p>x</p>", "p",
+                 "margin-top", 90);          /* 15 % von 600 */
+    expect_style("Sichtfeld im Rechenausdruck",
+                 "<style>p { width: calc(50vw - 40px) }</style><p>x</p>",
+                 "p", "width", 360);
+
     expect_style("Eigene Eigenschaft aus dem style-Attribut",
                  "<div style=\"--ton: #abcdef\">"
                  "<p style=\"color: var(--ton)\">x</p></div>",
@@ -504,6 +514,12 @@ int main(void)
     expect_place("Rechts ausgerichtet",
                  "<p style='text-align:right'>Wort</p>", 600,
                  "Wort", 600 - 4 * 8, 2);
+    expect_place("Fester Block mit auto steht mittig",
+                 "<div style='width: 200px; margin: 0 auto'>Wort</div>", 600,
+                 "Wort", 200, 2);
+    expect_place("Fester Block ohne auto bleibt links",
+                 "<div style='width: 200px'>Wort</div>", 600, "Wort", 0, 2);
+
     expect_place("Ein mittiger Kasten reisst die Zeile nicht mit",
                  "<div><span style='display:inline-block;width:80px;"
                  "text-align:center'>x</span>Wort</div>", 600, "Wort", 80, 4);

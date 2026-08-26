@@ -116,9 +116,45 @@ struct usb_device {
 
     uint8_t  interrupt_endpoint;    /* Endpunktnummer, 0 = keiner */
     uint16_t interrupt_size;
+
+    /* Steuerkanal und Unterbrechungsendpunkt haben je einen eigenen
+     * Puffer und eine eigene Fertigmeldung. Teilten sie sich beides,
+     * koennte ein eintreffendes Tastenpaket eine laufende Anfrage
+     * vorzeitig fuer beendet erklaeren. */
+    uint8_t *control_buffer;
+    uint64_t control_phys;
+    volatile bool control_done;
+    volatile uint8_t control_code;
+
     uint8_t *report;
     uint64_t report_phys;
-    bool     report_pending;
+    volatile bool report_pending;
+
+    /* Aufbau am Bus: Wegbeschreibung und der Verteiler davor. */
+    uint32_t route;
+    uint8_t  root_port;
+    uint8_t  parent_slot;
+    uint8_t  parent_port;
+    uint8_t  depth;
+
+    bool     is_hub;
+    uint8_t  hub_ports;
+    uint8_t  tt_think_time;
+
+    /* Massenendpunkte eines Speichergeraets. */
+    struct ring bulk_in_ring;
+    struct ring bulk_out_ring;
+    uint8_t     bulk_in;
+    uint8_t     bulk_out;
+    volatile bool bulk_done;
+    volatile uint8_t bulk_code;
+    volatile uint32_t bulk_residual;
+    uint8_t    *bulk_buffer;
+    uint64_t    bulk_phys;
+
+    /* Beim Lesen der Konfiguration gemerkt. */
+    uint8_t  found_bulk_in, found_bulk_out;
+    uint16_t found_bulk_in_packet, found_bulk_out_packet;
 
     struct usb_device_info info;
 };
@@ -262,13 +298,29 @@ static void doorbell_ring(uint8_t slot, uint32_t value)
 static void handle_transfer_event(const struct trb *event)
 {
     uint8_t slot = (uint8_t)(event->control >> 24);
+    uint8_t endpoint = (uint8_t)((event->control >> 16) & 0x1F);
+    uint8_t code = (uint8_t)(event->status >> 24);
 
     for (size_t i = 0; i < MAX_DEVICES; i++) {
         struct usb_device *dev = &devices[i];
 
         if (!dev->used || dev->slot != slot)
             continue;
-        dev->report_pending = true;
+
+        /* Endpunkt 1 ist der Steuerkanal. Bei den uebrigen sagt die
+         * Nummer, welcher Kanal gemeint ist. */
+        if (endpoint <= 1) {
+            dev->control_code = code;
+            dev->control_done = true;
+        } else if (dev->bulk_in &&
+                   (endpoint == (uint8_t)(dev->bulk_in * 2 + 1) ||
+                    endpoint == (uint8_t)(dev->bulk_out * 2))) {
+            dev->bulk_code = code;
+            dev->bulk_residual = event->status & 0xFFFFFF;
+            dev->bulk_done = true;
+        } else {
+            dev->report_pending = true;
+        }
         break;
     }
 }
@@ -382,10 +434,10 @@ bool usb_control(struct usb_device *dev, const struct usb_setup *setup,
     uint8_t *scratch = NULL;
 
     if (setup->length) {
-        data_phys = dev->report_phys;   /* der Puffer des Geraets */
-        scratch = dev->report;
         if (setup->length > PAGE_SIZE)
             return false;
+        data_phys = dev->control_phys;
+        scratch = dev->control_buffer;
         if (!(setup->request_type & USB_DIR_IN) && buffer)
             memcpy(scratch, buffer, setup->length);
     }
@@ -413,20 +465,26 @@ bool usb_control(struct usb_device *dev, const struct usb_setup *setup,
               ((setup->length && (setup->request_type & USB_DIR_IN))
                ? 0 : (1u << 16)));
 
-    dev->report_pending = false;
+    dev->control_done = false;
+    dev->control_code = 0;
     doorbell_ring(dev->slot, 1);        /* Endpunkt 0 */
 
     uint64_t deadline = timer_ms() + 500;
 
-    while (!dev->report_pending) {
+    while (!dev->control_done) {
         drain_events();
-        if (dev->report_pending)
+        if (dev->control_done)
             break;
         if (timer_ms() > deadline)
             return false;
         __asm__ volatile("pause");
     }
-    dev->report_pending = false;
+    dev->control_done = false;
+
+    /* 1 bedeutet erfolgreich, 13 "kuerzer als angefragt" - das ist bei
+     * Deskriptoren voellig in Ordnung. */
+    if (dev->control_code != 1 && dev->control_code != 13)
+        return false;
 
     if (setup->length && (setup->request_type & USB_DIR_IN) && buffer)
         memcpy(buffer, scratch, setup->length);
@@ -454,6 +512,140 @@ size_t usb_interrupt_poll(struct usb_device *dev, void *buffer, size_t size)
               (TRB_NORMAL << 10) | (1u << 5) | (1u << 2));
     doorbell_ring(dev->slot, (uint32_t)(dev->interrupt_endpoint * 2 + 1));
     return length;
+}
+
+/* ------------------------------------------------------------------ */
+/* Massenendpunkte                                                     */
+/* ------------------------------------------------------------------ */
+
+static bool setup_bulk(struct usb_device *dev, uint8_t in_endpoint,
+                       uint16_t in_packet, uint8_t out_endpoint,
+                       uint16_t out_packet)
+{
+    if (!dev || !dev->used || !in_endpoint || !out_endpoint)
+        return false;
+    if (in_endpoint > 15 || out_endpoint > 15)
+        return false;
+
+    if (!ring_create(&dev->bulk_in_ring, true) ||
+        !ring_create(&dev->bulk_out_ring, true))
+        return false;
+
+    /* 64 KiB am Stueck - so viel liest ein Dateisystem hoechstens. */
+    dev->bulk_phys = pmm_alloc_pages(16);
+    if (!dev->bulk_phys)
+        return false;
+    dev->bulk_buffer = phys_to_virt(dev->bulk_phys);
+
+    uint32_t in_index = (uint32_t)in_endpoint * 2 + 1;
+    uint32_t out_index = (uint32_t)out_endpoint * 2;
+    uint32_t highest = MAX(in_index, out_index);
+
+    memset(dev->input_context, 0, PAGE_SIZE);
+
+    uint32_t *control = (uint32_t *)dev->input_context;
+
+    control[1] = 1u | (1u << in_index) | (1u << out_index);
+
+    uint32_t *slot = slot_context(dev->input_context, true);
+
+    slot[0] = (dev->route & 0xFFFFF) | ((uint32_t)dev->speed << 20) |
+              (highest << 27);
+    slot[1] = (uint32_t)dev->root_port << 16;
+    if (dev->parent_slot && (dev->speed == 1 || dev->speed == 2))
+        slot[2] = (uint32_t)dev->parent_slot |
+                  ((uint32_t)dev->parent_port << 8) |
+                  ((uint32_t)dev->tt_think_time << 16);
+
+    /* Typ 6 ist ein Massenendpunkt zum Geraet, Typ 2 von ihm weg. */
+    uint32_t *out = endpoint_context(dev->input_context, out_index - 1, true);
+
+    out[1] = (2u << 3) | (3u << 1) | ((uint32_t)out_packet << 16);
+    out[2] = (uint32_t)(dev->bulk_out_ring.phys | 1);
+    out[3] = (uint32_t)(dev->bulk_out_ring.phys >> 32);
+    out[4] = out_packet;
+
+    uint32_t *in = endpoint_context(dev->input_context, in_index - 1, true);
+
+    in[1] = (6u << 3) | (3u << 1) | ((uint32_t)in_packet << 16);
+    in[2] = (uint32_t)(dev->bulk_in_ring.phys | 1);
+    in[3] = (uint32_t)(dev->bulk_in_ring.phys >> 32);
+    in[4] = in_packet;
+
+    if (!command_run(dev->input_phys,
+                     (TRB_CONFIG_ENDPOINT << 10) |
+                     ((uint32_t)dev->slot << 24), NULL))
+        return false;
+
+    dev->bulk_in = in_endpoint;
+    dev->bulk_out = out_endpoint;
+    return true;
+}
+
+bool usb_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
+              uint32_t length, bool in, uint32_t *transferred)
+{
+    if (!dev || !dev->used || !dev->bulk_in || length > 16 * PAGE_SIZE)
+        return false;
+
+    struct ring *ring = in ? &dev->bulk_in_ring : &dev->bulk_out_ring;
+    uint32_t index = in ? (uint32_t)dev->bulk_in * 2 + 1
+                        : (uint32_t)dev->bulk_out * 2;
+
+    if (!in && length && buffer)
+        memcpy(dev->bulk_buffer, buffer, length);
+
+    dev->bulk_done = false;
+    dev->bulk_code = 0;
+    dev->bulk_residual = 0;
+
+    UNUSED(endpoint);
+    ring_push(ring, dev->bulk_phys, length,
+              (TRB_NORMAL << 10) | (1u << 5) | (1u << 2));
+    doorbell_ring(dev->slot, index);
+
+    uint64_t deadline = timer_ms() + 3000;
+
+    while (!dev->bulk_done) {
+        drain_events();
+        if (dev->bulk_done)
+            break;
+        if (timer_ms() > deadline)
+            return false;
+        __asm__ volatile("pause");
+    }
+    dev->bulk_done = false;
+
+    if (transferred)
+        *transferred = length - dev->bulk_residual;
+
+    if (dev->bulk_code != 1 && dev->bulk_code != 13)
+        return false;
+
+    if (in && length && buffer)
+        memcpy(buffer, dev->bulk_buffer, length - dev->bulk_residual);
+    return true;
+}
+
+bool usb_setup_bulk_from_config(struct usb_device *dev)
+{
+    if (!dev || !dev->found_bulk_in || !dev->found_bulk_out)
+        return false;
+    return setup_bulk(dev, dev->found_bulk_in, dev->found_bulk_in_packet,
+                      dev->found_bulk_out, dev->found_bulk_out_packet);
+}
+
+bool usb_clear_halt(struct usb_device *dev, uint8_t endpoint)
+{
+    struct usb_setup setup = {
+        .request_type = 0x02,               /* an den Endpunkt */
+        .request = 0x01,                    /* CLEAR_FEATURE   */
+        .value = 0,                         /* ENDPOINT_HALT   */
+        .index = endpoint,
+        .length = 0,
+    };
+
+    return usb_control(dev, &setup, NULL);
 }
 
 const struct usb_device_info *usb_device_details(struct usb_device *dev)
@@ -525,6 +717,14 @@ static void free_device(struct usb_device *dev)
         pmm_free_page(dev->device_phys);
     if (dev->report_phys)
         pmm_free_page(dev->report_phys);
+    if (dev->control_phys)
+        pmm_free_page(dev->control_phys);
+    if (dev->bulk_in_ring.phys)
+        pmm_free_page(dev->bulk_in_ring.phys);
+    if (dev->bulk_out_ring.phys)
+        pmm_free_page(dev->bulk_out_ring.phys);
+    if (dev->bulk_phys)
+        pmm_free_pages(dev->bulk_phys, 16);
     memset(dev, 0, sizeof(*dev));
 }
 
@@ -537,15 +737,19 @@ static bool address_device(struct usb_device *dev)
     dev->input_phys = pmm_alloc_page();
     dev->device_phys = pmm_alloc_page();
     dev->report_phys = pmm_alloc_page();
-    if (!dev->input_phys || !dev->device_phys || !dev->report_phys)
+    dev->control_phys = pmm_alloc_page();
+    if (!dev->input_phys || !dev->device_phys || !dev->report_phys ||
+        !dev->control_phys)
         return false;
 
     dev->input_context = phys_to_virt(dev->input_phys);
     dev->device_context = phys_to_virt(dev->device_phys);
     dev->report = phys_to_virt(dev->report_phys);
+    dev->control_buffer = phys_to_virt(dev->control_phys);
     memset(dev->input_context, 0, PAGE_SIZE);
     memset(dev->device_context, 0, PAGE_SIZE);
     memset(dev->report, 0, PAGE_SIZE);
+    memset(dev->control_buffer, 0, PAGE_SIZE);
 
     /* Der Eingabekontext sagt, welche Teile gueltig sind: Steckplatz
      * und Endpunkt null. */
@@ -555,9 +759,20 @@ static bool address_device(struct usb_device *dev)
 
     uint32_t *slot = slot_context(dev->input_context, true);
 
-    /* Ein Kontexteintrag, die Wurzel-Anschlussnummer, die Geschwindigkeit. */
-    slot[0] = (1u << 27) | ((uint32_t)dev->speed << 20);
-    slot[1] = (uint32_t)dev->port << 16;
+    /* Die Wegbeschreibung sagt dem Controller, ueber welche Anschluesse
+     * welcher Verteiler das Geraet zu erreichen ist - ohne sie faende er
+     * nur, was unmittelbar an der Wurzel haengt. */
+    slot[0] = (dev->route & 0xFFFFF) | ((uint32_t)dev->speed << 20) |
+              (1u << 27);
+    slot[1] = (uint32_t)dev->root_port << 16;
+
+    /* Haengt ein langsames Geraet hinter einem schnellen Verteiler,
+     * uebersetzt dessen Transaktionsuebersetzer dazwischen. Der
+     * Controller muss wissen, welcher das ist. */
+    if (dev->parent_slot && (dev->speed == 1 || dev->speed == 2))
+        slot[2] = (uint32_t)dev->parent_slot |
+                  ((uint32_t)dev->parent_port << 8) |
+                  ((uint32_t)dev->tt_think_time << 16);
 
     uint32_t *endpoint = endpoint_context(dev->input_context, 0, true);
 
@@ -596,8 +811,13 @@ static bool configure_interrupt_endpoint(struct usb_device *dev,
 
     uint32_t *slot = slot_context(dev->input_context, true);
 
-    slot[0] = (index << 27) | ((uint32_t)dev->speed << 20);
-    slot[1] = (uint32_t)dev->port << 16;
+    slot[0] = (dev->route & 0xFFFFF) | ((uint32_t)dev->speed << 20) |
+              (index << 27);
+    slot[1] = (uint32_t)dev->root_port << 16;
+    if (dev->parent_slot && (dev->speed == 1 || dev->speed == 2))
+        slot[2] = (uint32_t)dev->parent_slot |
+                  ((uint32_t)dev->parent_port << 8) |
+                  ((uint32_t)dev->tt_think_time << 16);
 
     uint32_t *endpoint = endpoint_context(dev->input_context, index - 1, true);
 
@@ -607,6 +827,11 @@ static bool configure_interrupt_endpoint(struct usb_device *dev,
     endpoint[2] = (uint32_t)(dev->interrupt_ring.phys | 1);
     endpoint[3] = (uint32_t)(dev->interrupt_ring.phys >> 32);
     endpoint[4] = packet;
+
+    if (dev->is_hub) {
+        slot[0] |= 1u << 25;                        /* es ist ein Verteiler */
+        slot[1] |= (uint32_t)dev->hub_ports << 24;
+    }
 
     if (!command_run(dev->input_phys,
                      (TRB_CONFIG_ENDPOINT << 10) |
@@ -684,12 +909,22 @@ static bool read_configuration(struct usb_device *dev)
         } else if (type == USB_DESC_ENDPOINT && length >= 7 && have_interface) {
             uint8_t address = full[at + 2];
             uint8_t attributes = full[at + 3];
+            uint16_t packet = (uint16_t)((full[at + 4] |
+                                          (full[at + 5] << 8)) & 0x7FF);
 
             if ((attributes & 3) == 3 && (address & 0x80)) {
                 endpoint_address = address;
-                endpoint_packet = (uint16_t)((full[at + 4] |
-                                              (full[at + 5] << 8)) & 0x7FF);
+                endpoint_packet = packet;
                 endpoint_interval = full[at + 6];
+            } else if ((attributes & 3) == 2) {
+                /* Massenendpunkt - zwei davon braucht ein Speicher. */
+                if (address & 0x80) {
+                    dev->found_bulk_in = address & 0x0F;
+                    dev->found_bulk_in_packet = packet;
+                } else {
+                    dev->found_bulk_out = address & 0x0F;
+                    dev->found_bulk_out_packet = packet;
+                }
             }
         }
         at += length;
@@ -729,6 +964,276 @@ static bool read_configuration(struct usb_device *dev)
     return true;
 }
 
+/* ------------------------------------------------------------------ */
+/* Verteiler                                                           */
+/* ------------------------------------------------------------------ */
+
+#define HUB_DESC_TYPE       0x29    /* USB 2 */
+#define HUB_DESC_TYPE_SS    0x2A    /* SuperSpeed */
+
+#define PORT_FEAT_RESET     4
+#define PORT_FEAT_POWER     8
+#define PORT_FEAT_C_CONN    16
+#define PORT_FEAT_C_RESET   20
+
+/* Anschlusszustand eines Verteilers: Bit 0 belegt, Bit 1 freigegeben,
+ * dazu die Geschwindigkeit. */
+#define HUB_PORT_CONNECTED  (1u << 0)
+#define HUB_PORT_ENABLED    (1u << 1)
+#define HUB_PORT_LOW_SPEED  (1u << 9)
+#define HUB_PORT_HIGH_SPEED (1u << 10)
+
+static void enumerate_device(uint32_t root_port, uint32_t route, uint8_t speed,
+                             struct usb_device *parent, uint8_t parent_port,
+                             uint8_t depth);
+
+static bool hub_feature(struct usb_device *hub, uint8_t port, uint16_t feature,
+                        bool set)
+{
+    struct usb_setup setup = {
+        .request_type = (uint8_t)(USB_TYPE_CLASS | 0x03),   /* an den Port */
+        .request = set ? 0x03 : 0x01,                       /* SET/CLEAR   */
+        .value = feature,
+        .index = port,
+        .length = 0,
+    };
+
+    return usb_control(hub, &setup, NULL);
+}
+
+static bool hub_port_status(struct usb_device *hub, uint8_t port,
+                            uint32_t *status)
+{
+    uint8_t data[4] = { 0, 0, 0, 0 };
+    struct usb_setup setup = {
+        .request_type = (uint8_t)(USB_DIR_IN | USB_TYPE_CLASS | 0x03),
+        .request = 0x00,                                    /* GET_STATUS  */
+        .value = 0,
+        .index = port,
+        .length = 4,
+    };
+
+    if (!usb_control(hub, &setup, data))
+        return false;
+
+    *status = (uint32_t)data[0] | ((uint32_t)data[1] << 8) |
+              ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+    return true;
+}
+
+/* Liest die Beschreibung des Verteilers und geht seine Anschluesse
+ * durch. Was daran haengt, wird auf demselben Weg aufgezaehlt - auch
+ * wenn es wieder ein Verteiler ist. */
+static void enumerate_hub(struct usb_device *hub)
+{
+    uint8_t descriptor[16];
+    bool super = hub->speed >= 4;
+    struct usb_setup setup = {
+        .request_type = (uint8_t)(USB_DIR_IN | USB_TYPE_CLASS |
+                                  USB_RECIP_DEVICE),
+        .request = USB_REQ_GET_DESCRIPTOR,
+        .value = (uint16_t)((super ? HUB_DESC_TYPE_SS : HUB_DESC_TYPE) << 8),
+        .index = 0,
+        .length = sizeof(descriptor),
+    };
+
+    if (!usb_control(hub, &setup, descriptor))
+        return;
+
+    uint8_t ports = descriptor[2];
+
+    if (ports == 0 || ports > 15)
+        return;
+
+    hub->hub_ports = ports;
+    hub->is_hub = true;
+
+    /* Die Denkzeit des Uebersetzers steht in den Kennzeichen. */
+    uint16_t characteristics = (uint16_t)(descriptor[3] | (descriptor[4] << 8));
+
+    hub->tt_think_time = (uint8_t)((characteristics >> 5) & 3);
+
+    /* Den Steckplatz nachtragen, damit der Controller den Verteiler als
+     * solchen kennt - sonst darf nichts dahinter angesprochen werden. */
+    memset(hub->input_context, 0, PAGE_SIZE);
+
+    uint32_t *control = (uint32_t *)hub->input_context;
+
+    control[1] = 1;                     /* nur der Steckplatz */
+
+    uint32_t *slot = slot_context(hub->input_context, true);
+
+    slot[0] = (hub->route & 0xFFFFF) | ((uint32_t)hub->speed << 20) |
+              (1u << 25) | ((uint32_t)MAX(hub->interrupt_endpoint * 2 + 1, 1)
+                            << 27);
+    slot[1] = ((uint32_t)hub->root_port << 16) | ((uint32_t)ports << 24);
+    if (hub->parent_slot && (hub->speed == 1 || hub->speed == 2))
+        slot[2] = (uint32_t)hub->parent_slot |
+                  ((uint32_t)hub->parent_port << 8) |
+                  ((uint32_t)hub->tt_think_time << 16);
+
+    command_run(hub->input_phys,
+                (TRB_EVALUATE_CONTEXT << 10) |
+                ((uint32_t)hub->slot << 24), NULL);
+
+    kprintf("USB         : Verteiler mit %u Anschluessen\n", (unsigned)ports);
+
+    /* Erst Strom auf alle Anschluesse. */
+    for (uint8_t port = 1; port <= ports; port++)
+        hub_feature(hub, port, PORT_FEAT_POWER, true);
+
+    /* descriptor[5] gibt die Wartezeit in Schritten zu zwei Millisekunden. */
+    timer_sleep((uint32_t)descriptor[5] * 2 + 20);
+
+    for (uint8_t port = 1; port <= ports; port++) {
+        uint32_t status = 0;
+
+        if (!hub_port_status(hub, port, &status))
+            continue;
+        if (!(status & HUB_PORT_CONNECTED))
+            continue;
+
+        hub_feature(hub, port, PORT_FEAT_C_CONN, false);
+
+        /* Zuruecksetzen und warten, bis der Anschluss freigegeben ist. */
+        if (!hub_feature(hub, port, PORT_FEAT_RESET, true))
+            continue;
+
+        uint64_t deadline = timer_ms() + 500;
+        bool ready = false;
+
+        while (timer_ms() < deadline) {
+            timer_sleep(10);
+            if (!hub_port_status(hub, port, &status))
+                break;
+            if (status & HUB_PORT_ENABLED) {
+                ready = true;
+                break;
+            }
+        }
+        hub_feature(hub, port, PORT_FEAT_C_RESET, false);
+        if (!ready)
+            continue;
+
+        uint8_t speed = 1;              /* Full Speed */
+
+        if (status & HUB_PORT_LOW_SPEED)
+            speed = 2;
+        else if (status & HUB_PORT_HIGH_SPEED)
+            speed = 3;
+        if (super)
+            speed = 4;
+
+        /* Die Wegbeschreibung waechst je Ebene um vier Bit. */
+        uint32_t route = hub->route;
+
+        if (hub->depth < 5)
+            route |= (uint32_t)(port & 0xF) << (4 * hub->depth);
+
+        enumerate_device(hub->root_port, route, speed, hub, port,
+                         (uint8_t)(hub->depth + 1));
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ein Geraet in Betrieb nehmen                                        */
+/* ------------------------------------------------------------------ */
+
+static void enumerate_device(uint32_t root_port, uint32_t route, uint8_t speed,
+                             struct usb_device *parent, uint8_t parent_port,
+                             uint8_t depth)
+{
+    if (depth > 5)                      /* die Wegbeschreibung ist am Ende */
+        return;
+
+    uint8_t slot = 0;
+
+    if (!command_run(0, TRB_ENABLE_SLOT << 10, &slot) || slot == 0)
+        return;
+
+    struct usb_device *dev = alloc_device();
+
+    if (!dev)
+        return;
+
+    memset(dev, 0, sizeof(*dev));
+    dev->used = true;
+    dev->slot = slot;
+    dev->port = (uint8_t)root_port;
+    dev->root_port = (uint8_t)root_port;
+    dev->route = route;
+    dev->speed = speed;
+    dev->depth = depth;
+
+    if (parent) {
+        /* Der Uebersetzer sitzt im naechsten schnellen Verteiler
+         * oberhalb - haengt der Verteiler selbst langsam am Bus, gilt
+         * dessen eigener Vorfahre. */
+        if (parent->speed == 3) {
+            dev->parent_slot = parent->slot;
+            dev->parent_port = parent_port;
+            dev->tt_think_time = parent->tt_think_time;
+        } else {
+            dev->parent_slot = parent->parent_slot;
+            dev->parent_port = parent->parent_port;
+            dev->tt_think_time = parent->tt_think_time;
+        }
+    }
+
+    if (!address_device(dev)) {
+        free_device(dev);
+        return;
+    }
+
+    uint8_t descriptor[18];
+
+    if (!get_descriptor(dev, USB_DESC_DEVICE, 0, descriptor, 8)) {
+        free_device(dev);
+        return;
+    }
+
+    /* Jetzt ist die wirkliche Paketgroesse bekannt. */
+    uint16_t packet = descriptor[7];
+
+    if (speed >= 4)
+        packet = (uint16_t)(1u << descriptor[7]);
+    dev->info.max_packet = packet;
+
+    if (!get_descriptor(dev, USB_DESC_DEVICE, 0, descriptor,
+                        sizeof(descriptor))) {
+        free_device(dev);
+        return;
+    }
+
+    dev->info.device_class = descriptor[4];
+    dev->info.vendor_id = (uint16_t)(descriptor[8] | (descriptor[9] << 8));
+    dev->info.product_id = (uint16_t)(descriptor[10] | (descriptor[11] << 8));
+    dev->info.port = (uint8_t)root_port;
+    dev->info.speed = speed;
+
+    if (!read_configuration(dev)) {
+        free_device(dev);
+        return;
+    }
+
+    device_count++;
+
+    kprintf("USB         : Anschluss %u%s, %04x:%04x, Klasse %u.%u.%u, %s\n",
+            (unsigned)root_port, route ? " (hinter Verteiler)" : "",
+            dev->info.vendor_id, dev->info.product_id,
+            dev->info.interface_class, dev->info.interface_subclass,
+            dev->info.interface_protocol, usb_speed_name(speed));
+
+    /* Ein Verteiler bekommt keinen Treiber, sondern wird abgesucht. */
+    if (dev->info.device_class == 0x09 || dev->info.interface_class == 0x09) {
+        enumerate_hub(dev);
+        return;
+    }
+
+    usb_hid_attach(dev);
+    usb_storage_attach(dev);
+}
+
 static void enumerate_port(uint32_t port)
 {
     uint32_t status = port_read(port);
@@ -757,66 +1262,7 @@ static void enumerate_port(uint32_t port)
     if (!(status & PORT_PED))
         return;
 
-    uint8_t slot = 0;
-
-    if (!command_run(0, TRB_ENABLE_SLOT << 10, &slot) || slot == 0)
-        return;
-
-    struct usb_device *dev = alloc_device();
-
-    if (!dev)
-        return;
-
-    memset(dev, 0, sizeof(*dev));
-    dev->used = true;
-    dev->slot = slot;
-    dev->port = (uint8_t)port;
-    dev->speed = (uint8_t)((status >> 10) & 0xF);
-
-    if (!address_device(dev)) {
-        free_device(dev);
-        return;
-    }
-
-    uint8_t descriptor[18];
-
-    if (!get_descriptor(dev, USB_DESC_DEVICE, 0, descriptor, 8)) {
-        free_device(dev);
-        return;
-    }
-
-    /* Jetzt ist die wirkliche Paketgroesse bekannt. */
-    uint16_t packet = descriptor[7];
-
-    if (dev->speed == 4 || dev->speed == 5)
-        packet = (uint16_t)(1u << descriptor[7]);
-    dev->info.max_packet = packet;
-
-    if (!get_descriptor(dev, USB_DESC_DEVICE, 0, descriptor,
-                        sizeof(descriptor))) {
-        free_device(dev);
-        return;
-    }
-
-    dev->info.device_class = descriptor[4];
-    dev->info.vendor_id = (uint16_t)(descriptor[8] | (descriptor[9] << 8));
-    dev->info.product_id = (uint16_t)(descriptor[10] | (descriptor[11] << 8));
-    dev->info.port = (uint8_t)port;
-    dev->info.speed = dev->speed;
-
-    if (!read_configuration(dev)) {
-        free_device(dev);
-        return;
-    }
-
-    device_count++;
-
-    kprintf("USB         : Anschluss %u, %04x:%04x, Klasse %u.%u.%u, %s\n",
-            (unsigned)port, dev->info.vendor_id, dev->info.product_id,
-            dev->info.interface_class, dev->info.interface_subclass,
-            dev->info.interface_protocol, usb_speed_name(dev->speed));
-
-    usb_hid_attach(dev);
+    enumerate_device(port, 0, (uint8_t)((status >> 10) & 0xF), NULL, 0, 0);
 }
 
 /* ------------------------------------------------------------------ */

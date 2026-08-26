@@ -58,11 +58,9 @@ bool block_write(struct block_device *dev, uint64_t lba, uint32_t count,
 
 void storage_init(void)
 {
-    /* Erst die schnellen Wege, dann die alten. */
+    /* Erst die schnellen Wege, dann die alten. Datentraeger am USB-Bus
+     * kommen spaeter dazu, wenn der Controller aufgezaehlt hat. */
     nvme_init();
     ahci_init();
     ata_init();
-
-    if (device_count == 0)
-        kprintf("Datentraeger: keiner gefunden\n");
 }

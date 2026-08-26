@@ -43,6 +43,11 @@ struct stylesheet {
 static bool space_char(char c);
 static bool name_has(const char *haystack, const char *needle);
 
+/* Groesse des Sichtfelds fuer Angaben in vw und vh. Sie gilt fuer den
+ * laufenden Durchgang und wird von css_apply gesetzt. */
+static int32_t viewport_width = 800;
+static int32_t viewport_height = 600;
+
 /* Eigene Eigenschaften wie --farbe werden vererbt. Beim Abstieg in den
  * Baum wachsen sie auf einem Stapel; beim Aufstieg fallen sie wieder ab,
  * damit Geschwister nichts voneinander sehen. */
@@ -464,9 +469,14 @@ static int32_t calc_number(struct calc *c, bool *scalar)
         wert = wert * c->base;
     } else if (calc_word(c, "pt")) {
         wert = wert * 4 / 3;
-    } else if (calc_word(c, "vw") || calc_word(c, "vh") ||
-               calc_word(c, "vmin") || calc_word(c, "vmax")) {
-        wert = wert * c->reference / 100;
+    } else if (calc_word(c, "vw")) {
+        wert = wert * viewport_width / 100;
+    } else if (calc_word(c, "vh")) {
+        wert = wert * viewport_height / 100;
+    } else if (calc_word(c, "vmin")) {
+        wert = wert * MIN(viewport_width, viewport_height) / 100;
+    } else if (calc_word(c, "vmax")) {
+        wert = wert * MAX(viewport_width, viewport_height) / 100;
     } else if (calc_word(c, "ch") || calc_word(c, "ex")) {
         wert = wert * c->base / 2;
     } else if (calc_word(c, "cm")) {
@@ -684,8 +694,14 @@ static int32_t length_px(const char *text, int32_t base, int32_t reference,
         return value * 4 / 3;
     if (strncasecmp(p, "pc", 2) == 0)
         return value * 16;
-    if (strncasecmp(p, "vw", 2) == 0 || strncasecmp(p, "vh", 2) == 0)
-        return reference > 0 ? value * reference / 100 : fallback;
+    if (strncasecmp(p, "vmin", 4) == 0)
+        return value * MIN(viewport_width, viewport_height) / 100;
+    if (strncasecmp(p, "vmax", 4) == 0)
+        return value * MAX(viewport_width, viewport_height) / 100;
+    if (strncasecmp(p, "vw", 2) == 0)
+        return value * viewport_width / 100;
+    if (strncasecmp(p, "vh", 2) == 0)
+        return value * viewport_height / 100;
     if (strncasecmp(p, "cm", 2) == 0)
         return value * 38;
     if (strncasecmp(p, "mm", 2) == 0)
@@ -742,6 +758,10 @@ static int32_t length_px_fine(const char *text, int32_t base, int32_t fallback)
         result = thousandths * base / 100000;
     else if (strncasecmp(p, "pt", 2) == 0)
         result = thousandths * 4 / 3000;
+    else if (strncasecmp(p, "vw", 2) == 0)
+        result = thousandths * viewport_width / 100000;
+    else if (strncasecmp(p, "vh", 2) == 0)
+        result = thousandths * viewport_height / 100000;
     else if (*p == '\0' || *p == ';')
         result = thousandths * base / 1000;   /* blosse Zahl: Vielfaches */
     else
@@ -814,7 +834,7 @@ static struct length parse_length(const char *text, int32_t base)
         l.value = value;
     } else {
         l.unit = LEN_PX;
-        l.value = length_px(text, base, 0, value);
+        l.value = length_px(text, base, viewport_width, value);
     }
     return l;
 }
@@ -957,7 +977,47 @@ static void set_property(struct style *st, const char *name, const char *value,
                            word_is(value, "pre-line");
         st->nowrap = word_is(value, "nowrap") || word_is(value, "pre");
     } else if (strcmp(name, "margin") == 0) {
-        parse_box(value, base, 0, st->margin);
+        parse_box(value, base, viewport_width, st->margin);
+
+        /* "0 auto" heisst: waagerecht mittig. */
+        char parts[4][40];
+        int32_t count = 0;
+        const char *p = value;
+
+        while (*p && count < 4) {
+            while (space_char(*p))
+                p++;
+            if (!*p)
+                break;
+
+            size_t at = 0;
+
+            while (*p && !space_char(*p) && at + 1 < sizeof(parts[0]))
+                parts[count][at++] = *p++;
+            parts[count][at] = '\0';
+            count++;
+        }
+        if (count >= 2) {
+            bool automatic = strncasecmp(parts[1], "auto", 4) == 0;
+
+            st->margin_auto_left = automatic;
+            st->margin_auto_right = automatic;
+            if (count >= 4)
+                st->margin_auto_left = strncasecmp(parts[3], "auto", 4) == 0;
+        } else if (count == 1) {
+            bool automatic = strncasecmp(parts[0], "auto", 4) == 0;
+
+            st->margin_auto_left = automatic;
+            st->margin_auto_right = automatic;
+        }
+    } else if (strcmp(name, "margin-left") == 0 &&
+               strncasecmp(value, "auto", 4) == 0) {
+        st->margin_auto_left = true;
+        st->margin[3] = 0;
+    } else if (strcmp(name, "margin-right") == 0 &&
+               strncasecmp(value, "auto", 4) == 0) {
+        st->margin_auto_right = true;
+        st->margin[1] = 0;
     } else if (strcmp(name, "margin-top") == 0) {
         st->margin[0] = length_px(value, base, 0, 0);
     } else if (strcmp(name, "margin-right") == 0) {
@@ -1853,10 +1913,14 @@ static void apply_node(struct cascade *c, struct node *node,
     c->var_count = mark;
 }
 
-void css_apply(struct stylesheet *sheet, struct node *root, int32_t base_size)
+void css_apply(struct stylesheet *sheet, struct node *root, int32_t base_size,
+               int32_t viewport_w, int32_t viewport_h)
 {
     if (!sheet || !root)
         return;
+
+    viewport_width = viewport_w > 0 ? viewport_w : 800;
+    viewport_height = viewport_h > 0 ? viewport_h : 600;
 
     struct style initial;
 
