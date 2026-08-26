@@ -4,6 +4,7 @@
 #include "io.h"
 #include "kstring.h"
 #include "thread.h"
+#include "process.h"
 
 struct idt_entry {
     uint16_t offset_low;
@@ -113,12 +114,31 @@ void isr_dispatch(struct registers *regs)
         return;
     }
 
-    /* Alles andere ist eine CPU-Ausnahme und damit ein Programmfehler. */
+    /* Alles andere ist eine CPU-Ausnahme. */
     const char *name = regs->int_no < 32 ? exception_name[regs->int_no]
                                          : "unbekannt";
     uint64_t cr2 = 0;
     if (regs->int_no == 14)
         __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+
+    /* Kam sie aus einem Benutzerprogramm, stirbt nur dieses - genau
+     * dafuer gibt es die Trennung in Ringe. */
+    if ((regs->cs & 3) == 3) {
+        struct process *proc = process_current();
+
+        kprintf("Programm \"%s\" abgebrochen: %s (RIP 0x%lx, CR2 0x%lx)\n",
+                proc ? proc->name : "?", name, regs->rip, cr2);
+
+        if (proc) {
+            char message[128];
+
+            ksnprintf(message, sizeof(message),
+                      "\n[abgebrochen: %s bei 0x%lx]\n", name, regs->rip);
+            process_append_output(proc, message, strlen(message));
+            process_exit(proc, -1);
+        }
+        thread_exit();
+    }
 
     panic("Ausnahme %u (%s)\n"
           "  Fehlercode : 0x%lx\n"

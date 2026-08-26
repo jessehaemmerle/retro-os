@@ -17,7 +17,10 @@
 #include "net.h"
 #include "pci.h"
 #include "serial.h"
+#include "process.h"
+#include "syscall.h"
 #include "thread.h"
+#include "vmm.h"
 #include "vfs.h"
 
 NORETURN void kmain(void)
@@ -45,6 +48,7 @@ NORETURN void kmain(void)
     /* Speicher */
     pmm_init();
     heap_init();
+    vmm_init();
 
     /* Zeit und Eingabe */
     pit_init(1000);
@@ -70,6 +74,8 @@ NORETURN void kmain(void)
 
     /* Ab hier laufen mehrere Threads nebeneinander. */
     thread_init();
+    syscall_init();
+    process_init();
     thread_current()->priority = PRIO_HIGH;   /* die Oberflaeche */
 
     /* Netzwerk (bringt seinen eigenen Thread mit) */

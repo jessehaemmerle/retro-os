@@ -28,16 +28,42 @@ CFLAGS := -std=gnu11 -O2 -g \
 
 ASFLAGS := $(CFLAGS)
 
-LDFLAGS := -nostdlib -static -z max-page-size=0x1000 \
+LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -z noexecstack \
            -T kernel/linker.ld -m elf_x86_64
+
+# --- Benutzerprogramme (laufen in Ring 3) ---------------------------------
+UPROGS   := hallo zaehler katze liste schreiben absturz
+UDIR     := $(BUILD)/userland
+UOBJDIR  := $(BUILD)/obj/userland
+
+UCFLAGS := -std=gnu11 -O2 -g \
+           -Wall -Wextra -Wno-unused-parameter \
+           -ffreestanding -fno-builtin -fno-stack-protector \
+           -fno-pie -m64 -march=x86-64 \
+           -mno-80387 -mno-mmx -mno-sse -mno-sse2 \
+           -Iuserland/include
+
+ULDFLAGS := -nostdlib -static -no-pie -z noexecstack \
+            -T userland/link.ld -m elf_x86_64
+
+ULIB_SRC := userland/lib/ulib.c
+ULIB_ASM := userland/lib/start.S userland/lib/syscall.S
+ULIB_OBJ := $(UDIR)/lib/ulib.o $(UDIR)/lib/start.o $(UDIR)/lib/syscall.o
+
+UELF     := $(patsubst %,$(UDIR)/%.elf,$(UPROGS))
+UEMBED   := $(patsubst %,$(UOBJDIR)/%.elf.o,$(UPROGS))
 
 CFILES := $(shell find kernel/src -name '*.c' | sort)
 SFILES := $(shell find kernel/src -name '*.S' | sort)
 OBJS   := $(patsubst kernel/src/%.c,$(BUILD)/obj/%.c.o,$(CFILES)) \
-          $(patsubst kernel/src/%.S,$(BUILD)/obj/%.S.o,$(SFILES))
+          $(patsubst kernel/src/%.S,$(BUILD)/obj/%.S.o,$(SFILES)) \
+          $(UEMBED)
 DEPS   := $(OBJS:.o=.d)
 
 .PHONY: all kernel iso run run-uefi run-plain disk clean distclean limine
+
+# Die uebersetzten Programme nicht nach dem Einbetten wegwerfen.
+.SECONDARY: $(UELF) $(ULIB_OBJ)
 
 all: iso
 
@@ -45,6 +71,32 @@ limine:
 	@scripts/fetch-limine.sh
 
 kernel: limine $(KERNEL)
+
+# Die Programme werden als Ganzes in den Kernel eingebettet und beim Start
+# ins Dateisystem gelegt - so braucht RetroOS keine Festplatte, um sie
+# ausfuehren zu koennen.
+$(UDIR)/lib/%.o: userland/lib/%.c
+	@mkdir -p $(dir $@)
+	@echo "  UCC     $<"
+	@$(CC) $(UCFLAGS) -c $< -o $@
+
+$(UDIR)/lib/%.o: userland/lib/%.S
+	@mkdir -p $(dir $@)
+	@echo "  UAS     $<"
+	@$(CC) $(UCFLAGS) -c $< -o $@
+
+$(UDIR)/%.elf: userland/%.c $(ULIB_OBJ) userland/link.ld
+	@mkdir -p $(dir $@)
+	@echo "  UCC     $<"
+	@$(CC) $(UCFLAGS) -c $< -o $(UDIR)/$*.o
+	@echo "  ULD     $@"
+	@$(LD) $(ULDFLAGS) $(UDIR)/$*.o $(ULIB_OBJ) -o $@
+
+$(UOBJDIR)/%.elf.o: $(UDIR)/%.elf
+	@mkdir -p $(UOBJDIR)
+	@echo "  EMBED   $<"
+	@cd $(UDIR) && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
+	    $*.elf $(CURDIR)/$@
 
 $(KERNEL): $(OBJS) kernel/linker.ld
 	@mkdir -p $(dir $@)

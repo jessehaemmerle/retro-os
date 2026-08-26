@@ -7,6 +7,8 @@
 #include "vfs.h"
 #include "kstring.h"
 
+void programs_install(struct fs_node *directory);
+
 extern struct fs_node *fs_root_slot(void);
 
 static void put(struct fs_node *dir, const char *name, const char *text,
@@ -95,9 +97,7 @@ void initfs_populate(struct fs_node *root)
         "Mit freundlichen Gruessen\n", false);
 
     /* --- Programme --- */
-    put(programs, "info.txt",
-        "Die Programme von RetroOS sind fest in den Kernel eingebaut.\n"
-        "Sie werden ueber das Startmenue geoeffnet.\n", true);
+    programs_install(programs);
 
     put(docs, "beispiel.html",
         "<html>\n"

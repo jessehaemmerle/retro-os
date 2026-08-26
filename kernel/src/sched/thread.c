@@ -21,6 +21,9 @@
 #include "io.h"
 #include "kstring.h"
 #include "mm.h"
+#include "process.h"
+#include "syscall.h"
+#include "vmm.h"
 
 #define TIME_SLICE_MS 20
 
@@ -35,6 +38,7 @@ static bool           started;
 static volatile int32_t slice_remaining;
 static volatile bool  resched_wanted;
 static volatile int32_t preempt_depth;
+static uint64_t         active_pml4;
 
 /* --- Hilfsfunktionen ------------------------------------------------- */
 
@@ -131,6 +135,21 @@ void schedule(void)
     next->cpu_ticks++;
     current = next;
     slice_remaining = TIME_SLICE_MS;
+
+    /* Der neue Thread bringt seinen eigenen Adressraum mit; ausserdem
+     * muessen CPU und Systemaufruf-Einsprung wissen, wohin sie
+     * zurueckspringen, wenn aus Ring 3 etwas hereinkommt. */
+    if (next->kernel_stack_top) {
+        tss_set_kernel_stack(next->kernel_stack_top);
+        syscall_set_kernel_stack(next->kernel_stack_top);
+    }
+
+    uint64_t wanted = next->process ? next->process->space.pml4_phys
+                                    : vmm_kernel_pml4();
+    if (wanted && wanted != active_pml4) {
+        __asm__ volatile("mov %0, %%cr3" :: "r"(wanted) : "memory");
+        active_pml4 = wanted;
+    }
 
     /* Ab hier laeuft ein anderer Thread; die Rueckkehr erfolgt erst,
      * wenn previous wieder an der Reihe ist. */
@@ -469,6 +488,7 @@ static void idle_entry(void *argument)
 void thread_init(void)
 {
     memset(threads, 0, sizeof(threads));
+    active_pml4 = vmm_kernel_pml4();
 
     /* Der bereits laufende Code wird zum ersten Thread. */
     struct thread *main_thread = &threads[0];

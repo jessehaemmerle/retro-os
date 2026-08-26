@@ -9,6 +9,7 @@
 #include "arch.h"
 #include "block.h"
 #include "net.h"
+#include "process.h"
 #include "thread.h"
 #include "boot.h"
 #include "font.h"
@@ -45,6 +46,11 @@ struct term_state {
     bool    caret_on;
 
     struct fs_node *cwd;
+
+    /* Laeuft gerade ein Benutzerprogramm in diesem Fenster? */
+    struct process *running;
+    char    partial[TERM_COLS];
+    int32_t partial_len;
 };
 
 enum { C_NORMAL, C_HIGHLIGHT, C_ERROR };
@@ -81,6 +87,13 @@ static void term_printf(struct term_state *st, uint8_t color, const char *fmt, .
 }
 
 static void term_scroll_to_end(struct window *win, struct term_state *st);
+static struct window *g_term_window;
+
+static void term_scroll_to_end_public(struct term_state *st)
+{
+    if (g_term_window)
+        term_scroll_to_end(g_term_window, st);
+}
 
 /* ------------------------------------------------------------------ */
 /* Kommandos                                                           */
@@ -120,6 +133,8 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  echo <text>      Text ausgeben");
     term_line(st, C_NORMAL, "  speicher         Speicherbelegung");
     term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
+    term_line(st, C_NORMAL, "  starte <programm> [text]  Programm in Ring 3 starten");
+    term_line(st, C_NORMAL, "  programme        mitgelieferte Programme zeigen");
     term_line(st, C_NORMAL, "  laufzeit         Zeit seit dem Start");
     term_line(st, C_NORMAL, "  datum            Datum und Uhrzeit");
     term_line(st, C_NORMAL, "  version          Systemversion");
@@ -388,6 +403,94 @@ static void cmd_ping(struct term_state *st, const char *target)
     term_printf(st, C_HIGHLIGHT, "  %d von 4 Antworten", received);
 }
 
+/* Startet ein Programm; die Ausgabe holt der Takt danach ab. */
+static void cmd_start_program(struct window *win, struct term_state *st,
+                              const char *path, const char *raw)
+{
+    char error[128];
+    char full[FS_PATH_MAX];
+
+    UNUSED(win);
+
+    if (!path) {
+        term_line(st, C_ERROR, "starte: <programm> [text]");
+        term_line(st, C_NORMAL, "  z.B.  starte /Programme/hallo.elf");
+        return;
+    }
+
+    /* Ohne Pfad wird unter /Programme gesucht. */
+    if (strchr(path, '/')) {
+        strlcpy(full, path, sizeof(full));
+    } else if (strchr(path, '.')) {
+        ksnprintf(full, sizeof(full), "/Programme/%s", path);
+    } else {
+        ksnprintf(full, sizeof(full), "/Programme/%s.elf", path);
+    }
+
+    /* Alles hinter dem Programmnamen wird uebergeben. */
+    const char *args = raw;
+    for (int skip = 0; skip < 2 && *args; skip++) {
+        while (*args == ' ')
+            args++;
+        while (*args && *args != ' ')
+            args++;
+    }
+    while (*args == ' ')
+        args++;
+
+    struct process *proc = process_start(full, args, error, sizeof(error));
+
+    if (!proc) {
+        term_printf(st, C_ERROR, "starte: %s", error);
+        return;
+    }
+
+    st->running = proc;
+    st->partial_len = 0;
+    term_printf(st, C_HIGHLIGHT, "[%s laeuft als Nummer %u]", proc->name,
+                (unsigned)proc->pid);
+}
+
+/* Holt die Ausgabe des laufenden Programms ab und macht Zeilen daraus. */
+static void drain_process(struct term_state *st)
+{
+    char chunk[256];
+
+    if (!st->running)
+        return;
+
+    size_t n = process_read_output(st->running, chunk, sizeof(chunk));
+
+    for (size_t i = 0; i < n; i++) {
+        char c = chunk[i];
+
+        if (c == '\n' || st->partial_len >= TERM_COLS - 2) {
+            st->partial[st->partial_len] = '\0';
+            term_line(st, C_NORMAL, st->partial);
+            st->partial_len = 0;
+            if (c == '\n')
+                continue;
+        }
+        if (c == '\r' || c == '\t')
+            c = ' ';
+        if (c >= 32 || c < 0)
+            st->partial[st->partial_len++] = c;
+    }
+
+    if (st->running->finished) {
+        if (st->partial_len > 0) {
+            st->partial[st->partial_len] = '\0';
+            term_line(st, C_NORMAL, st->partial);
+            st->partial_len = 0;
+        }
+        term_printf(st, C_HIGHLIGHT, "[%s beendet, Ergebnis %d]",
+                    st->running->name, st->running->exit_code);
+        st->running = NULL;
+    }
+
+    term_scroll_to_end_public(st);
+}
+
 static const char *thread_state_name(uint8_t state)
 {
     switch (state) {
@@ -540,6 +643,12 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
     } else if (!strcasecmp(cmd, "speicher") || !strcasecmp(cmd, "mem")) {
         cmd_memory(st);
 
+    } else if (!strcasecmp(cmd, "starte") || !strcasecmp(cmd, "run")) {
+        cmd_start_program(win, st, a1, raw);
+
+    } else if (!strcasecmp(cmd, "programme")) {
+        cmd_ls(st, "/Programme");
+
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);
 
@@ -681,6 +790,28 @@ static void term_key(struct window *win, const struct gui_event *ev)
     struct term_state *st = win->user;
     size_t len = strlen(st->input);
 
+    /* Waehrend ein Programm laeuft, gehen Eingaben dorthin. */
+    if (st->running) {
+        if ((ev->mods & MOD_CTRL) && (ev->ascii == 'c' || ev->ascii == 'C')) {
+            term_printf(st, C_ERROR, "[%s abgebrochen]", st->running->name);
+            process_kill(st->running);
+            st->running = NULL;
+            gui_invalidate();
+            return;
+        }
+        if (ev->key == KEY_ENTER) {
+            char line[TERM_INPUT_MAX + 2];
+
+            ksnprintf(line, sizeof(line), "%s\n", st->input);
+            process_write_input(st->running, line, strlen(line));
+            term_printf(st, C_NORMAL, "%s", st->input);
+            st->input[0] = '\0';
+            st->cursor = 0;
+            gui_invalidate();
+            return;
+        }
+    }
+
     switch (ev->key) {
     case KEY_ENTER: {
         char line[TERM_INPUT_MAX + 1];
@@ -758,6 +889,12 @@ static void term_event(struct window *win, const struct gui_event *ev)
     }
     case EV_TICK:
         st->caret_on = !st->caret_on;
+        g_term_window = win;
+
+        if (st->running) {
+            drain_process(st);
+            gui_invalidate();
+        }
         gui_invalidate();
         break;
     case EV_RESIZED:

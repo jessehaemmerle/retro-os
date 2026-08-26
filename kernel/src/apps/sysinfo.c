@@ -8,6 +8,7 @@
 #include "block.h"
 #include "mm.h"
 #include "net.h"
+#include "process.h"
 #include "thread.h"
 #include "theme.h"
 #include "widgets.h"
@@ -133,6 +134,17 @@ static void sys_paint(struct window *win, struct canvas *c)
 
     ksnprintf(buf, sizeof(buf), "%u aktiv", (unsigned)thread_count());
     row(&local, y, "Threads", buf);
+    y += 18;
+
+    if (process_count() > 0) {
+        struct process *p0 = process_at(0);
+
+        ksnprintf(buf, sizeof(buf), "%u in Ring 3 (%s)",
+                  (unsigned)process_count(), p0 ? p0->name : "");
+    } else {
+        strlcpy(buf, "keine", sizeof(buf));
+    }
+    row(&local, y, "Programme", buf);
     y += 30;
 
     gfx_text_bold(&local, 16, y, "Datentraeger", COL_SELECT);

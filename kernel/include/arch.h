@@ -14,7 +14,15 @@ struct registers {
 
 typedef void (*irq_handler_t)(struct registers *regs);
 
+#define SEGMENT_KERNEL_CODE 0x08
+#define SEGMENT_KERNEL_DATA 0x10
+#define SEGMENT_USER_DATA   0x18
+#define SEGMENT_USER_CODE   0x20
+
 void gdt_init(void);
+/* Legt fest, auf welchen Stapel die CPU wechselt, wenn ein Interrupt
+ * aus einem Benutzerprogramm kommt. */
+void tss_set_kernel_stack(uint64_t top);
 void idt_init(void);
 
 /* IRQ 0-15; der Handler laeuft mit gesperrten Interrupts. */
