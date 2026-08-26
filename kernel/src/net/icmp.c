@@ -2,6 +2,7 @@
 
 #include "net.h"
 #include "arch.h"
+#include "thread.h"
 #include "kstring.h"
 
 struct icmp_header {
@@ -74,7 +75,7 @@ bool icmp_ping(ip_addr_t target, uint32_t timeout_ms, uint32_t *rtt_ms)
         return false;
 
     while (timer_ms() - start < timeout_ms) {
-        net_poll();
+        net_idle();
 
         if (reply_seen && reply_sequence == sequence) {
             if (rtt_ms)

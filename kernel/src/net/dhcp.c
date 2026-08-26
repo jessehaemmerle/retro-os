@@ -6,6 +6,7 @@
 
 #include "net.h"
 #include "arch.h"
+#include "thread.h"
 #include "kstring.h"
 
 #define DHCP_CLIENT_PORT 68
@@ -170,7 +171,7 @@ bool dhcp_configure(uint32_t timeout_ms)
 
         uint64_t wait_until = timer_ms() + 500;
         while (timer_ms() < wait_until && !got_offer)
-            net_poll();
+            net_idle();
 
         if (timer_ms() > deadline)
             break;
@@ -199,7 +200,7 @@ bool dhcp_configure(uint32_t timeout_ms)
 
         uint64_t wait_until = timer_ms() + 500;
         while (timer_ms() < wait_until && !got_ack)
-            net_poll();
+            net_idle();
 
         if (timer_ms() > deadline)
             break;

@@ -73,11 +73,26 @@ const char *e1000_model(void);
 
 /* --- Kern --- */
 void net_init(void);
-void net_poll(void);                 /* regelmaessig aus der Hauptschleife */
+void net_poll(void);                 /* holt eingegangene Rahmen ab        */
 bool net_ready(void);                /* IP-Adresse vorhanden?              */
 
 /* Wartet bis zu timeout_ms und verarbeitet dabei eingehende Pakete. */
 void net_pump(uint32_t timeout_ms);
+
+/* Gibt die CPU kurz ab, damit der Netz-Thread arbeiten kann. Laeuft noch
+ * kein Scheduler (beim Systemstart), wird direkt abgefragt. */
+void net_idle(void);
+
+/* Schuetzt kurze Abschnitte im Netzstapel gegen Threadwechsel. */
+void net_lock(void);
+void net_unlock(void);
+
+/* True, wenn der aufrufende Code gerade ein eingegangenes Paket bearbeitet.
+ * Dann darf nichts blockieren - sonst stuende die Paketverarbeitung. */
+bool net_in_rx_context(void);
+
+/* Startet den Thread, der die Netzwerkkarte abfragt. */
+void net_start_thread(void);
 
 void ip_format(ip_addr_t addr, char *buf, size_t size);
 bool ip_parse(const char *text, ip_addr_t *out);
@@ -99,6 +114,11 @@ void arp_announce(void);
 void ip_receive(const uint8_t *packet, uint16_t length);
 bool ip_send(ip_addr_t dst, uint8_t protocol, const void *payload,
              uint16_t length);
+/* Wie ip_send, aber mit bereits aufgeloester Hardware-Adresse. So kann der
+ * Aufrufer die Aufloesung (die warten muss) ausserhalb eines geschuetzten
+ * Abschnitts erledigen. */
+bool ip_send_via(const struct mac_addr *next_hop, ip_addr_t dst,
+                 uint8_t protocol, const void *payload, uint16_t length);
 uint16_t ip_checksum(const void *data, size_t length);
 
 /* --- ICMP --- */

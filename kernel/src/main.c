@@ -17,6 +17,7 @@
 #include "net.h"
 #include "pci.h"
 #include "serial.h"
+#include "thread.h"
 #include "vfs.h"
 
 NORETURN void kmain(void)
@@ -67,7 +68,11 @@ NORETURN void kmain(void)
     fs_init();
     fs_mount_disk();
 
-    /* Netzwerk */
+    /* Ab hier laufen mehrere Threads nebeneinander. */
+    thread_init();
+    thread_current()->priority = PRIO_HIGH;   /* die Oberflaeche */
+
+    /* Netzwerk (bringt seinen eigenen Thread mit) */
     net_init();
 
     gui_init();

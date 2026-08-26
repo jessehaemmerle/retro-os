@@ -10,6 +10,7 @@
 
 #include "net.h"
 #include "arch.h"
+#include "thread.h"
 #include "kstring.h"
 #include "mm.h"
 
@@ -96,7 +97,16 @@ static uint16_t tcp_checksum(ip_addr_t src, ip_addr_t dst,
 static bool send_segment(struct tcp_socket *sock, uint8_t flags,
                          const void *data, uint16_t length)
 {
-    uint8_t segment[ETH_MTU];
+    static uint8_t segment[ETH_MTU];   /* zu gross fuer den Stapel */
+    struct mac_addr next_hop;
+
+    /* Zuerst die Hardware-Adresse besorgen. Das kann warten und darf
+     * deshalb nicht innerhalb des geschuetzten Abschnitts geschehen -
+     * sonst stuende das ganze System, bis die Antwort da ist. */
+    if (!arp_resolve(sock->remote_ip, &next_hop))
+        return false;
+
+    net_lock();
     struct tcp_header *header = (struct tcp_header *)segment;
     uint16_t header_size = sizeof(*header);
 
@@ -128,7 +138,11 @@ static bool send_segment(struct tcp_socket *sock, uint8_t flags,
     header->checksum = htons(tcp_checksum(g_netif.ip, sock->remote_ip,
                                           segment, total));
 
-    return ip_send(sock->remote_ip, IP_PROTO_TCP, segment, total);
+    bool ok = ip_send_via(&next_hop, sock->remote_ip, IP_PROTO_TCP,
+                          segment, total);
+    net_unlock();
+
+    return ok;
 }
 
 static struct tcp_socket *find_socket(ip_addr_t src, uint16_t src_port,
@@ -254,7 +268,7 @@ struct tcp_socket *tcp_connect(ip_addr_t dst, uint16_t port, uint32_t timeout_ms
 
         uint64_t wait_until = MIN(timer_ms() + 700, deadline);
         while (timer_ms() < wait_until) {
-            net_poll();
+            net_idle();
             if (sock->state == TCP_ESTABLISHED)
                 return sock;
             if (sock->reset)
@@ -289,7 +303,7 @@ int tcp_send(struct tcp_socket *sock, const void *data, uint32_t length)
 
             uint64_t deadline = timer_ms() + 800;
             while (timer_ms() < deadline) {
-                net_poll();
+                net_idle();
                 if ((int32_t)(sock->send_unacked - expected) >= 0) {
                     acked = true;
                     break;
@@ -323,7 +337,7 @@ int tcp_receive(struct tcp_socket *sock, void *buffer, uint32_t capacity,
     while (timer_ms() < deadline) {
         uint32_t before = sock->rx_length;
 
-        net_poll();
+        net_idle();
 
         if (sock->rx_length != before)
             quiet_since = timer_ms();
@@ -363,7 +377,7 @@ void tcp_close(struct tcp_socket *sock)
 
         uint64_t deadline = timer_ms() + 500;
         while (timer_ms() < deadline && !sock->remote_closed)
-            net_poll();
+            net_idle();
     }
 
     kfree(sock->rx);

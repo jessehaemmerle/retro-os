@@ -3,10 +3,13 @@
 #include "net.h"
 #include "arch.h"
 #include "kstring.h"
+#include "thread.h"
 
 struct netif g_netif;
 
 static uint8_t rx_frame[ETH_FRAME_MAX];
+static struct thread *net_thread;
+static volatile bool  in_rx;
 
 void net_init(void)
 {
@@ -19,6 +22,10 @@ void net_init(void)
     g_netif.up = true;
     arp_init();
 
+    /* Erst den Thread starten, der die Karte abfragt - sonst wartet die
+     * DHCP-Anfrage auf eine Antwort, die niemand abholt. */
+    net_start_thread();
+
     /* Adresse per DHCP holen - in den ersten Sekunden nach dem Start. */
     if (dhcp_configure(4000)) {
         char ip[16], gw[16], dns[16];
@@ -28,6 +35,12 @@ void net_init(void)
         ip_format(g_netif.dns, dns, sizeof(dns));
         kprintf("Netzwerk    : %s, Gateway %s, DNS %s\n", ip, gw, dns);
         arp_announce();
+
+        /* Die Adresse des Gateways gleich lernen - sonst wartet die erste
+         * Verbindung auf die Aufloesung. */
+        struct mac_addr unused;
+        if (g_netif.gateway)
+            arp_resolve(g_netif.gateway, &unused);
     } else {
         kprintf("Netzwerk    : keine Adresse per DHCP erhalten\n");
     }
@@ -40,12 +53,29 @@ void net_poll(void)
 
     /* Mehrere Rahmen je Durchgang, damit der Ring nicht volllaeuft. */
     for (int i = 0; i < 16; i++) {
+        preempt_disable();
+
         uint16_t length = e1000_receive(rx_frame, sizeof(rx_frame));
 
-        if (length == 0)
+        if (length == 0) {
+            preempt_enable();
             break;
+        }
+
+        in_rx = true;
         eth_receive(rx_frame, length);
+        in_rx = false;
+
+        preempt_enable();
     }
+}
+
+void net_idle(void)
+{
+    if (scheduler_running())
+        thread_sleep(1);
+    else
+        net_poll();
 }
 
 void net_pump(uint32_t timeout_ms)
@@ -53,7 +83,34 @@ void net_pump(uint32_t timeout_ms)
     uint64_t deadline = timer_ms() + timeout_ms;
 
     while (timer_ms() < deadline)
+        net_idle();
+}
+
+void net_lock(void)   { preempt_disable(); }
+void net_unlock(void) { preempt_enable(); }
+
+bool net_in_rx_context(void)
+{
+    return in_rx;
+}
+
+/* Der Netz-Thread ist die einzige Stelle, die Rahmen von der Karte holt. */
+static void net_thread_entry(void *argument)
+{
+    UNUSED(argument);
+
+    for (;;) {
         net_poll();
+        thread_sleep(1);
+    }
+}
+
+void net_start_thread(void)
+{
+    if (!g_netif.up || net_thread)
+        return;
+
+    net_thread = thread_create("netz", net_thread_entry, NULL, PRIO_NORMAL);
 }
 
 bool net_ready(void)

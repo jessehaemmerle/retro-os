@@ -3,6 +3,7 @@
 #include "arch.h"
 #include "io.h"
 #include "kstring.h"
+#include "thread.h"
 
 struct idt_entry {
     uint16_t offset_low;
@@ -84,6 +85,8 @@ void idt_init(void)
     __asm__ volatile("lidt %0" :: "m"(idtr));
 }
 
+bool scheduler_should_switch(void);
+
 void irq_install(uint8_t irq, irq_handler_t handler)
 {
     if (irq >= IRQ_COUNT)
@@ -102,6 +105,11 @@ void isr_dispatch(struct registers *regs)
             irq_handlers[irq](regs);
 
         pic_send_eoi(irq);
+
+        /* Erst quittieren, dann umschalten - sonst bleibt der Controller
+         * haengen, waehrend ein anderer Thread laeuft. */
+        if (scheduler_should_switch())
+            schedule();
         return;
     }
 

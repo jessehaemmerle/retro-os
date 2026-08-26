@@ -7,6 +7,7 @@
 
 #include "net.h"
 #include "arch.h"
+#include "thread.h"
 #include "kstring.h"
 
 #define ARP_CACHE_SIZE  16
@@ -136,12 +137,21 @@ bool arp_resolve(ip_addr_t ip, struct mac_addr *out)
     if (cache_get(ip, out))
         return true;
 
+    /* Beim Bearbeiten eines eingegangenen Pakets darf nicht gewartet
+     * werden - sonst stuende die Paketverarbeitung still. Stattdessen
+     * wird gefragt und das ausgehende Paket verworfen; die hoehere
+     * Schicht schickt es ohnehin noch einmal. */
+    if (net_in_rx_context()) {
+        send_packet(1, eth_broadcast(), ip);
+        return false;
+    }
+
     for (int attempt = 0; attempt < 3; attempt++) {
         send_packet(1, eth_broadcast(), ip);
 
         uint64_t deadline = timer_ms() + ARP_TIMEOUT_MS;
         while (timer_ms() < deadline) {
-            net_poll();
+            net_idle();
             if (cache_get(ip, out))
                 return true;
         }

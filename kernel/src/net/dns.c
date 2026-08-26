@@ -6,6 +6,7 @@
 
 #include "net.h"
 #include "arch.h"
+#include "thread.h"
 #include "kstring.h"
 
 #define DNS_PORT        53
@@ -178,7 +179,7 @@ bool dns_resolve(const char *name, ip_addr_t *out)
 
         uint64_t deadline = timer_ms() + DNS_TIMEOUT_MS;
         while (timer_ms() < deadline && !answer_seen)
-            net_poll();
+            net_idle();
 
         ok = answer_seen;
     }

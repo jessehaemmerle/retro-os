@@ -41,7 +41,13 @@ bool eth_send(const struct mac_addr *dst, uint16_t ethertype,
         total = 60;
     }
 
-    return e1000_send(frame, total);
+    /* Der Sendering darf nicht von zwei Threads gleichzeitig beschrieben
+     * werden. */
+    net_lock();
+    bool ok = e1000_send(frame, total);
+    net_unlock();
+
+    return ok;
 }
 
 void eth_receive(const uint8_t *frame, uint16_t length)

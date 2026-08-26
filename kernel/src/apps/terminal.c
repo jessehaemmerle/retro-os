@@ -9,6 +9,7 @@
 #include "arch.h"
 #include "block.h"
 #include "net.h"
+#include "thread.h"
 #include "boot.h"
 #include "font.h"
 #include "kstring.h"
@@ -118,6 +119,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  edit <datei>     Datei im Editor oeffnen");
     term_line(st, C_NORMAL, "  echo <text>      Text ausgeben");
     term_line(st, C_NORMAL, "  speicher         Speicherbelegung");
+    term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
     term_line(st, C_NORMAL, "  laufzeit         Zeit seit dem Start");
     term_line(st, C_NORMAL, "  datum            Datum und Uhrzeit");
     term_line(st, C_NORMAL, "  version          Systemversion");
@@ -386,6 +388,35 @@ static void cmd_ping(struct term_state *st, const char *target)
     term_printf(st, C_HIGHLIGHT, "  %d von 4 Antworten", received);
 }
 
+static const char *thread_state_name(uint8_t state)
+{
+    switch (state) {
+    case THREAD_RUNNING:  return "laeuft";
+    case THREAD_READY:    return "bereit";
+    case THREAD_SLEEPING: return "schlaeft";
+    case THREAD_BLOCKED:  return "wartet";
+    default:              return "beendet";
+    }
+}
+
+static void cmd_threads(struct term_state *st)
+{
+    term_printf(st, C_HIGHLIGHT, "%-4s %-16s %-10s %-6s %s",
+                "Nr.", "Name", "Zustand", "Wicht.", "Laeufe");
+
+    for (size_t i = 0; i < thread_count(); i++) {
+        struct thread *t = thread_at(i);
+
+        if (!t)
+            continue;
+
+        term_printf(st, t == thread_current() ? C_HIGHLIGHT : C_NORMAL,
+                    "%-4u %-16s %-10s %-6u %u",
+                    (unsigned)t->id, t->name, thread_state_name(t->state),
+                    (unsigned)t->priority, (unsigned)t->cpu_ticks);
+    }
+}
+
 static void term_prompt_line(struct term_state *st, const char *cmd)
 {
     char path[FS_PATH_MAX];
@@ -508,6 +539,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "speicher") || !strcasecmp(cmd, "mem")) {
         cmd_memory(st);
+
+    } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
+        cmd_threads(st);
 
     } else if (!strcasecmp(cmd, "laufzeit") || !strcasecmp(cmd, "uptime")) {
         uint64_t ms = timer_ms();

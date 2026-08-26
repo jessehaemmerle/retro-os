@@ -8,6 +8,7 @@
 
 #include "mm.h"
 #include "kstring.h"
+#include "thread.h"
 
 #define HEAP_MAGIC     0x52455452u   /* "RETR" */
 #define HEAP_GROW_MIN  (256 * 1024)  /* mindestens 256 KiB nachfordern */
@@ -88,29 +89,36 @@ static void split(struct block *b, size_t size)
     b->size = size;
 }
 
+/* Der Heap wird von mehreren Threads benutzt; waehrend die Liste
+ * umgehaengt wird, darf nicht umgeschaltet werden. */
 void *kmalloc(size_t size)
 {
     if (size == 0)
         return NULL;
 
     size = ALIGN_UP(size, 16);
+    preempt_disable();
 
     for (struct block *b = head; b; b = b->next) {
         if (b->free && b->size >= size) {
             split(b, size);
             b->free = 0;
             used_bytes += b->size;
+            preempt_enable();
             return b + 1;
         }
     }
 
     struct block *b = grow(size);
-    if (!b)
+    if (!b) {
+        preempt_enable();
         return NULL;
+    }
 
     split(b, size);
     b->free = 0;
     used_bytes += b->size;
+    preempt_enable();
     return b + 1;
 }
 
@@ -147,8 +155,13 @@ void kfree(void *ptr)
 
     if (b->magic != HEAP_MAGIC)
         panic("kfree(): beschaedigter Heap-Block bei %p", ptr);
-    if (b->free)
+
+    preempt_disable();
+
+    if (b->free) {
+        preempt_enable();
         return;
+    }
 
     b->free = 1;
     used_bytes -= b->size;
@@ -156,6 +169,8 @@ void kfree(void *ptr)
     merge_forward(b);
     if (b->prev && b->prev->free)
         merge_forward(b->prev);
+
+    preempt_enable();
 }
 
 void *krealloc(void *ptr, size_t size)

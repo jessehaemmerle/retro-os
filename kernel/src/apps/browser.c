@@ -21,6 +21,7 @@
 #include "kstring.h"
 #include "mm.h"
 #include "net.h"
+#include "thread.h"
 #include "theme.h"
 #include "widgets.h"
 
@@ -44,8 +45,31 @@ struct link_area {
     const char *href;
 };
 
+/* Der Ladeauftrag wandert zwischen Oberflaeche und Arbeits-Thread hin und
+ * her. Nur ein Feld wechselt dabei die Richtung, deshalb genuegt ein
+ * Zustandswert ohne weitere Absprache. */
+enum job_state {
+    JOB_IDLE,
+    JOB_REQUESTED,
+    JOB_RUNNING,
+    JOB_DONE,
+};
+
+struct load_job {
+    char     url[BR_URL_MAX + 1];
+    volatile int state;
+
+    struct http_response response;
+    bool     ok;
+};
+
 struct br_state {
     struct html_doc doc;
+
+    struct load_job  job;
+    struct thread   *worker;
+    volatile bool    worker_quit;
+    volatile bool    worker_done;
 
     char url[BR_URL_MAX + 1];
     char address[BR_URL_MAX + 1];
@@ -57,7 +81,6 @@ struct br_state {
     char history[BR_HISTORY][BR_URL_MAX + 1];
     int  history_len;
 
-    char pending[BR_URL_MAX + 1];
     bool loading;
 
     char status[160];
@@ -209,35 +232,52 @@ static bool load_local(struct br_state *st, const char *path)
     return true;
 }
 
-static bool load_http(struct br_state *st, const char *url)
+/* Wertet das Ergebnis des Arbeits-Threads aus. */
+static bool finish_http(struct br_state *st)
 {
-    struct http_response response;
+    struct http_response *response = &st->job.response;
 
-    if (!net_ready()) {
-        strlcpy(st->status, "Keine Netzwerkverbindung.", sizeof(st->status));
-        return false;
-    }
-
-    if (!http_get(url, &response)) {
-        strlcpy(st->status, response.error[0] ? response.error
-                                              : "Die Seite konnte nicht geladen werden.",
+    if (!st->job.ok) {
+        strlcpy(st->status, response->error[0]
+                    ? response->error
+                    : "Die Seite konnte nicht geladen werden.",
                 sizeof(st->status));
         return false;
     }
 
     html_free(&st->doc);
 
-    if (strncasecmp(response.content_type, "text/plain", 10) == 0)
-        html_parse_plain(&st->doc, response.body, response.body_length);
+    if (strncasecmp(response->content_type, "text/plain", 10) == 0)
+        html_parse_plain(&st->doc, response->body, response->body_length);
     else
-        html_parse(&st->doc, response.body, response.body_length);
+        html_parse(&st->doc, response->body, response->body_length);
 
     ksnprintf(st->status, sizeof(st->status), "%d - %u Byte - %s",
-              response.status, (unsigned)response.body_length,
-              response.content_type);
+              response->status, (unsigned)response->body_length,
+              response->content_type);
 
-    http_response_free(&response);
+    http_response_free(response);
     return true;
+}
+
+/* Laeuft im Arbeits-Thread: holt die Seite, waehrend die Oberflaeche
+ * weiterlaeuft. Ausgewertet wird das Ergebnis wieder im Fenster-Thread. */
+static void browser_worker(void *argument)
+{
+    struct br_state *st = argument;
+
+    while (!st->worker_quit) {
+        if (st->job.state != JOB_REQUESTED) {
+            wait_on(&st->job, NULL, 200);
+            continue;
+        }
+
+        st->job.state = JOB_RUNNING;
+        st->job.ok = http_get(st->job.url, &st->job.response);
+        st->job.state = JOB_DONE;
+    }
+
+    st->worker_done = true;
 }
 
 static void do_load(struct window *win, const char *url)
@@ -248,13 +288,12 @@ static void do_load(struct window *win, const char *url)
     st->scroll = 0;
     st->link_count = 0;
 
-    if (strncasecmp(url, "start:", 6) == 0) {
+    if (strncasecmp(url, "start:", 6) == 0)
         load_start_page(st);
-    } else if (strncasecmp(url, "datei:", 6) == 0) {
+    else if (strncasecmp(url, "datei:", 6) == 0)
         load_local(st, url + 6);
-    } else {
-        load_http(st, url);
-    }
+    else
+        finish_http(st);
 
     ksnprintf(title, sizeof(title), "Browser - %s",
               st->doc.title[0] ? st->doc.title : url);
@@ -284,8 +323,35 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
     st->address_cursor = (int32_t)strlen(st->address);
     st->address_focus = false;
 
-    /* Erst anzeigen, dass geladen wird - geholt wird im naechsten Takt. */
-    strlcpy(st->pending, full, sizeof(st->pending));
+    bool from_net = strncasecmp(full, "http://", 7) == 0 ||
+                    strncasecmp(full, "https://", 8) == 0;
+
+    if (!from_net) {
+        /* Aus dem Dateisystem geht es sofort. */
+        do_load(win, full);
+        return;
+    }
+
+    if (!net_ready()) {
+        strlcpy(st->status, "Keine Netzwerkverbindung.", sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+
+    if (!st->worker)
+        st->worker = thread_create("browser", browser_worker, st, PRIO_NORMAL);
+
+    if (!st->worker) {
+        strlcpy(st->status, "Kein freier Arbeits-Thread.", sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+
+    /* Auftrag abgeben und weiterzeichnen - der Rest geschieht nebenher. */
+    strlcpy(st->job.url, full, sizeof(st->job.url));
+    st->job.state = JOB_REQUESTED;
+    wake_one(&st->job);
+
     strlcpy(st->status, "Lade ...", sizeof(st->status));
     st->loading = true;
     gui_invalidate();
@@ -780,16 +846,15 @@ static void br_event(struct window *win, const struct gui_event *ev)
     case EV_TICK:
         st->caret_on = !st->caret_on;
 
-        /* Der eigentliche Ladevorgang, nachdem "Lade ..." zu sehen war. */
-        if (st->loading && st->pending[0]) {
-            char url[BR_URL_MAX + 1];
-
-            strlcpy(url, st->pending, sizeof(url));
-            st->pending[0] = '\0';
+        /* Ist der Arbeits-Thread fertig, wird die Seite jetzt gesetzt. */
+        if (st->loading && st->job.state == JOB_DONE) {
             st->loading = false;
-            do_load(win, url);
+            st->job.state = JOB_IDLE;
+            do_load(win, st->job.url);
             return;
         }
+        if (st->loading)
+            gui_invalidate();   /* Anzeige "Lade ..." lebendig halten */
         if (st->address_focus)
             gui_invalidate();
         break;
@@ -808,10 +873,24 @@ static void br_close(struct window *win)
 {
     struct br_state *st = win->user;
 
-    if (st) {
-        html_free(&st->doc);
-        kfree(st);
+    if (!st)
+        return;
+
+    /* Der Arbeits-Thread benutzt st - erst wenn er beendet ist, darf der
+     * Speicher weg. */
+    if (st->worker) {
+        st->worker_quit = true;
+        wake_one(&st->job);
+
+        for (int i = 0; i < 200 && !st->worker_done; i++)
+            thread_sleep(10);
     }
+
+    if (st->job.state == JOB_DONE && st->job.ok)
+        http_response_free(&st->job.response);
+
+    html_free(&st->doc);
+    kfree(st);
     win->user = NULL;
 }
 

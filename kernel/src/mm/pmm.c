@@ -8,6 +8,7 @@
 #include "mm.h"
 #include "boot.h"
 #include "kstring.h"
+#include "thread.h"
 
 static uint8_t  *bitmap;
 static uint64_t  bitmap_pages;    /* Anzahl verwalteter Seiten */
@@ -122,11 +123,15 @@ uint64_t pmm_alloc_pages(size_t count)
     if (count == 0 || !bitmap)
         return 0;
 
+    preempt_disable();
+
     uint64_t addr = find_run(count, last_index, bitmap_pages);
     if (!addr) {
         last_index = 0;
         addr = find_run(count, 0, bitmap_pages);
     }
+
+    preempt_enable();
     return addr;
 }
 
@@ -139,12 +144,14 @@ void pmm_free_pages(uint64_t phys, size_t count)
 {
     uint64_t idx = phys / PAGE_SIZE;
 
+    preempt_disable();
     for (size_t i = 0; i < count; i++) {
         if (idx + i < bitmap_pages && bit_test(idx + i)) {
             bit_clear(idx + i);
             used_pages--;
         }
     }
+    preempt_enable();
 }
 
 void pmm_free_page(uint64_t phys)

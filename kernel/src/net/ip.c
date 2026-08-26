@@ -39,16 +39,12 @@ uint16_t ip_checksum(const void *data, size_t length)
     return (uint16_t)~sum;
 }
 
-bool ip_send(ip_addr_t dst, uint8_t protocol, const void *payload,
-             uint16_t length)
+bool ip_send_via(const struct mac_addr *next_hop, ip_addr_t dst,
+                 uint8_t protocol, const void *payload, uint16_t length)
 {
     uint8_t packet[ETH_MTU];
 
     if (sizeof(struct ip_header) + length > ETH_MTU)
-        return false;
-
-    struct mac_addr target;
-    if (!arp_resolve(dst, &target))
         return false;
 
     struct ip_header *header = (struct ip_header *)packet;
@@ -66,8 +62,21 @@ bool ip_send(ip_addr_t dst, uint8_t protocol, const void *payload,
 
     memcpy(packet + sizeof(*header), payload, length);
 
-    return eth_send(&target, ETHERTYPE_IP, packet,
+    return eth_send(next_hop, ETHERTYPE_IP, packet,
                     (uint16_t)(sizeof(*header) + length));
+}
+
+bool ip_send(ip_addr_t dst, uint8_t protocol, const void *payload,
+             uint16_t length)
+{
+    struct mac_addr next_hop;
+
+    /* Die Aufloesung kann warten - deshalb geschieht sie hier, ausserhalb
+     * jeder Sperre, und nicht mitten im Zusammenbauen des Pakets. */
+    if (!arp_resolve(dst, &next_hop))
+        return false;
+
+    return ip_send_via(&next_hop, dst, protocol, payload, length);
 }
 
 void ip_receive(const uint8_t *data, uint16_t length)

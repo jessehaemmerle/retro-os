@@ -20,6 +20,7 @@
 #include "kstring.h"
 #include "mm.h"
 #include "net.h"
+#include "thread.h"
 #include "theme.h"
 
 #define CURSOR_W 12
@@ -780,9 +781,6 @@ NORETURN void gui_run(void)
     for (;;) {
         bool activity = false;
 
-        /* Eingegangene Pakete abholen, bevor Eingaben verarbeitet werden. */
-        net_poll();
-
         while (keyboard_poll(&ke)) {
             handle_key(&ke);
             activity = true;
@@ -846,7 +844,10 @@ NORETURN void gui_run(void)
 
         present();
 
+
+        /* Kurz schlafen statt anhalten: so kommen die Threads im
+         * Hintergrund zum Zug, ohne dass die Bedienung traege wirkt. */
         if (!activity)
-            __asm__ volatile("hlt");
+            thread_sleep(4);
     }
 }

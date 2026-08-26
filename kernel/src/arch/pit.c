@@ -6,6 +6,7 @@
 
 #include "arch.h"
 #include "io.h"
+#include "thread.h"
 
 #define PIT_CHANNEL0 0x40
 #define PIT_COMMAND  0x43
@@ -18,6 +19,7 @@ static void pit_irq(struct registers *regs)
 {
     UNUSED(regs);
     ticks++;
+    scheduler_tick();
 }
 
 void pit_init(uint32_t frequency_hz)

@@ -8,6 +8,7 @@
 #include "block.h"
 #include "mm.h"
 #include "net.h"
+#include "thread.h"
 #include "theme.h"
 #include "widgets.h"
 
@@ -128,6 +129,10 @@ static void sys_paint(struct window *win, struct canvas *c)
 
     ksnprintf(buf, sizeof(buf), "%u", (unsigned)gui_window_count());
     row(&local, y, "Offene Fenster", buf);
+    y += 18;
+
+    ksnprintf(buf, sizeof(buf), "%u aktiv", (unsigned)thread_count());
+    row(&local, y, "Threads", buf);
     y += 30;
 
     gfx_text_bold(&local, 16, y, "Datentraeger", COL_SELECT);
