@@ -32,6 +32,13 @@ struct address_space {
 
 void vmm_init(void);
 
+/* Beherrscht die CPU die Ausfuehrsperre (NX)? */
+bool vmm_no_execute(void);
+
+/* Aendert die Rechte eines bereits abgebildeten Bereichs. */
+bool vmm_protect_range(struct address_space *space, uint64_t virt,
+                       size_t bytes, uint64_t flags);
+
 /* Legt einen Adressraum an, der die Kernel-Haelfte mitbenutzt. */
 bool vmm_create(struct address_space *space);
 void vmm_destroy(struct address_space *space);

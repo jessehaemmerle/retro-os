@@ -17,6 +17,7 @@
 #include "thread.h"
 
 static uint64_t kernel_pml4;
+static bool     no_execute_available;
 
 static inline uint64_t *table_at(uint64_t phys)
 {
@@ -29,12 +30,42 @@ static inline size_t index_of(uint64_t virt, int level)
     return (size_t)((virt >> (12 + 9 * (level - 1))) & 0x1FF);
 }
 
+/* Das oberste Bit eines Seiteneintrags sperrt die Ausfuehrung - aber
+ * nur, wenn die CPU das Verfahren vorher freigeschaltet bekommt.
+ * Andernfalls gilt Bit 63 als reserviert und jeder Zugriff endet in
+ * einem Seitenfehler. */
+static bool enable_no_execute(void)
+{
+    uint32_t eax, ebx, ecx, edx;
+
+    __asm__ volatile("cpuid"
+                     : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                     : "a"(0x80000001), "c"(0));
+    if (!(edx & (1u << 20)))
+        return false;
+
+    uint32_t low, high;
+
+    __asm__ volatile("rdmsr" : "=a"(low), "=d"(high) : "c"(0xC0000080));
+    low |= 1u << 11;                       /* EFER.NXE */
+    __asm__ volatile("wrmsr" :: "c"(0xC0000080), "a"(low), "d"(high));
+    return true;
+}
+
+bool vmm_no_execute(void)
+{
+    return no_execute_available;
+}
+
 void vmm_init(void)
 {
     __asm__ volatile("mov %%cr3, %0" : "=r"(kernel_pml4));
     kernel_pml4 &= PTE_ADDR_MASK;
 
-    kprintf("Adressraum  : Kernel-Tabelle bei %p\n", (void *)kernel_pml4);
+    no_execute_available = enable_no_execute();
+
+    kprintf("Adressraum  : Kernel-Tabelle bei %p%s\n", (void *)kernel_pml4,
+            no_execute_available ? ", Ausfuehrsperre aktiv" : "");
 }
 
 uint64_t vmm_kernel_pml4(void)
@@ -129,20 +160,77 @@ bool vmm_map(struct address_space *space, uint64_t virt, uint64_t phys,
 {
     uint64_t root = space ? space->pml4_phys : kernel_pml4;
 
+    /* Ohne freigeschaltete Ausfuehrsperre gilt das oberste Bit als
+     * reserviert - es zu setzen wuerde jeden Zugriff scheitern lassen. */
+    if (!no_execute_available)
+        flags &= ~PTE_NX;
+
     preempt_disable();
 
-    uint64_t *pdpt = walk(root, virt, 4, true, flags);
+    /* Eine Zwischentabelle darf die Ausfuehrsperre nicht tragen - sie
+     * wuerde sonst fuer alles darunter gelten. */
+    uint64_t table_flags = flags & ~PTE_NX;
+
+    uint64_t *pdpt = walk(root, virt, 4, true, table_flags);
     if (!pdpt) { preempt_enable(); return false; }
 
-    uint64_t *pd = walk((uint64_t)pdpt - g_hhdm_offset, virt, 3, true, flags);
+    uint64_t *pd = walk((uint64_t)pdpt - g_hhdm_offset, virt, 3, true,
+                        table_flags);
     if (!pd) { preempt_enable(); return false; }
 
-    uint64_t *pt = walk((uint64_t)pd - g_hhdm_offset, virt, 2, true, flags);
+    uint64_t *pt = walk((uint64_t)pd - g_hhdm_offset, virt, 2, true,
+                        table_flags);
     if (!pt) { preempt_enable(); return false; }
 
     pt[index_of(virt, 1)] = (phys & PTE_ADDR_MASK) | flags | PTE_PRESENT;
 
     preempt_enable();
+    return true;
+}
+
+/* Setzt die Rechte eines schon abgebildeten Bereichs neu. Gebraucht
+ * wird das beim Laden eines Programms: Erst wird das Segment
+ * beschreibbar angelegt und gefuellt, danach bekommt es die Rechte, die
+ * in der Programmdatei stehen. */
+bool vmm_protect_range(struct address_space *space, uint64_t virt,
+                       size_t bytes, uint64_t flags)
+{
+    uint64_t root = space ? space->pml4_phys : kernel_pml4;
+    uint64_t start = ALIGN_DOWN(virt, PAGE_SIZE);
+    uint64_t end = ALIGN_UP(virt + bytes, PAGE_SIZE);
+
+    if (!vmm_no_execute())
+        flags &= ~PTE_NX;
+
+    preempt_disable();
+
+    for (uint64_t page = start; page < end; page += PAGE_SIZE) {
+        uint64_t *pdpt = walk(root, page, 4, false, 0);
+
+        if (!pdpt)
+            continue;
+
+        uint64_t *pd = walk((uint64_t)pdpt - g_hhdm_offset, page, 3, false, 0);
+
+        if (!pd)
+            continue;
+
+        uint64_t *pt = walk((uint64_t)pd - g_hhdm_offset, page, 2, false, 0);
+
+        if (!pt)
+            continue;
+
+        uint64_t *entry = &pt[index_of(page, 1)];
+
+        if (!(*entry & PTE_PRESENT))
+            continue;
+        *entry = (*entry & PTE_ADDR_MASK) | flags | PTE_PRESENT;
+    }
+
+    preempt_enable();
+
+    /* Der Adressraum des Prozesses laeuft noch nicht - ein Umschalten
+     * auf ihn laedt die Tabellen ohnehin neu. */
     return true;
 }
 

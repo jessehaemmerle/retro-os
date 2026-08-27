@@ -290,7 +290,7 @@ void syscall_dispatch(struct syscall_frame *frame)
 
         if (delta > 0) {
             if (!vmm_alloc_range(&proc->space, old, (size_t)delta,
-                                 PTE_PRESENT | PTE_USER | PTE_WRITE)) {
+                                 PTE_PRESENT | PTE_USER | PTE_WRITE | PTE_NX)) {
                 result = SYS_ERR_NOMEM;
                 break;
             }

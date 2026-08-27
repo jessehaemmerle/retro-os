@@ -18,6 +18,7 @@ PROGRAM(katze);
 PROGRAM(liste);
 PROGRAM(schreiben);
 PROGRAM(absturz);
+PROGRAM(schutz);
 
 #define ENTRY(name, beschreibung)                                \
     { #name ".elf", _binary_##name##_elf_start,                  \
@@ -35,6 +36,7 @@ static const struct {
     ENTRY(liste,     "listet einen Ordner auf"),
     ENTRY(schreiben, "legt eine Datei an"),
     ENTRY(absturz,   "greift absichtlich daneben"),
+    ENTRY(schutz,    "prueft die Ausfuehrsperre"),
 };
 
 void programs_install(struct fs_node *directory)

@@ -19,6 +19,11 @@ void enter_user_mode(uint64_t entry, uint64_t stack) NORETURN;
 /* --- ELF-Strukturen (nur, was gebraucht wird) --- */
 
 #define PT_LOAD 1
+
+/* Rechte eines Segments, wie sie in der Programmdatei stehen. */
+#define PF_X 0x1
+#define PF_W 0x2
+#define PF_R 0x4
 #define ET_EXEC 2
 
 struct elf64_ehdr {
@@ -190,9 +195,10 @@ static bool load_elf(struct process *proc, const uint8_t *image, size_t size,
             return false;
         }
 
-        uint64_t flags = PTE_PRESENT | PTE_USER | PTE_WRITE;
-
-        if (!vmm_alloc_range(&proc->space, ph->vaddr, ph->memsz, flags)) {
+        /* Zum Fuellen muss das Segment beschreibbar sein - die Rechte
+         * aus der Datei bekommt es unmittelbar danach. */
+        if (!vmm_alloc_range(&proc->space, ph->vaddr, ph->memsz,
+                             PTE_PRESENT | PTE_USER | PTE_WRITE | PTE_NX)) {
             strlcpy(error, "Zu wenig Speicher fuer das Programm.", error_size);
             return false;
         }
@@ -202,6 +208,18 @@ static bool load_elf(struct process *proc, const uint8_t *image, size_t size,
             strlcpy(error, "Das Programm liess sich nicht kopieren.", error_size);
             return false;
         }
+
+        /* Code darf nicht beschrieben, Daten nicht ausgefuehrt werden.
+         * Ein Programm, das sich selbst umschreiben will, faellt damit
+         * auf - so wie es sich gehoert. */
+        uint64_t flags = PTE_PRESENT | PTE_USER;
+
+        if (ph->flags & PF_W)
+            flags |= PTE_WRITE;
+        if (!(ph->flags & PF_X))
+            flags |= PTE_NX;
+
+        vmm_protect_range(&proc->space, ph->vaddr, ph->memsz, flags);
 
         uint64_t top = ALIGN_UP(ph->vaddr + ph->memsz, PAGE_SIZE);
         if (top > proc->space.heap_break)
@@ -276,7 +294,7 @@ struct process *process_start(const char *path, const char *args,
     /* Stapel des Programms. */
     if (!vmm_alloc_range(&proc->space, USER_STACK_TOP - USER_STACK_SIZE,
                          USER_STACK_SIZE,
-                         PTE_PRESENT | PTE_USER | PTE_WRITE)) {
+                         PTE_PRESENT | PTE_USER | PTE_WRITE | PTE_NX)) {
         strlcpy(error, "Kein Platz fuer den Stapel.", error_size);
         vmm_destroy(&proc->space);
         return NULL;
