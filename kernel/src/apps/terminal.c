@@ -10,6 +10,7 @@
 #include "arch.h"
 #include "block.h"
 #include "net.h"
+#include "nic.h"
 #include "process.h"
 #include "thread.h"
 #include "boot.h"
@@ -271,6 +272,8 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
                 (unsigned)response.body_length, response.content_type);
     if (response.security[0])
         term_printf(st, C_HIGHLIGHT, "Verschluesselt: %s", response.security);
+    if (response.truncated)
+        term_line(st, C_ERROR, "Achtung: die Antwort ist unvollstaendig.");
 
     if (target) {
         struct fs_node *file = fs_lookup(st->cwd, target);
@@ -400,8 +403,19 @@ static void cmd_network(struct term_state *st)
     }
 
     mac_format(&g_netif.mac, text, sizeof(text));
-    term_printf(st, C_HIGHLIGHT, "%s", e1000_model());
+    if (strcmp(nic_model(), nic_family()) == 0)
+        term_printf(st, C_HIGHLIGHT, "%s", nic_model());
+    else
+        term_printf(st, C_HIGHLIGHT, "%s (%s)", nic_model(), nic_family());
     term_printf(st, C_NORMAL, "  Hardware-Adresse : %s", text);
+
+    if (nic_speed())
+        term_printf(st, C_NORMAL, "  Verbindung       : %s, %u MBit/s",
+                    nic_link_up() ? "steht" : "unterbrochen",
+                    (unsigned)nic_speed());
+    else
+        term_printf(st, C_NORMAL, "  Verbindung       : %s",
+                    nic_link_up() ? "steht" : "unterbrochen");
 
     if (!net_ready()) {
         term_line(st, C_ERROR, "  Keine IP-Adresse (DHCP ohne Antwort).");
@@ -420,6 +434,12 @@ static void cmd_network(struct term_state *st)
                 (unsigned)g_netif.rx_packets, (unsigned)g_netif.rx_bytes);
     term_printf(st, C_NORMAL, "  Gesendet         : %u Pakete, %u Byte",
                 (unsigned)g_netif.tx_packets, (unsigned)g_netif.tx_bytes);
+
+    if (nic_seen_count() > 1) {
+        term_line(st, C_NORMAL, "  Auf dem Bus gefunden:");
+        for (size_t i = 0; i < nic_seen_count(); i++)
+            term_printf(st, C_NORMAL, "    %s", nic_seen_at(i));
+    }
 }
 
 static void cmd_ping(struct term_state *st, const char *target)

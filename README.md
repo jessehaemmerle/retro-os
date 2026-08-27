@@ -38,9 +38,10 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 ├───────────────────────────────┤  TCP · UDP · DHCP · DNS · ICMP       │
 │  Seitenverwaltung · Heap      │  IPv4 · ARP · Ethernet               │
 ├───────────────────────────────┼──────────────────────────────────────┤
-│  Partitionen: GPT · MBR       │  Netzwerkkarte: Intel e1000          │
-│  Blockgeräte: NVMe · AHCI ·   ├──────────────────────────────────────┤
-│  ATA · USB-Speicher           │  USB: xHCI · Verteiler · HID-Tastatur│
+│  Partitionen: GPT · MBR       │  Netzwerkkarten: virtio · Intel igb  │
+│  Blockgeräte: NVMe · AHCI ·   │  e1000e · e1000 · Realtek 8169/8139  │
+│  ATA · USB-Speicher           ├──────────────────────────────────────┤
+│                               │  USB: xHCI · Verteiler · HID-Tastatur│
 │                               │  und -Maus · Massenspeicher (SCSI)   │
 ├───────────────────────────────┴──────────────────────────────────────┤
 │  PS/2 (falls vorhanden) · RTC · UART · PCIe · ACPI                   │
@@ -82,8 +83,10 @@ sudo dd if=retroos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 > fehlt er, sagen das die ACPI-Tabellen und RetroOS klopft gar nicht erst
 > an. Als Datenträger dienen NVMe-SSDs, SATA-Platten am AHCI-Controller
 > oder ältere IDE-Laufwerke, jeweils mit GPT- oder MBR-Partitionstabelle.
-> Beim Netzwerk ist RetroOS noch wählerisch: es braucht eine
-> Intel-Netzwerkkarte der Reihe 8254x/8257x.
+> Beim Netzwerk sucht sich RetroOS aus, was auf dem PCI-Bus steckt:
+> virtio-net in virtuellen Maschinen, Intel igb (I210, I350, 82576),
+> Intel e1000e (82574L bis I219), die älteren 8254x sowie Realtek
+> RTL8169/8168/8111 und RTL8139.
 
 ## Bedienung
 
@@ -160,7 +163,8 @@ also so, wie es ein Betriebssystem tut.
 | **Eingabe** | USB-Tastatur und -Maus im Boot-Protokoll, dazu der 8042-Controller, wo es ihn noch gibt; deutsche Belegung inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
-| **Netzwerk** | Intel-e1000-Treiber, Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, HTTP/1.1 |
+| **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
+| **Netzwerk** | Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, HTTP/1.1 |
 | **TCP** | Fenstersteuerung, Umsortierung, langsamer Start, Überlastvermeidung, schnelle Wiederholung |
 | **Kryptografie** | SHA-256/384/512, HMAC, HKDF, ChaCha20-Poly1305, AES-128/256-GCM, X25519, RSA, ECDSA P-256 |
 | **TLS** | TLS 1.3 als Client, X.509-Ketten gegen 152 eingebaute Wurzelzertifikate |
@@ -297,9 +301,11 @@ kernel/
     proc/             ELF64-Lader und Prozesse in Ring 3
     drivers/          Framebuffer, PS/2, Tastatur, Maus, RTC, UART, PCI,
                       NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID,
-                      USB-Speicher, e1000
+                      USB-Speicher, virtio-net, igb, e1000e, e1000,
+                      RTL8169, RTL8139
     fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand
-    net/              Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, TLS, HTTP
+    net/              Kartenauswahl, Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS,
+                      TCP, TLS, HTTP
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
     gfx/              DEFLATE, PNG, JPEG, GIF, BMP, Skalieren und Zeichnen
@@ -332,29 +338,30 @@ den Bildschirm – dort läuft die Oberfläche. In QEMU erscheinen sie dank
   RetroOS 1.0 - Systemstart
 =====================================
 Bildschirm  : 1280x800, 32 Bit
-PMM         : 508 MiB verwaltet, 508 MiB frei
+PMM         : 506 MiB verwaltet, 506 MiB frei
 Heap        : 260 KiB bereit
-Adressraum  : Kernel-Tabelle bei 0x000000001ff46000
+Adressraum  : Kernel-Tabelle bei 0x000000001fea1000, Ausfuehrsperre aktiv
 ACPI        : PM1a 0x604, S5 = 0/0
 APIC        : 1 Kern, 1 IOAPIC mit 24 Eingaengen
-APIC-Timer  : 1000 Hz, 62598 Takte je Millisekunde
+APIC-Timer  : 1000 Hz, 62636 Takte je Millisekunde
 PS/2        : laut ACPI nicht vorhanden
-PCI         : 7 Geraete gefunden
-  00:02.0  1b36:000d  USB-Controller
-  00:03.0  1b36:0010  NVMe-Controller
+PCI         : 8 Geraete gefunden
+  00:02.0  1b36:0010  NVMe-Controller
+  00:03.0  1b36:000d  USB-Controller
+  00:04.0  1af4:1000  Netzwerkkarte
 Datentraeger: nvme0 - QEMU NVMe Ctrl, 256 MiB
 USB         : xHCI mit 8 Anschluessen, 8 Steckplaetzen, MSI
 USB         : Anschluss 5, 0627:0001, Klasse 3.1.1, High Speed
 USB         : Tastatur angemeldet
 USB         : Anschluss 6, 0627:0001, Klasse 3.1.2, High Speed
 USB         : Maus angemeldet
-Dateisystem : 28 Eintraege, 171835 Bytes
+Dateisystem : 28 Eintraege, 202974 Bytes
 Datentraeger: GPT, Abschnitt 2 ab Sektor 34816
 Datentraeger: RETROOS eingehaengt unter /Festplatte (235 MiB frei)
 Scheduler   : bereit, Zeitscheibe 20 ms
 Systemaufrufe: bereit (14 Nummern)
 Zertifikate : 152 Wurzeln geladen
-Netzwerk    : Intel 82540EM, 52:54:00:12:34:56
+Netzwerk    : virtio-net (1.0), 52:54:00:12:34:56
 Netzwerk    : 10.0.2.15, Gateway 10.0.2.2, DNS 10.0.2.3
 Oberflaeche : bereit
 ```
@@ -385,7 +392,7 @@ qemu-system-x86_64 -M q35,i8042=off -m 512M -cdrom retroos.iso -boot d \
   -device usb-storage,bus=xhci.0,port=3,drive=stick \
   -drive file=platte.img,if=none,id=nvm0,format=raw \
   -device nvme,serial=RETRO0001,drive=nvm0 \
-  -netdev user,id=n0 -device e1000,netdev=n0 -serial stdio
+  -netdev user,id=n0 -device virtio-net-pci,netdev=n0 -serial stdio
 ```
 
 ## Lizenz

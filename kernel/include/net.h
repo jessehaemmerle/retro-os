@@ -1,7 +1,7 @@
 /* net.h - Netzwerkschicht von RetroOS.
  *
  * Aufbau (von unten nach oben):
- *   e1000     Treiber der Netzwerkkarte, sendet und empfaengt Rahmen
+ *   nic       waehlt den Kartentreiber, sendet und empfaengt Rahmen
  *   ethernet  verteilt eingehende Rahmen an ARP oder IP
  *   arp       loest IP-Adressen in Hardware-Adressen auf
  *   ip        Pruefsumme, Weiterleitung an ICMP, UDP oder TCP
@@ -63,13 +63,9 @@ struct netif {
 
 extern struct netif g_netif;
 
-/* --- Treiber --- */
-bool e1000_init(void);
-bool e1000_send(const void *frame, uint16_t length);
-/* Holt bis zu einem Rahmen ab; gibt die Laenge zurueck oder 0. */
-uint16_t e1000_receive(void *buffer, uint16_t capacity);
-bool e1000_present(void);
-const char *e1000_model(void);
+/* --- Treiber ---
+ * Die eigentlichen Karten stehen in nic.h; hier haengt der Kern nur an
+ * der gemeinsamen Schnittstelle. */
 
 /* --- Kern --- */
 void net_init(void);
@@ -162,6 +158,7 @@ struct http_response {
     char     content_type[64];
     char     error[96];
     char     security[64];  /* leer bei http, sonst die Verschluesselung */
+    bool     truncated;     /* der Rumpf ist kuerzer als angekuendigt    */
 };
 
 bool http_get(const char *url, struct http_response *out);

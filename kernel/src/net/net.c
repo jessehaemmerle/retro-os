@@ -1,6 +1,7 @@
 /* net.c - Kern der Netzwerkschicht: Schnittstelle, Abfrage, Adressformate. */
 
 #include "net.h"
+#include "nic.h"
 #include "arch.h"
 #include "kstring.h"
 #include "thread.h"
@@ -16,7 +17,7 @@ void net_init(void)
     memset(&g_netif, 0, sizeof(g_netif));
     strlcpy(g_netif.hostname, "retroos", sizeof(g_netif.hostname));
 
-    if (!e1000_init())
+    if (!nic_init())
         return;
 
     g_netif.up = true;
@@ -55,7 +56,7 @@ void net_poll(void)
     for (int i = 0; i < 16; i++) {
         preempt_disable();
 
-        uint16_t length = e1000_receive(rx_frame, sizeof(rx_frame));
+        uint16_t length = nic_receive(rx_frame, sizeof(rx_frame));
 
         if (length == 0) {
             preempt_enable();

@@ -14,7 +14,12 @@
 
 #define HTTP_MAX_BODY     (512 * 1024)
 #define HTTP_CHUNK        8192
+/* Die Wartezeit gilt fuer den Stillstand, nicht fuer die ganze
+ * Uebertragung: Solange Daten ankommen, wird weiter eingesammelt. Erst
+ * wenn eine Weile gar nichts mehr kommt - oder die harte Grenze
+ * erreicht ist - wird abgebrochen. */
 #define HTTP_TIMEOUT_MS   8000
+#define HTTP_TOTAL_MS     60000
 #define HTTP_MAX_REDIRECT 4
 
 bool url_split(const char *url, char *host, size_t host_size,
@@ -244,30 +249,40 @@ static bool fetch_once(const char *url, struct http_response *out,
         return false;
     }
 
-    uint64_t deadline = timer_ms() + HTTP_TIMEOUT_MS;
+    uint64_t idle_deadline = timer_ms() + HTTP_TIMEOUT_MS;
+    uint64_t hard_deadline = timer_ms() + HTTP_TOTAL_MS;
+    bool     cut_short = false;
 
     for (;;) {
         if (length + HTTP_CHUNK > capacity) {
-            if (capacity >= HTTP_MAX_BODY)
+            if (capacity >= HTTP_MAX_BODY) {
+                cut_short = true;
                 break;
+            }
 
             uint32_t bigger = capacity * 2;
             char *grown = krealloc(buffer, bigger);
 
-            if (!grown)
+            if (!grown) {
+                cut_short = true;
                 break;
+            }
             buffer = grown;
             capacity = bigger;
         }
 
         int n = channel_receive(&channel, buffer + length, HTTP_CHUNK, 700);
-        if (n > 0)
+        if (n > 0) {
             length += (uint32_t)n;
+            idle_deadline = timer_ms() + HTTP_TIMEOUT_MS;
+        }
 
         if (channel_finished(&channel) && n <= 0)
             break;
-        if (timer_ms() > deadline)
+        if (timer_ms() > idle_deadline || timer_ms() > hard_deadline) {
+            cut_short = true;
             break;
+        }
     }
 
     channel_close(&channel);
@@ -332,6 +347,21 @@ static bool fetch_once(const char *url, struct http_response *out,
                       sizeof(out->content_type)))
         strlcpy(out->content_type, "text/html", sizeof(out->content_type));
 
+    /* Sagt der Kopf, wie lang der Rumpf sein sollte, wird nachgezaehlt.
+     * Eine abgeschnittene Seite als vollstaendig auszugeben waere die
+     * unangenehmere Art von Fehler: Man sieht sie nicht. */
+    char announced[32];
+
+    if (header_value(buffer, "Content-Length", announced, sizeof(announced))) {
+        uint32_t expected = 0;
+
+        for (const char *d = announced; *d >= '0' && *d <= '9'; d++)
+            expected = expected * 10 + (uint32_t)(*d - '0');
+
+        if (expected > body_length)
+            cut_short = true;
+    }
+
     /* Rumpf in einen eigenen Puffer umziehen, damit der Kopf freigegeben
      * werden kann. */
     char *result = kmalloc(body_length + 1);
@@ -349,6 +379,7 @@ static bool fetch_once(const char *url, struct http_response *out,
     out->status      = status;
     out->body        = result;
     out->body_length = body_length;
+    out->truncated   = cut_short;
     return true;
 }
 

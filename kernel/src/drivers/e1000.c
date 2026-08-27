@@ -8,9 +8,14 @@
  *
  * Abgefragt wird im Betrieb, nicht ueber Interrupts: die Hauptschleife der
  * Oberflaeche schaut ohnehin tausendmal je Sekunde vorbei.
+ *
+ * Derselbe Deskriptoraufbau traegt auch die neueren Karten der Reihe
+ * 8257x und I21x. Sie brauchen nur ein paar Register mehr - das
+ * erledigt e1000e.c, das diese Datei mitbenutzt.
  */
 
 #include "net.h"
+#include "nic.h"
 #include "io.h"
 #include "kstring.h"
 #include "mm.h"
@@ -98,6 +103,17 @@ static bool              present;
 static char              model_name[48];
 static bool              needs_queue_enable;
 
+static bool e1000_send(struct nic *nic, const void *frame, uint16_t length);
+static uint16_t e1000_receive(struct nic *nic, void *buffer,
+                              uint16_t capacity);
+static bool e1000_link_up(struct nic *nic);
+
+static const struct nic_ops e1000_ops = {
+    .send    = e1000_send,
+    .receive = e1000_receive,
+    .link_up = e1000_link_up,
+};
+
 static uint32_t reg_read(uint32_t offset)
 {
     return *(volatile uint32_t *)(mmio + offset);
@@ -124,6 +140,21 @@ static bool read_mac(void)
     g_netif.mac.b[4] = (uint8_t)(high);
     g_netif.mac.b[5] = (uint8_t)(high >> 8);
     return true;
+}
+
+/* Aus dem Zustandsregister laesst sich ablesen, mit welchem Tempo die
+ * Verbindung ausgehandelt wurde. */
+static uint32_t link_speed(void)
+{
+    uint32_t status = reg_read(REG_STATUS);
+
+    if (!(status & (1u << 1)))
+        return 0;
+    switch ((status >> 6) & 3) {
+    case 0:  return 10;
+    case 1:  return 100;
+    default: return 1000;
+    }
 }
 
 static bool setup_rings(void)
@@ -162,46 +193,37 @@ static bool setup_rings(void)
     return true;
 }
 
-bool e1000_init(void)
+/* Die Karten, die dieser Treiber unmittelbar kennt. Die uebrigen
+ * Intel-Ethernetkarten uebernimmt e1000e.c. */
+static const struct { uint16_t id; const char *name; } known[] = {
+    { 0x100E, "Intel 82540EM" },
+    { 0x100F, "Intel 82545EM" },
+    { 0x1010, "Intel 82546EB" },
+    { 0x1019, "Intel 82547EI" },
+    { 0x1026, "Intel 82545GM" },
+    { 0x107C, "Intel 82541PI" },
+};
+
+static bool e1000_probe(const struct pci_device *pci)
 {
-    static const struct { uint16_t id; const char *name; } known[] = {
-        { 0x100E, "Intel 82540EM" },
-        { 0x100F, "Intel 82545EM" },
-        { 0x10D3, "Intel 82574L"  },
-        { 0x10EA, "Intel 82577LM" },
-        { 0x153A, "Intel I217-LM" },
-        { 0x1533, "Intel I210"    },
-    };
-
-    const struct pci_device *dev = NULL;
-
-    for (size_t i = 0; i < ARRAY_LEN(known) && !dev; i++)
-        dev = pci_find_device(0x8086, known[i].id);
-
-    if (!dev) {
-        /* Zur Not jede Ethernet-Karte von Intel versuchen. */
-        for (size_t i = 0; i < pci_device_count(); i++) {
-            const struct pci_device *d = pci_device_at(i);
-
-            if (d->class_code == 0x02 && d->subclass == 0x00 &&
-                d->vendor_id == 0x8086) {
-                dev = d;
-                break;
-            }
-        }
-    }
-    if (!dev)
+    if (pci->vendor_id != 0x8086)
         return false;
+    for (size_t i = 0; i < ARRAY_LEN(known); i++)
+        if (known[i].id == pci->device_id)
+            return true;
+    return false;
+}
 
-    strlcpy(model_name, "Intel-Netzwerkkarte", sizeof(model_name));
-    for (size_t i = 0; i < ARRAY_LEN(known); i++) {
-        if (known[i].id == dev->device_id)
-            strlcpy(model_name, known[i].name, sizeof(model_name));
-    }
+/* Nimmt die Karte in Betrieb. wide sagt, ob es eine der neueren ist,
+ * die ihre Warteschlangen ausdruecklich freigeschaltet haben will. */
+bool e1000_bring_up(const struct pci_device *dev, struct nic *nic,
+                    bool queue_enable, const char *name)
+{
+    strlcpy(model_name, name, sizeof(model_name));
+    needs_queue_enable = queue_enable;
 
-    /* Die neueren Modelle (82574 und juenger) starten ihre Warteschlangen
-     * nicht von selbst; bei den alten 8254x gibt es das Bit nicht. */
-    needs_queue_enable = dev->device_id != 0x100E && dev->device_id != 0x100F;
+    if (dev->bar[0] == 0 || dev->bar_is_io[0])
+        return false;
 
     pci_enable_bus_master(dev);
     mmio = phys_to_virt(dev->bar[0]);
@@ -245,14 +267,32 @@ bool e1000_init(void)
     tx_cursor = 0;
     present   = true;
 
+    strlcpy(nic->model, model_name, sizeof(nic->model));
+    nic->ops = &e1000_ops;
+    nic->speed_mbit = link_speed();
+
     char mac[24];
+
     mac_format(&g_netif.mac, mac, sizeof(mac));
     kprintf("Netzwerk    : %s, %s\n", model_name, mac);
     return true;
 }
 
-bool e1000_send(const void *frame, uint16_t length)
+static bool e1000_attach(const struct pci_device *pci, struct nic *nic)
 {
+    const char *name = "Intel-Netzwerkkarte";
+
+    for (size_t i = 0; i < ARRAY_LEN(known); i++)
+        if (known[i].id == pci->device_id)
+            name = known[i].name;
+
+    /* Die alten 8254x kennen das Freigabebit der Warteschlangen nicht. */
+    return e1000_bring_up(pci, nic, false, name);
+}
+
+static bool e1000_send(struct nic *nic, const void *frame, uint16_t length)
+{
+    UNUSED(nic);
     if (!present || length == 0 || length > RX_BUFFER)
         return false;
 
@@ -279,8 +319,10 @@ bool e1000_send(const void *frame, uint16_t length)
     return true;
 }
 
-uint16_t e1000_receive(void *buffer, uint16_t capacity)
+static uint16_t e1000_receive(struct nic *nic, void *buffer,
+                              uint16_t capacity)
 {
+    UNUSED(nic);
     if (!present)
         return 0;
 
@@ -308,5 +350,14 @@ uint16_t e1000_receive(void *buffer, uint16_t capacity)
     return copied;
 }
 
-bool e1000_present(void)      { return present; }
-const char *e1000_model(void) { return model_name; }
+static bool e1000_link_up(struct nic *nic)
+{
+    UNUSED(nic);
+    return present && (reg_read(REG_STATUS) & (1u << 1)) != 0;
+}
+
+const struct nic_driver e1000_driver = {
+    .family = "Intel 8254x",
+    .probe  = e1000_probe,
+    .attach = e1000_attach,
+};

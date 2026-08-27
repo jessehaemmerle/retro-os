@@ -11,6 +11,7 @@
 #include "block.h"
 #include "mm.h"
 #include "net.h"
+#include "nic.h"
 #include "process.h"
 #include "thread.h"
 #include "theme.h"
@@ -253,7 +254,7 @@ static void sys_paint(struct window *win, struct canvas *c)
         return;
     }
 
-    row(&local, y, "Karte", e1000_model());
+    row(&local, y, "Karte", nic_model());
     y += 18;
 
     mac_format(&g_netif.mac, buf, sizeof(buf));

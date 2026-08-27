@@ -1,6 +1,7 @@
 /* ethernet.c - Rahmen zusammensetzen und eingehende Rahmen verteilen. */
 
 #include "net.h"
+#include "nic.h"
 #include "kstring.h"
 
 struct eth_header {
@@ -44,7 +45,7 @@ bool eth_send(const struct mac_addr *dst, uint16_t ethertype,
     /* Der Sendering darf nicht von zwei Threads gleichzeitig beschrieben
      * werden. */
     net_lock();
-    bool ok = e1000_send(frame, total);
+    bool ok = nic_send(frame, total);
     net_unlock();
 
     return ok;

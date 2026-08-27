@@ -637,8 +637,9 @@ static bool finish_http(struct br_state *st)
     strlcpy(st->security, response->security[0] ? response->security
                                                 : "unverschluesselt",
             sizeof(st->security));
-    ksnprintf(st->status, sizeof(st->status), "%d - %u Byte - %s - %s",
+    ksnprintf(st->status, sizeof(st->status), "%d - %u Byte%s - %s - %s",
               response->status, (unsigned)response->body_length,
+              response->truncated ? " (unvollstaendig)" : "",
               response->content_type, st->security);
 
     http_response_free(response);
