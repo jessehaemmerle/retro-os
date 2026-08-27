@@ -28,6 +28,9 @@
 #define ATTR_LFN       0x0F
 
 #define FAT_EOC        0x0FFFFFF8u
+/* Eintraege je Sektor: 512 Byte zu je vier. */
+#define FAT_PER_SECTOR 128
+
 #define FAT_FREE       0x00000000u
 #define ENTRIES_PER_SECTOR (512 / 32)
 
@@ -126,7 +129,18 @@ static bool fat_set(struct fat_volume *vol, uint32_t cluster, uint32_t value)
 
 static uint32_t fat_alloc_cluster(struct fat_volume *vol, uint32_t previous)
 {
-    for (uint32_t c = 2; c < vol->cluster_count + 2; c++) {
+    uint32_t limit = vol->cluster_count + 2;
+    uint32_t start = vol->next_free >= 2 && vol->next_free < limit
+                     ? vol->next_free : 2;
+
+    /* Erst ab der Marke suchen, dann notfalls von vorn - so kostet das
+     * Anhaengen an eine Datei im Regelfall einen einzigen Blick. */
+    for (uint32_t step = 0; step < vol->cluster_count; step++) {
+        uint32_t c = start + step;
+
+        if (c >= limit)
+            c -= vol->cluster_count;
+
         if (fat_get(vol, c) != FAT_FREE)
             continue;
 
@@ -142,6 +156,8 @@ static uint32_t fat_alloc_cluster(struct fat_volume *vol, uint32_t previous)
             if (!block_write(vol->dev, cluster_lba(vol, c) + s, 1, zero))
                 return 0;
         }
+
+        vol->next_free = (c + 1 < limit) ? c + 1 : 2;
         return c;
     }
     return 0;
@@ -953,10 +969,15 @@ bool fat_mount(struct block_device *dev, struct fat_volume *vol)
     size_t count = partition_scan(dev, table, PARTITION_MAX, &scheme);
 
     /* Zuerst die Abschnitte, die nach FAT aussehen, dann alle uebrigen -
-     * manche Tabellen tragen die Kennung falsch ein. */
-    for (int pass = 0; pass < 2; pass++) {
+     * manche Tabellen tragen die Kennung falsch ein. Die
+     * EFI-Systempartition kommt zuletzt: Dort liegt der Bootloader, und
+     * auf einem installierten System stuende sonst der Startbestand
+     * unter /Festplatte statt der eigentlichen Ablage. */
+    for (int pass = 0; pass < 3; pass++) {
         for (size_t i = 0; i < count; i++) {
-            if ((pass == 0) != table[i].is_fat)
+            if ((pass == 2) != table[i].is_efi)
+                continue;
+            if (pass < 2 && (pass == 0) != table[i].is_fat)
                 continue;
             if (fat_mount_at(dev, table[i].start, vol)) {
                 kprintf("Datentraeger: %s, Abschnitt %u ab Sektor %llu\n",
@@ -1000,26 +1021,43 @@ static uint8_t choose_cluster_size(uint64_t total_sectors)
     return 64;
 }
 
-bool fat_format(struct block_device *dev, const char *label)
+bool fat_format_at(struct block_device *dev, uint64_t lba, uint64_t sectors,
+                   const char *label)
 {
-    if (!dev)
+    if (!dev || sectors == 0)
         return false;
 
-    uint64_t total = MIN(dev->sector_count, 0xFFFFFFFFull);
+    uint64_t total = MIN(sectors, 0xFFFFFFFFull);
     uint32_t reserved = 32;
     uint32_t fat_count = 2;
     uint8_t  spc = choose_cluster_size(total);
 
-    /* Groesse einer FAT: jeder Cluster braucht vier Byte. */
+    /* Groesse einer FAT: jeder Cluster braucht vier Byte, in einen
+     * Sektor passen also 128 Eintraege. Der erste Wert ist geraten -
+     * mehr Tabelle heisst weniger Cluster heisst weniger Tabelle -,
+     * deshalb wird danach nachgerechnet, bis es aufgeht. */
     uint64_t tmp1 = total - reserved;
-    uint64_t tmp2 = (uint64_t)256 * spc + fat_count;
+    uint64_t tmp2 = (uint64_t)FAT_PER_SECTOR * spc + fat_count;
     uint32_t fat_size = (uint32_t)((tmp1 + tmp2 - 1) / tmp2);
+    uint64_t data_start = 0;
+    uint32_t clusters = 0;
 
-    uint64_t data_start = reserved + (uint64_t)fat_count * fat_size;
-    if (data_start >= total)
-        return false;
+    for (int guard = 0; guard < 8; guard++) {
+        data_start = reserved + (uint64_t)fat_count * fat_size;
+        if (data_start >= total)
+            return false;
 
-    uint32_t clusters = (uint32_t)((total - data_start) / spc);
+        clusters = (uint32_t)((total - data_start) / spc);
+
+        /* Die beiden ersten Eintraege der Tabelle gehoeren keinem
+         * Cluster; Platz brauchen sie trotzdem. */
+        uint32_t needed = (clusters + 2 + FAT_PER_SECTOR - 1) / FAT_PER_SECTOR;
+
+        if (needed <= fat_size)
+            break;
+        fat_size = needed;
+    }
+
     if (clusters < 65525) {
         kprintf("FAT         : Datentraeger zu klein fuer FAT32\n");
         return false;
@@ -1041,7 +1079,7 @@ bool fat_format(struct block_device *dev, const char *label)
     wr16(sector, 22, 0);
     wr16(sector, 24, 63);
     wr16(sector, 26, 255);
-    wr32(sector, 28, 0);
+    wr32(sector, 28, (uint32_t)MIN(lba, 0xFFFFFFFFull));  /* versteckt */
     wr32(sector, 32, (uint32_t)total);
     wr32(sector, 36, fat_size);
     wr16(sector, 40, 0);
@@ -1058,9 +1096,9 @@ bool fat_format(struct block_device *dev, const char *label)
     memcpy(&sector[82], "FAT32   ", 8);
     wr16(sector, 510, 0xAA55);
 
-    if (!block_write(dev, 0, 1, sector))
+    if (!block_write(dev, lba + 0, 1, sector))
         return false;
-    if (!block_write(dev, 6, 1, sector))          /* Sicherungskopie */
+    if (!block_write(dev, lba + 6, 1, sector))    /* Sicherungskopie */
         return false;
 
     /* --- FSInfo --- */
@@ -1071,7 +1109,7 @@ bool fat_format(struct block_device *dev, const char *label)
     wr32(fsinfo, 488, clusters - 1);              /* freie Cluster */
     wr32(fsinfo, 492, 3);                         /* naechster freier */
     wr16(fsinfo, 510, 0xAA55);
-    if (!block_write(dev, 1, 1, fsinfo))
+    if (!block_write(dev, lba + 1, 1, fsinfo))
         return false;
 
     /* --- Zuordnungstabellen leeren --- */
@@ -1080,7 +1118,7 @@ bool fat_format(struct block_device *dev, const char *label)
         uint64_t base = reserved + (uint64_t)i * fat_size;
 
         for (uint32_t s = 0; s < fat_size; s++) {
-            if (!block_write(dev, base + s, 1, sector))
+            if (!block_write(dev, lba + base + s, 1, sector))
                 return false;
         }
     }
@@ -1090,14 +1128,15 @@ bool fat_format(struct block_device *dev, const char *label)
     wr32(sector, 4, 0x0FFFFFFF);
     wr32(sector, 8, 0x0FFFFFFF);
     for (uint32_t i = 0; i < fat_count; i++) {
-        if (!block_write(dev, reserved + (uint64_t)i * fat_size, 1, sector))
+        if (!block_write(dev, lba + reserved + (uint64_t)i * fat_size, 1,
+                         sector))
             return false;
     }
 
     /* --- Wurzelverzeichnis leeren --- */
     memset(sector, 0, sizeof(sector));
     for (uint32_t s = 0; s < spc; s++) {
-        if (!block_write(dev, data_start + s, 1, sector))
+        if (!block_write(dev, lba + data_start + s, 1, sector))
             return false;
     }
 
@@ -1105,4 +1144,12 @@ bool fat_format(struct block_device *dev, const char *label)
     kprintf("FAT         : formatiert - %u Cluster zu je %u Byte\n",
             (unsigned)clusters, (unsigned)(spc * 512));
     return true;
+}
+
+/* Der ganze Traeger, ohne Partitionstabelle. */
+bool fat_format(struct block_device *dev, const char *label)
+{
+    if (!dev)
+        return false;
+    return fat_format_at(dev, 0, dev->sector_count, label);
 }

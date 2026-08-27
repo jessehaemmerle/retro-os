@@ -49,6 +49,8 @@ struct fs_node *fs_root(void);
 /* Haengt den ersten gefundenen Datentraeger unter /Festplatte ein.
  * Liefert false, wenn keine Platte da ist oder sie kein FAT32 enthaelt. */
 bool fs_mount_disk(void);
+/* Loest den eingehaengten Traeger, bevor er neu beschrieben wird. */
+void fs_detach_disk(void);
 bool fs_disk_mounted(void);
 struct fat_volume *fs_disk_volume(void);
 struct fs_node    *fs_disk_root(void);

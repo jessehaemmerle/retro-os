@@ -29,6 +29,11 @@ struct fat_volume {
 
     char     label[12];
     bool     mounted;
+
+    /* Wo die Suche nach einem freien Cluster zuletzt fuendig wurde.
+     * Ohne diese Marke faengt jede Belegung wieder bei Cluster zwei an,
+     * und das Schreiben einer grossen Datei wird quadratisch teuer. */
+    uint32_t next_free;
 };
 
 /* Beschreibt, wo ein Eintrag im Verzeichnis liegt - noetig zum Aendern. */
@@ -60,6 +65,11 @@ bool fat_mount(struct block_device *dev, struct fat_volume *vol);
 bool fat_mount_at(struct block_device *dev, uint64_t lba,
                   struct fat_volume *vol);
 bool fat_format(struct block_device *dev, const char *label);
+
+/* Formatiert genau einen Abschnitt. Der Bootsektor merkt sich, ab
+ * welchem Sektor des Traegers er gilt. */
+bool fat_format_at(struct block_device *dev, uint64_t lba, uint64_t sectors,
+                   const char *label);
 
 bool fat_list_dir(struct fat_volume *vol, uint32_t dir_cluster,
                   fat_dir_cb cb, void *user);

@@ -46,4 +46,15 @@ const struct boot_info *boot_info(void);
 /* Prueft, ob der Bootloader das erwartete Protokoll spricht. */
 bool boot_revision_ok(void);
 
+/* --- Was der Bootloader mitgebracht hat ---
+ * Das Installationsprogramm schreibt diese Bytes auf die Zielplatte:
+ * den Kernel selbst und die beiden Bootloader-Dateien aus limine.conf.
+ * NULL heisst "nicht dabei" - dann ist keine Installation moeglich. */
+const void *boot_self_image(size_t *size);
+const void *boot_module(const char *name, size_t *size);
+
+/* Kennung des Datentraegers, von dem gestartet wurde. */
+bool     boot_volume_gpt_guid(uint8_t out[16]);
+uint32_t boot_volume_mbr_id(void);
+
 #endif /* BOOT_H */

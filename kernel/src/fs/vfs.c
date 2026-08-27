@@ -646,14 +646,11 @@ bool fs_mount_disk(void)
     return true;
 }
 
-bool fs_format_disk(const char *label)
+/* Vergisst alles, was von der Platte im Baum haengt. Noetig, bevor der
+ * Traeger neu beschrieben wird - danach zeigen die gemerkten Cluster ins
+ * Leere. */
+void fs_detach_disk(void)
 {
-    struct block_device *dev = block_primary();
-
-    if (!dev)
-        return false;
-
-    /* Vor dem Formatieren alle Knoten der Platte vergessen. */
     if (disk_mount_point) {
         struct fs_node *child = disk_mount_point->first_child;
 
@@ -668,6 +665,16 @@ bool fs_format_disk(const char *label)
         disk_mount_point->children_loaded = false;
     }
     disk_volume.mounted = false;
+}
+
+bool fs_format_disk(const char *label)
+{
+    struct block_device *dev = block_primary();
+
+    if (!dev)
+        return false;
+
+    fs_detach_disk();
 
     if (!fat_format(dev, label && label[0] ? label : "RETROOS"))
         return false;

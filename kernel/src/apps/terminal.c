@@ -11,6 +11,7 @@
 #include "block.h"
 #include "net.h"
 #include "nic.h"
+#include "setup.h"
 #include "process.h"
 #include "thread.h"
 #include "boot.h"
@@ -144,6 +145,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  ping <ziel>      Erreichbarkeit pruefen");
     term_line(st, C_NORMAL, "  aufloesen <name> Namen in eine Adresse wandeln");
     term_line(st, C_NORMAL, "  holen <adresse> [datei]  Seite abrufen/speichern");
+    term_line(st, C_NORMAL, "  installieren [ziel]      RetroOS auf eine Platte bringen");
     term_line(st, C_NORMAL, "  platte           Datentraeger anzeigen");
     term_line(st, C_NORMAL, "  usb              Geraete am USB-Bus anzeigen");
     term_line(st, C_NORMAL, "  formatieren      Datentraeger neu formatieren");
@@ -356,6 +358,108 @@ static void cmd_usb(struct term_state *st)
                   info->interface_subclass, info->interface_protocol,
                   usb_speed_name(info->speed), info->max_packet);
         term_line(st, C_NORMAL, line);
+    }
+}
+
+/* Meldet den Fortschritt der Installation in die Konsole. */
+static void install_report(void *user, int percent, const char *text)
+{
+    struct term_state *st = user;
+
+    term_printf(st, C_NORMAL, "  [%3d %%] %s", percent, text);
+}
+
+static void cmd_install(struct term_state *st, const char *target,
+                        const char *confirm)
+{
+    if (!setup_sources_ready()) {
+        term_line(st, C_ERROR,
+                  "Von diesem Startmedium laesst sich nicht installieren.");
+        term_line(st, C_NORMAL,
+                  "Noetig ist das RetroOS-Abbild (ISO oder USB-Stick).");
+        return;
+    }
+
+    /* Ohne Ziel: aufzaehlen, was in Frage kommt. */
+    if (!target) {
+        term_line(st, C_HIGHLIGHT, "RetroOS auf eine Festplatte bringen");
+        term_line(st, C_NORMAL, "Moegliche Ziele:");
+
+        size_t offered = 0;
+
+        for (size_t i = 0; i < block_device_count(); i++) {
+            struct block_device *d = block_device_at(i);
+            struct setup_plan plan;
+            char why[96];
+
+            if (setup_plan_for(d, &plan, why, sizeof(why))) {
+                term_printf(st, C_HIGHLIGHT, "  %-6s %s (%u MiB)",
+                            d->name, d->model,
+                            (unsigned)(d->sector_count / 2048));
+                offered++;
+            } else {
+                term_printf(st, C_NORMAL, "  %-6s %s - %s",
+                            d->name, d->model, why);
+            }
+        }
+
+        if (!offered) {
+            term_line(st, C_ERROR, "Kein geeigneter Datentraeger dabei.");
+            return;
+        }
+        term_line(st, C_NORMAL, "");
+        term_line(st, C_NORMAL, "Weiter mit: installieren <name> wirklich");
+        return;
+    }
+
+    struct block_device *dev = NULL;
+
+    for (size_t i = 0; i < block_device_count(); i++) {
+        struct block_device *d = block_device_at(i);
+
+        if (!strcasecmp(d->name, target)) {
+            dev = d;
+            break;
+        }
+    }
+
+    if (!dev) {
+        term_printf(st, C_ERROR, "installieren: %s gibt es nicht", target);
+        return;
+    }
+
+    struct setup_plan plan;
+    char why[96];
+
+    if (!setup_plan_for(dev, &plan, why, sizeof(why))) {
+        term_printf(st, C_ERROR, "installieren: %s", why);
+        return;
+    }
+
+    if (!confirm || strcasecmp(confirm, "wirklich") != 0) {
+        term_printf(st, C_ERROR,
+                    "Das loescht alles auf %s (%s).", dev->name, dev->model);
+        term_printf(st, C_NORMAL,
+                    "  EFI-Abschnitt : %u MiB ab Sektor %u",
+                    (unsigned)(plan.esp_count / 2048),
+                    (unsigned)plan.esp_start);
+        term_printf(st, C_NORMAL,
+                    "  Ablage        : %u MiB ab Sektor %u",
+                    (unsigned)(plan.data_count / 2048),
+                    (unsigned)plan.data_start);
+        term_printf(st, C_NORMAL,
+                    "Zum Bestaetigen: installieren %s wirklich", dev->name);
+        return;
+    }
+
+    char error[96];
+
+    term_printf(st, C_NORMAL, "Installiere auf %s ...", dev->name);
+    if (setup_run(&plan, install_report, st, error, sizeof(error))) {
+        term_line(st, C_HIGHLIGHT,
+                  "Fertig. Das Startmedium kann jetzt entfernt werden.");
+    } else {
+        term_printf(st, C_ERROR, "installieren: %s", error);
     }
 }
 
@@ -771,6 +875,10 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "usb")) {
         cmd_usb(st);
+
+    } else if (!strcasecmp(cmd, "installieren") ||
+               !strcasecmp(cmd, "setup")) {
+        cmd_install(st, a1, argc > 2 ? argv[2] : NULL);
 
     } else if (!strcasecmp(cmd, "formatieren")) {
         if (!a1 || strcasecmp(a1, "wirklich") != 0) {

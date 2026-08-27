@@ -57,11 +57,16 @@ UEMBED   := $(patsubst %,$(UOBJDIR)/%.elf.o,$(UPROGS))
 BLOBS    := wurzelzertifikate.der wappen.png muster.png
 BLOBOBJ  := $(patsubst %,$(BUILD)/obj/data/%.o,$(BLOBS))
 
+# Der Startsektor-Teil von Limine. Er steckt im Paket nur als C-Header;
+# das Installationsprogramm braucht ihn zur Laufzeit als Bytes.
+LIMINE_HDD     := $(BUILD)/data/limine-bios-hdd.bin
+LIMINE_HDD_OBJ := $(BUILD)/obj/data/limine-bios-hdd.bin.o
+
 CFILES := $(shell find kernel/src -name '*.c' | sort)
 SFILES := $(shell find kernel/src -name '*.S' | sort)
 OBJS   := $(patsubst kernel/src/%.c,$(BUILD)/obj/%.c.o,$(CFILES)) \
           $(patsubst kernel/src/%.S,$(BUILD)/obj/%.S.o,$(SFILES)) \
-          $(UEMBED) $(BLOBOBJ)
+          $(UEMBED) $(BLOBOBJ) $(LIMINE_HDD_OBJ)
 DEPS   := $(OBJS:.o=.d)
 
 .PHONY: all kernel iso run run-uefi run-plain disk clean distclean limine
@@ -107,6 +112,16 @@ $(BUILD)/obj/data/%.o: data/%
 	@echo "  EMBED   $<"
 	@cd data && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
 	    $* $(CURDIR)/$@
+
+$(LIMINE_HDD): $(LIMINE)/limine-bios-hdd.h scripts/gen_limine_hdd.py
+	@mkdir -p $(dir $@)
+	@python3 scripts/gen_limine_hdd.py $< $@
+
+$(LIMINE_HDD_OBJ): $(LIMINE_HDD)
+	@mkdir -p $(dir $@)
+	@echo "  EMBED   $<"
+	@cd $(BUILD)/data && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
+	    limine-bios-hdd.bin $(CURDIR)/$@
 
 $(KERNEL): $(OBJS) kernel/linker.ld
 	@mkdir -p $(dir $@)

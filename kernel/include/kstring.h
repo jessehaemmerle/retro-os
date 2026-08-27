@@ -23,6 +23,10 @@ char  *strrchr(const char *s, int c);
 /* Kopiert nach dst und terminiert immer; gibt die Laenge von dst zurueck. */
 size_t strlcpy(char *dst, const char *src, size_t size);
 
+/* CRC32 nach dem Verfahren von PNG und GPT. */
+uint32_t crc32(const void *data, size_t length);
+uint32_t crc32_update(uint32_t crc, const void *data, size_t length);
+
 /* 32-Bit-Fuellen, praktisch fuer Framebuffer-Operationen. */
 void   memset32(void *dst, uint32_t value, size_t count);
 

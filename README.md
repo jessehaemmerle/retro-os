@@ -23,7 +23,7 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Desktop · Taskleiste · Startmenü                                    │
-│  Dateimanager · Browser · Editor · Konsole · Systeminformation       │
+│  Dateimanager · Browser · Editor · Konsole · Info · Installieren     │
 ├──────────────────────────────────────────────────────────────────────┤
 │  Fenstersystem (Fenster, Menüs, Dialoge, Bedienelemente)             │
 ├───────────────────────────────┬──────────────────────────────────────┤
@@ -31,12 +31,13 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 │  Bilder: PNG JPEG GIF BMP     │  Umbruch · JavaScript                │
 │  Inflate (DEFLATE)            ├──────────────────────────────────────┤
 ├───────────────────────────────┤  HTTP/1.1 · TLS 1.3                  │
-│  Dateibaum: RAM + FAT32       │  Kryptografie: SHA-2 · HMAC · HKDF · │
-├───────────────────────────────┤  ChaCha20 · AES-GCM · X25519 · RSA · │
-│  Prozesse in Ring 3           │  ECDSA · X.509 · 152 Wurzeln         │
-│  Scheduler · Threads          ├──────────────────────────────────────┤
-├───────────────────────────────┤  TCP · UDP · DHCP · DNS · ICMP       │
-│  Seitenverwaltung · Heap      │  IPv4 · ARP · Ethernet               │
+│  Installation auf Festplatte  │  Kryptografie: SHA-2 · HMAC · HKDF · │
+│  Dateibaum: RAM + FAT32       │  ChaCha20 · AES-GCM · X25519 · RSA · │
+├───────────────────────────────┤  ECDSA · X.509 · 152 Wurzeln         │
+│  Prozesse in Ring 3           ├──────────────────────────────────────┤
+│  Scheduler · Threads          │  TCP · UDP · DHCP · DNS · ICMP       │
+├───────────────────────────────┤  IPv4 · ARP · Ethernet               │
+│  Seitenverwaltung · Heap      │                                      │
 ├───────────────────────────────┼──────────────────────────────────────┤
 │  Partitionen: GPT · MBR       │  Netzwerkkarten: virtio · Intel igb  │
 │  Blockgeräte: NVMe · AHCI ·   │  e1000e · e1000 · Realtek 8169/8139  │
@@ -87,6 +88,38 @@ sudo dd if=retroos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 > virtio-net in virtuellen Maschinen, Intel igb (I210, I350, 82576),
 > Intel e1000e (82574L bis I219), die älteren 8254x sowie Realtek
 > RTL8169/8168/8111 und RTL8139.
+
+## Auf die Festplatte installieren
+
+Vom Stick oder von der CD läuft RetroOS auch ohne Installation – die
+Dateien liegen dann aber nur im Arbeitsspeicher. Wer das System behalten
+will, startet **Installieren** auf dem Desktop (oder `installieren` in
+der Konsole):
+
+| Schritt | Was passiert |
+| --- | --- |
+| Ziel wählen | Alle Datenträger, die groß genug sind; der Startdatenträger selbst wird abgelehnt |
+| Bestätigen | Zeigt die geplante Aufteilung – danach ist die Platte leer |
+| Schreiben | GUID-Tabelle, zwei FAT32-Abschnitte, Bootloader, Kernel, Startsektor |
+
+Angelegt wird der Aufbau, den ein heutiger Rechner erwartet:
+
+```
+Sektor 0        Schutzeintrag, damit alte Werkzeuge stillhalten
+Sektor 1–33     die GUID-Tabelle
+Sektor 34–…     zweiter Teil des Bootloaders (nur BIOS-Rechner lesen ihn)
+Sektor 2048     EFI-Abschnitt, 64 MiB: BOOTX64.EFI, Kernel, limine.conf
+danach          Ablage, der ganze Rest – hängt als /Festplatte im Baum
+```
+
+Ein UEFI-Rechner findet `\EFI\BOOT\BOOTX64.EFI` von selbst; ein
+BIOS-Rechner liest den ersten Sektor. Beide Wege landen bei derselben
+Kerneldatei. Danach kann das Startmedium weg: Der Rechner bootet von der
+Platte, und was unter `/Festplatte` angelegt wird, liegt beim nächsten
+Start wieder da.
+
+Mindestgröße sind 72 MiB. Auf kleinen Platten fällt der EFI-Abschnitt
+kleiner aus, denn FAT32 braucht mindestens 65525 Cluster.
 
 ## Bedienung
 
@@ -158,6 +191,7 @@ also so, wie es ein Betriebssystem tut.
 | **Busse** | PCI und PCIe über Konfigurationsmechanismus 1, 64-Bit-Adressbereiche, Fähigkeitenliste |
 | **Datenträger** | NVMe über PCIe mit eigenen Warteschlangen, AHCI (SATA, DMA), ATA-PIO, USB-Speicher über SCSI |
 | **Partitionen** | GPT samt Sicherungstabelle, MBR mit erweiterten Abschnitten, roher Datenträger |
+| **Installation** | Schreibt eine eigene GUID-Tabelle, formatiert EFI-Abschnitt und Ablage, kopiert Bootloader und Kernel und setzt den Startsektor für BIOS-Rechner |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
 | **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte |
 | **Eingabe** | USB-Tastatur und -Maus im Boot-Protokoll, dazu der 8042-Controller, wo es ihn noch gibt; deutsche Belegung inkl. AltGr |
@@ -171,7 +205,7 @@ also so, wie es ein Betriebssystem tut.
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, sechs Ring-3-Programme |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, sieben Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 
@@ -303,7 +337,8 @@ kernel/
                       NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID,
                       USB-Speicher, virtio-net, igb, e1000e, e1000,
                       RTL8169, RTL8139
-    fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand
+    fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand,
+                      Installation auf Festplatte
     net/              Kartenauswahl, Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS,
                       TCP, TLS, HTTP
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
@@ -312,7 +347,7 @@ kernel/
     lib/              Zeichenketten, Ausgabe, 128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
-    apps/             Dateimanager, Browser, Dokumentbaum, HTML-Leser,
+    apps/             Dateimanager, Browser, Installation, Dokumentbaum, HTML-Leser,
                       CSS, Umbruch, Editor, Konsole, Systeminformation, Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate und Beispielbilder

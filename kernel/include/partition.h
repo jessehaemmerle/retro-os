@@ -34,4 +34,29 @@ size_t partition_scan(struct block_device *dev, struct partition *out,
 
 const char *partition_scheme_name(enum partition_scheme scheme);
 
+/* --- Eine neue Tabelle anlegen --- */
+
+#define GPT_ENTRY_COUNT     128
+#define GPT_ENTRY_BYTES     128
+#define GPT_TABLE_SECTORS   32       /* 128 Eintraege zu je 128 Byte */
+
+/* Der erste Abschnitt beginnt bei einem Megabyte. Das ist heute ueblich
+ * (SSDs schreiben blockweise) und laesst zugleich Platz fuer den zweiten
+ * Teil des Bootloaders, den ein BIOS-Rechner dort erwartet. */
+#define GPT_FIRST_USABLE    2048
+#define GPT_TAIL_SECTORS    33       /* Sicherungstabelle am Ende     */
+
+struct partition_plan {
+    uint64_t    start;               /* erster Sektor              */
+    uint64_t    count;               /* Anzahl Sektoren            */
+    bool        efi;                 /* EFI-Systemabschnitt?       */
+    const char *name;                /* hoechstens 35 Zeichen      */
+};
+
+/* Legt eine GUID-Tabelle mit den angegebenen Abschnitten an: Schutz-MBR
+ * im ersten Sektor, Tabelle vorn, Sicherung hinten. Was vorher auf dem
+ * Traeger stand, ist danach nicht mehr auffindbar. */
+bool gpt_write(struct block_device *dev, const struct partition_plan *parts,
+               size_t count);
+
 #endif /* PARTITION_H */
