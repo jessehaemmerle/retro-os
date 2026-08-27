@@ -25,10 +25,23 @@
  * fuenfunddreissig eine sichere Untergrenze. */
 #define SETUP_MIN_FAT      71680
 
+/* Zwei Wege auf die Platte. */
+enum setup_mode {
+    SETUP_WHOLE_DISK,   /* alles neu: Tabelle, EFI-Abschnitt, Ablage */
+    SETUP_BESIDE,       /* daneben: freien Platz und vorhandenen
+                         * EFI-Abschnitt mitbenutzen                 */
+};
+
 struct setup_plan {
     struct block_device *dev;
+    enum setup_mode      mode;
+
     uint64_t esp_start,  esp_count;
     uint64_t data_start, data_count;
+
+    /* Nur bei SETUP_BESIDE: Konnte der uebliche Startpfad belegt
+     * werden, oder war dort schon ein anderer Bootloader? */
+    bool     fallback_free;
 };
 
 /* Hat der Bootloader Kernel und Bootloaderdateien mitgebracht? Ohne sie
@@ -43,6 +56,12 @@ bool setup_is_boot_disk(struct block_device *dev);
 /* Teilt den Traeger ein. Passt nichts, steht der Grund in why. */
 bool setup_plan_for(struct block_device *dev, struct setup_plan *out,
                     char *why, size_t size);
+
+/* Wie setup_plan_for, benutzt aber freien Platz neben dem, was schon
+ * auf dem Traeger liegt. Braucht eine vorhandene GUID-Tabelle mit
+ * EFI-Systempartition und genug Luecke. */
+bool setup_plan_beside(struct block_device *dev, struct setup_plan *out,
+                       char *why, size_t size);
 
 typedef void (*setup_report_fn)(void *user, int percent, const char *text);
 

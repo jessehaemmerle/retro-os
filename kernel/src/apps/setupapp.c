@@ -24,7 +24,7 @@
 #define COL_DANGER  RGB(0xA0, 0x10, 0x10)
 #define COL_DONE    RGB(0x10, 0x70, 0x20)
 
-#define TARGET_MAX  8
+#define TARGET_MAX  12
 
 enum setup_phase {
     PHASE_PICK,      /* Welcher Datentraeger?          */
@@ -74,6 +74,26 @@ static void collect_targets(struct setup_ui *ui)
     for (size_t i = 0; i < block_device_count() && ui->row_count < TARGET_MAX;
          i++) {
         struct block_device *dev = block_device_at(i);
+
+        /* Erst der Weg daneben - wer schon ein System auf der Platte
+         * hat, will es meistens behalten. */
+        struct setup_plan plan;
+        char why[80];
+
+        if (setup_plan_beside(dev, &plan, why, sizeof(why))) {
+            struct target_row *row = &ui->rows[ui->row_count++];
+
+            memset(row, 0, sizeof(*row));
+            row->dev = dev;
+            row->plan = plan;
+            row->usable = true;
+            if (ui->chosen < 0)
+                ui->chosen = (int)(ui->row_count - 1);
+        }
+
+        if (ui->row_count >= TARGET_MAX)
+            break;
+
         struct target_row *row = &ui->rows[ui->row_count++];
 
         memset(row, 0, sizeof(*row));
@@ -182,17 +202,24 @@ static void paint_pick(struct setup_ui *ui, struct canvas *c, int32_t w)
         char line[96], size[24];
 
         size_text(size, sizeof(size), row->dev->sector_count);
-        ksnprintf(line, sizeof(line), "%s - %s (%s)", row->dev->name,
-                  row->dev->model, size);
+        ksnprintf(line, sizeof(line), "%s - %s (%s)%s", row->dev->name,
+                  row->dev->model, size,
+                  row->plan.mode == SETUP_BESIDE ? "  -  daneben" : "");
         gfx_text(c, r.x + 32, r.y + 6, line, row->usable ? text : dim);
 
         if (row->usable) {
             char plan[96], esp[24], data[24];
 
-            size_text(esp, sizeof(esp), row->plan.esp_count);
             size_text(data, sizeof(data), row->plan.data_count);
-            ksnprintf(plan, sizeof(plan), "%s Startbereich, %s Ablage",
-                      esp, data);
+            if (row->plan.mode == SETUP_BESIDE) {
+                ksnprintf(plan, sizeof(plan),
+                          "%s freier Platz - alles Vorhandene bleibt", data);
+            } else {
+                size_text(esp, sizeof(esp), row->plan.esp_count);
+                ksnprintf(plan, sizeof(plan),
+                          "alles loeschen: %s Startbereich, %s Ablage",
+                          esp, data);
+            }
             gfx_text(c, r.x + 32, r.y + 20, plan, dim);
         } else {
             gfx_text(c, r.x + 32, r.y + 20, row->why,
@@ -205,7 +232,11 @@ static void paint_confirm(struct setup_ui *ui, struct canvas *c, int32_t w)
 {
     struct target_row *row = &ui->rows[ui->chosen];
 
-    draw_header(c, w, "Wirklich?", "Danach ist der Datentraeger leer.");
+    bool beside = row->plan.mode == SETUP_BESIDE;
+
+    draw_header(c, w, beside ? "Daneben einrichten" : "Wirklich?",
+                beside ? "Alles Vorhandene bleibt stehen."
+                       : "Danach ist der Datentraeger leer.");
 
     char line[112], size[24];
 
@@ -214,18 +245,41 @@ static void paint_confirm(struct setup_ui *ui, struct canvas *c, int32_t w)
               row->dev->model, size);
 
     int32_t y = 96;
+    char esp[24], data[24];
+
+    size_text(data, sizeof(data), row->plan.data_count);
 
     gfx_text_bold(c, 20, y, line, COL_TEXT);          y += 28;
+
+    if (beside) {
+        gfx_text_bold(c, 20, y,
+                      "Nichts wird geloescht - RetroOS nimmt nur den freien "
+                      "Platz.", COL_DONE);
+        y += 28;
+
+        ksnprintf(line, sizeof(line), "  Ablage        %s - unter /Festplatte",
+                  data);
+        gfx_text(c, 20, y, line, COL_TEXT_DIM);       y += 18;
+        gfx_text(c, 20, y,
+                 "  Startbereich  der vorhandene wird mitbenutzt",
+                 COL_TEXT_DIM);
+        y += 28;
+        gfx_text(c, 20, y,
+                 "Ist der uebliche Startpfad belegt, muss RetroOS im",
+                 COL_TEXT_DIM);
+        y += 16;
+        gfx_text(c, 20, y, "Startmenue der Firmware gewaehlt werden.",
+                 COL_TEXT_DIM);
+        return;
+    }
+
     gfx_text_bold(c, 20, y, "Alles, was darauf steht, geht verloren.",
                   COL_DANGER);                        y += 28;
 
     gfx_text(c, 20, y, "RetroOS legt zwei Abschnitte an:", COL_TEXT);
     y += 20;
 
-    char esp[24], data[24];
-
     size_text(esp, sizeof(esp), row->plan.esp_count);
-    size_text(data, sizeof(data), row->plan.data_count);
 
     ksnprintf(line, sizeof(line), "  Startbereich  %s - Bootloader und Kernel",
               esp);
@@ -281,6 +335,19 @@ static void paint_done(struct setup_ui *ui, struct canvas *c, int32_t w)
     y += 30;
     gfx_text(c, 20, y, "Dateien unter /Festplatte bleiben ab jetzt liegen.",
              COL_TEXT_DIM);
+
+    if (ui->chosen >= 0 &&
+        ui->rows[ui->chosen].plan.mode == SETUP_BESIDE &&
+        !ui->rows[ui->chosen].plan.fallback_free) {
+        y += 26;
+        gfx_text(c, 20, y,
+                 "Der uebliche Startpfad war belegt: RetroOS steht unter",
+                 COL_DANGER);
+        y += 16;
+        gfx_text(c, 20, y,
+                 "EFI\\RETROOS und muss im Startmenue gewaehlt werden.",
+                 COL_DANGER);
+    }
 }
 
 static void paint_error(struct setup_ui *ui, struct canvas *c, int32_t w)

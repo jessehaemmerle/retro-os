@@ -59,4 +59,23 @@ struct partition_plan {
 bool gpt_write(struct block_device *dev, const struct partition_plan *parts,
                size_t count);
 
+/* --- Eine vorhandene Tabelle ergaenzen --- */
+
+/* Traegt der Datentraeger bereits eine gueltige GUID-Tabelle? */
+bool gpt_present(struct block_device *dev);
+
+/* Sucht die groesste zusammenhaengende Luecke zwischen den Abschnitten.
+ * Gibt false zurueck, wenn keine da ist. */
+bool gpt_largest_gap(struct block_device *dev, uint64_t *start,
+                     uint64_t *count);
+
+/* Sucht die EFI-Systempartition. */
+bool gpt_find_esp(struct block_device *dev, uint64_t *start, uint64_t *count);
+
+/* Traegt einen weiteren Abschnitt in die vorhandene Tabelle ein und
+ * berichtigt die Pruefsummen beider Koepfe. Die uebrigen Eintraege
+ * bleiben, wie sie sind. */
+bool gpt_add_partition(struct block_device *dev,
+                       const struct partition_plan *plan);
+
 #endif /* PARTITION_H */

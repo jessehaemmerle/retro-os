@@ -402,6 +402,14 @@ static void cmd_install(struct term_state *st, const char *target,
                 term_printf(st, C_NORMAL, "  %-6s %s - %s",
                             d->name, d->model, why);
             }
+
+            /* Passt daneben noch etwas hin? */
+            if (setup_plan_beside(d, &plan, why, sizeof(why))) {
+                term_printf(st, C_HIGHLIGHT,
+                            "         daneben moeglich: %u MiB frei",
+                            (unsigned)(plan.data_count / 2048));
+                offered++;
+            }
         }
 
         if (!offered) {
@@ -409,7 +417,10 @@ static void cmd_install(struct term_state *st, const char *target,
             return;
         }
         term_line(st, C_NORMAL, "");
-        term_line(st, C_NORMAL, "Weiter mit: installieren <name> wirklich");
+        term_line(st, C_NORMAL,
+                  "Ganze Platte : installieren <name> wirklich");
+        term_line(st, C_NORMAL,
+                  "Daneben      : installieren <name> daneben");
         return;
     }
 
@@ -432,6 +443,35 @@ static void cmd_install(struct term_state *st, const char *target,
     struct setup_plan plan;
     char why[96];
 
+    /* "installieren <name> daneben" laesst alles Vorhandene stehen. */
+    bool beside = confirm && strcasecmp(confirm, "daneben") == 0;
+
+    if (beside) {
+        if (!setup_plan_beside(dev, &plan, why, sizeof(why))) {
+            term_printf(st, C_ERROR, "installieren: %s", why);
+            return;
+        }
+
+        char error[96];
+
+        term_printf(st, C_NORMAL, "Installiere neben dem Vorhandenen auf %s ...",
+                    dev->name);
+        if (setup_run(&plan, install_report, st, error, sizeof(error))) {
+            term_line(st, C_HIGHLIGHT, "Fertig.");
+            if (plan.fallback_free)
+                term_line(st, C_NORMAL,
+                          "Der Rechner startet jetzt RetroOS.");
+            else
+                term_line(st, C_ERROR,
+                          "Der uebliche Startpfad war belegt - RetroOS steht "
+                          "unter EFI\\RETROOS und muss im Startmenue der "
+                          "Firmware gewaehlt werden.");
+        } else {
+            term_printf(st, C_ERROR, "installieren: %s", error);
+        }
+        return;
+    }
+
     if (!setup_plan_for(dev, &plan, why, sizeof(why))) {
         term_printf(st, C_ERROR, "installieren: %s", why);
         return;
@@ -450,6 +490,8 @@ static void cmd_install(struct term_state *st, const char *target,
                     (unsigned)plan.data_start);
         term_printf(st, C_NORMAL,
                     "Zum Bestaetigen: installieren %s wirklich", dev->name);
+        term_line(st, C_NORMAL,
+                  "Oder daneben, ohne etwas zu loeschen: installieren <name> daneben");
         return;
     }
 

@@ -411,3 +411,247 @@ bool gpt_write(struct block_device *dev, const struct partition_plan *parts,
     kfree(table);
     return ok;
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Eine vorhandene Tabelle ergaenzen                                   */
+/* ------------------------------------------------------------------ */
+
+/* Liest den Kopf der Tabelle und prueft ihn grob. */
+static bool read_header(struct block_device *dev, uint64_t lba,
+                        uint8_t sector[512])
+{
+    if (!block_read(dev, lba, 1, sector))
+        return false;
+    if (memcmp(sector, "EFI PART", 8) != 0)
+        return false;
+    if (rd32(sector, 84) != GPT_ENTRY_BYTES)
+        return false;
+    return true;
+}
+
+bool gpt_present(struct block_device *dev)
+{
+    uint8_t sector[512];
+
+    return dev && read_header(dev, 1, sector);
+}
+
+bool gpt_find_esp(struct block_device *dev, uint64_t *start, uint64_t *count)
+{
+    struct partition table[PARTITION_MAX];
+    enum partition_scheme scheme;
+    size_t found = partition_scan(dev, table, PARTITION_MAX, &scheme);
+
+    if (scheme != SCHEME_GPT)
+        return false;
+
+    for (size_t i = 0; i < found; i++) {
+        if (!table[i].is_efi)
+            continue;
+        if (start)
+            *start = table[i].start;
+        if (count)
+            *count = table[i].count;
+        return true;
+    }
+    return false;
+}
+
+bool gpt_largest_gap(struct block_device *dev, uint64_t *start,
+                     uint64_t *count)
+{
+    uint8_t header[512];
+
+    if (!read_header(dev, 1, header))
+        return false;
+
+    uint64_t first = rd64(header, 40);
+    uint64_t last  = rd64(header, 48);
+
+    struct partition table[PARTITION_MAX];
+    enum partition_scheme scheme;
+    size_t found = partition_scan(dev, table, PARTITION_MAX, &scheme);
+
+    /* Die Abschnitte nach ihrem Anfang sortieren - die Tabelle muss
+     * nicht in der Reihenfolge stehen, in der sie liegen. */
+    for (size_t i = 1; i < found; i++) {
+        struct partition key = table[i];
+        size_t k = i;
+
+        while (k > 0 && table[k - 1].start > key.start) {
+            table[k] = table[k - 1];
+            k--;
+        }
+        table[k] = key;
+    }
+
+    uint64_t best_start = 0, best_count = 0;
+    uint64_t cursor = first;
+
+    for (size_t i = 0; i <= found; i++) {
+        uint64_t edge = (i < found) ? table[i].start : last + 1;
+
+        if (edge > cursor && edge - cursor > best_count) {
+            best_start = cursor;
+            best_count = edge - cursor;
+        }
+        if (i < found) {
+            uint64_t end = table[i].start + table[i].count;
+
+            if (end > cursor)
+                cursor = end;
+        }
+    }
+
+    /* An einer Megabyte-Grenze anfangen, wie es sich gehoert. */
+    uint64_t aligned = ALIGN_UP(best_start, 2048);
+
+    if (aligned >= best_start + best_count)
+        return false;
+
+    best_count -= aligned - best_start;
+    best_start = aligned;
+
+    if (best_count == 0)
+        return false;
+
+    if (start)
+        *start = best_start;
+    if (count)
+        *count = best_count;
+    return true;
+}
+
+/* Rechnet die Pruefsummen beider Koepfe neu und schreibt sie zurueck. */
+static bool refresh_headers(struct block_device *dev, const uint8_t *table,
+                            size_t table_bytes)
+{
+    uint32_t entries_crc = crc32(table, table_bytes);
+    uint8_t header[512];
+    uint64_t backup_lba;
+
+    if (!read_header(dev, 1, header))
+        return false;
+
+    backup_lba = rd64(header, 32);
+
+    wr32(header, 88, entries_crc);
+    wr32(header, 16, 0);
+    wr32(header, 16, crc32(header, 92));
+    if (!block_write(dev, 1, 1, header))
+        return false;
+
+    if (!read_header(dev, backup_lba, header))
+        return true;      /* keine Sicherung - das reicht auch */
+
+    wr32(header, 88, entries_crc);
+    wr32(header, 16, 0);
+    wr32(header, 16, crc32(header, 92));
+    return block_write(dev, backup_lba, 1, header);
+}
+
+bool gpt_add_partition(struct block_device *dev,
+                       const struct partition_plan *plan)
+{
+    uint8_t header[512];
+
+    if (!dev || !plan || plan->count == 0)
+        return false;
+    if (!read_header(dev, 1, header))
+        return false;
+
+    uint64_t primary_lba = rd64(header, 72);
+    uint64_t backup_lba = rd64(header, 32);
+    uint32_t entries = rd32(header, 80);
+    uint64_t first_usable = rd64(header, 40);
+    uint64_t last_usable = rd64(header, 48);
+
+    if (entries == 0 || entries > GPT_ENTRY_COUNT)
+        return false;
+    if (plan->start < first_usable ||
+        plan->start + plan->count - 1 > last_usable)
+        return false;
+
+    size_t table_bytes = (size_t)entries * GPT_ENTRY_BYTES;
+    uint8_t *table = kmalloc(table_bytes);
+
+    if (!table)
+        return false;
+
+    uint32_t sectors = (uint32_t)((table_bytes + 511) / 512);
+    bool ok = true;
+
+    for (uint32_t s = 0; s < sectors && ok; s++)
+        ok = block_read(dev, primary_lba + s, 1, table + (size_t)s * 512);
+
+    if (!ok) {
+        kfree(table);
+        return false;
+    }
+
+    /* Den ersten freien Eintrag suchen und pruefen, dass die neue
+     * Stelle mit keinem vorhandenen Abschnitt zusammenstoesst. */
+    int64_t slot = -1;
+
+    for (uint32_t i = 0; i < entries; i++) {
+        uint8_t *entry = &table[(size_t)i * GPT_ENTRY_BYTES];
+        bool empty = true;
+
+        for (int k = 0; k < 16; k++)
+            if (entry[k]) {
+                empty = false;
+                break;
+            }
+
+        if (empty) {
+            if (slot < 0)
+                slot = i;
+            continue;
+        }
+
+        uint64_t start = rd64(entry, 32);
+        uint64_t end = rd64(entry, 40);
+
+        if (plan->start <= end && start <= plan->start + plan->count - 1) {
+            kfree(table);
+            return false;          /* ueberlappt */
+        }
+    }
+
+    if (slot < 0) {
+        kfree(table);
+        return false;
+    }
+
+    uint8_t *entry = &table[(size_t)slot * GPT_ENTRY_BYTES];
+
+    memset(entry, 0, GPT_ENTRY_BYTES);
+    memcpy(entry, plan->efi ? GUID_EFI : GUID_MSDATA, 16);
+    make_guid(&entry[16]);
+    wr64(entry, 32, plan->start);
+    wr64(entry, 40, plan->start + plan->count - 1);
+    wr64(entry, 48, 0);
+    put_name(entry, plan->name);
+
+    /* Die Sicherungstabelle liegt nicht beim Sicherungskopf, sondern
+     * dort, wohin er zeigt. */
+    uint8_t backup[512];
+    uint64_t backup_table = 0;
+
+    if (read_header(dev, backup_lba, backup))
+        backup_table = rd64(backup, 72);
+
+    for (uint32_t s = 0; s < sectors && ok; s++) {
+        ok = block_write(dev, primary_lba + s, 1, table + (size_t)s * 512);
+        if (ok && backup_table)
+            ok = block_write(dev, backup_table + s, 1,
+                             table + (size_t)s * 512);
+    }
+
+    if (ok)
+        ok = refresh_headers(dev, table, table_bytes);
+
+    kfree(table);
+    return ok;
+}
