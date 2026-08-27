@@ -30,8 +30,13 @@ context_switch:
     ret
 
 /* Einsprung eines frisch erzeugten Threads: r12 haelt die Funktion,
- * r13 das Argument. Interrupts werden hier wieder freigegeben. */
+ * r13 das Argument. Interrupts werden hier wieder freigegeben.
+ *
+ * Der Wechselnde hielt die Sperre des Schedulers; wer aus schedule()
+ * herauskommt, gibt sie dort frei - ein frischer Thread kommt aber
+ * nicht dort heraus und muss es hier selbst tun. */
 context_start:
+    call sched_release_after_switch
     movq %r13, %rdi
     sti
     call *%r12

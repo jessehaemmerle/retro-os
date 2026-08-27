@@ -6,6 +6,7 @@
  */
 
 #include "mm.h"
+#include "spinlock.h"
 #include "boot.h"
 #include "kstring.h"
 #include "thread.h"
@@ -118,20 +119,24 @@ static uint64_t find_run(size_t count, uint64_t from, uint64_t to)
     return 0;
 }
 
+/* Mit mehreren Kernen darf nur einer zugleich in der Bitkarte
+ * herumraeumen. */
+static struct spinlock pmm_lock = SPINLOCK_INIT("seitenverwaltung");
+
 uint64_t pmm_alloc_pages(size_t count)
 {
     if (count == 0 || !bitmap)
         return 0;
 
-    preempt_disable();
-
+    uint64_t flags = spin_lock_irq(&pmm_lock);
     uint64_t addr = find_run(count, last_index, bitmap_pages);
+
     if (!addr) {
         last_index = 0;
         addr = find_run(count, 0, bitmap_pages);
     }
 
-    preempt_enable();
+    spin_unlock_irq(&pmm_lock, flags);
     return addr;
 }
 
@@ -144,14 +149,15 @@ void pmm_free_pages(uint64_t phys, size_t count)
 {
     uint64_t idx = phys / PAGE_SIZE;
 
-    preempt_disable();
+    uint64_t flags = spin_lock_irq(&pmm_lock);
+
     for (size_t i = 0; i < count; i++) {
         if (idx + i < bitmap_pages && bit_test(idx + i)) {
             bit_clear(idx + i);
             used_pages--;
         }
     }
-    preempt_enable();
+    spin_unlock_irq(&pmm_lock, flags);
 }
 
 void pmm_free_page(uint64_t phys)

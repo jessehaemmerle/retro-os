@@ -11,13 +11,25 @@
  * bleibt die Oberflaeche fluessig, auch wenn im Hintergrund eine Seite
  * geladen wird.
  *
- * RetroOS laeuft auf einem Kern; deshalb genuegt es, fuer kurze kritische
- * Abschnitte die Interrupts zu sperren. Echte Sperren gibt es trotzdem -
- * sie schuetzen laengere Abschnitte gegen andere Threads.
+ * Seit RetroOS mehrere Kerne benutzt, hat jeder von ihnen seinen eigenen
+ * laufenden Thread, seine eigene Zeitscheibe und seinen eigenen
+ * Leerlauffaden; die Liste der Threads dagegen ist gemeinsam und steht
+ * unter einer Sperre.
+ *
+ * Beim Umschalten wird die Sperre nicht vom Wechselnden freigegeben,
+ * sondern von dem, der als naechstes darauf zurueckkommt.
+ *
+ * Ausserdem traegt jeder Thread ein Merkmal, ob er noch auf seinem
+ * Stapel steht. Wer sich schlafen legt, aendert seinen Zustand, bevor
+ * er tatsaechlich umschaltet - dazwischen duerfte ihn kein anderer Kern
+ * fortsetzen, sonst liefen zwei auf demselben Stapel. Das Merkmal
+ * loescht erst der, der danach auf demselben Kern weitermacht.
  */
 
 #include "thread.h"
 #include "arch.h"
+#include "cpu.h"
+#include "spinlock.h"
 #include "io.h"
 #include "kstring.h"
 #include "mm.h"
@@ -28,17 +40,39 @@
 #define TIME_SLICE_MS 20
 
 void context_switch(uint64_t *save_rsp, uint64_t load_rsp);
+
+void sched_release_after_switch(void);
+static void wake_one_locked(void *object);
+static void wake_all_locked(void *object);
 void context_start(void);
 
 static struct thread  threads[THREAD_MAX];
-static struct thread *current;
-static struct thread *idle_thread;
 static uint32_t       next_id = 1;
 static bool           started;
-static volatile int32_t slice_remaining;
-static volatile bool  resched_wanted;
-static volatile int32_t preempt_depth;
-static uint64_t         active_pml4;
+
+/* Schuetzt die Tabelle und alles, was der Scheduler daran aendert. */
+static struct spinlock sched_lock = SPINLOCK_INIT("scheduler");
+
+/* Wo der naechste Durchlauf zu suchen anfaengt - je Kern eine andere
+ * Stelle, damit nicht alle ueber denselben Thread herfallen. */
+static uint32_t rotate[CPU_MAX];
+
+/* Wird aus context_start heraus gerufen: Ein frisch erzeugter Thread
+ * kommt nicht aus schedule() zurueck und muss die Sperre, die der
+ * Wechselnde hielt, selbst freigeben. */
+void sched_release_after_switch(void)
+{
+    struct cpu *self = cpu_current();
+
+    /* Der Thread, den dieser Kern eben verlassen hat, steht jetzt
+     * wirklich nicht mehr auf seinem Stapel. */
+    if (self->departed) {
+        self->departed->on_cpu = false;
+        self->departed = NULL;
+    }
+
+    spin_unlock(&sched_lock);
+}
 
 /* --- Hilfsfunktionen ------------------------------------------------- */
 
@@ -50,9 +84,11 @@ static struct thread *alloc_slot(void)
             return &threads[i];
     }
 
-    /* Sonst den Platz eines beendeten Threads wiederverwenden. */
+    /* Sonst den Platz eines beendeten Threads wiederverwenden - aber
+     * erst, wenn er seinen Stapel auch verlassen hat. Zwischen
+     * "beendet" und dem letzten Umschalten laeuft er noch darauf. */
     for (size_t i = 0; i < THREAD_MAX; i++) {
-        if (threads[i].state == THREAD_DEAD) {
+        if (threads[i].state == THREAD_DEAD && threads[i].reapable) {
             if (threads[i].stack_base) {
                 pmm_free_pages(threads[i].stack_base,
                                THREAD_STACK_SIZE / PAGE_SIZE);
@@ -85,24 +121,37 @@ static bool runnable(struct thread *t)
     return false;
 }
 
-/* Waehlt den naechsten Thread: kleinste Zahl gewinnt, sonst reihum. */
-static struct thread *pick_next(void)
+/* Waehlt den naechsten Thread: kleinste Zahl gewinnt, sonst reihum.
+ * Was gerade auf einem anderen Kern laeuft, bleibt liegen. */
+static struct thread *pick_next(struct cpu *self)
 {
     struct thread *best = NULL;
-    struct thread *scan = current ? current->next : &threads[0];
+    uint32_t start = rotate[self->index];
+    uint32_t chosen = start;
 
-    for (size_t i = 0; i < THREAD_MAX; i++) {
-        if (!scan)
-            scan = &threads[0];
+    for (uint32_t k = 0; k < THREAD_MAX; k++) {
+        uint32_t i = (start + k) % THREAD_MAX;
+        struct thread *t = &threads[i];
 
-        if (scan->id != 0 && runnable(scan)) {
-            if (!best || scan->priority < best->priority)
-                best = scan;
+        if (t->id == 0)
+            continue;
+        if (t->state == THREAD_RUNNING && t != self->current)
+            continue;                 /* laeuft schon woanders */
+        if (t->on_cpu && t != self->current)
+            continue;                 /* noch nicht vom Stapel herunter */
+        if (t->cpu_pin >= 0 && (uint32_t)t->cpu_pin != self->index)
+            continue;                 /* gehoert einem anderen Kern */
+        if (!runnable(t))
+            continue;
+
+        if (!best || t->priority < best->priority) {
+            best = t;
+            chosen = i + 1;
         }
-        scan = scan->next;
     }
 
-    return best ? best : idle_thread;
+    rotate[self->index] = chosen % THREAD_MAX;
+    return best ? best : self->idle;
 }
 
 /* --- Umschalten ------------------------------------------------------ */
@@ -110,20 +159,24 @@ static struct thread *pick_next(void)
 void schedule(void)
 {
     uint64_t flags = irq_save();
+    struct cpu *self = cpu_current();
 
-    if (preempt_depth > 0) {
+    if (self->preempt_depth > 0) {
         /* Ein geschuetzter Abschnitt laeuft - spaeter noch einmal. */
         irq_restore(flags);
         return;
     }
 
-    resched_wanted = false;
+    self->resched_wanted = false;
 
-    struct thread *previous = current;
-    struct thread *next = pick_next();
+    spin_lock(&sched_lock);
+
+    struct thread *previous = self->current;
+    struct thread *next = pick_next(self);
 
     if (next == previous) {
-        slice_remaining = TIME_SLICE_MS;
+        self->slice_remaining = TIME_SLICE_MS;
+        spin_unlock(&sched_lock);
         irq_restore(flags);
         return;
     }
@@ -131,14 +184,29 @@ void schedule(void)
     if (previous && previous->state == THREAD_RUNNING)
         previous->state = THREAD_READY;
 
+    /* Ist der bisherige Thread beendet, wird sein Platz erst nach
+     * diesem Wechsel frei - danach steht niemand mehr auf seinem
+     * Stapel. Die Sperre gibt erst der naechste frei, deshalb kann
+     * niemand dazwischenkommen. */
+    if (previous && previous->state == THREAD_DEAD)
+        previous->reapable = true;
+
     next->state = THREAD_RUNNING;
+    next->on_cpu = true;
     next->cpu_ticks++;
-    current = next;
-    slice_remaining = TIME_SLICE_MS;
+    next->last_cpu = self->index;
+    self->current = next;
+    self->departed = previous;
+    self->slice_remaining = TIME_SLICE_MS;
+    self->switches++;
 
     /* Der neue Thread bringt seinen eigenen Adressraum mit; ausserdem
      * muessen CPU und Systemaufruf-Einsprung wissen, wohin sie
      * zurueckspringen, wenn aus Ring 3 etwas hereinkommt. */
+    /* GS muss auf den Bereich dieses Kerns zeigen - der Thread kann
+     * von einem anderen kommen. */
+    syscall_bind_cpu();
+
     if (next->kernel_stack_top) {
         tss_set_kernel_stack(next->kernel_stack_top);
         syscall_set_kernel_stack(next->kernel_stack_top);
@@ -146,66 +214,88 @@ void schedule(void)
 
     uint64_t wanted = next->process ? next->process->space.pml4_phys
                                     : vmm_kernel_pml4();
-    if (wanted && wanted != active_pml4) {
+    uint64_t active;
+
+    __asm__ volatile("mov %%cr3, %0" : "=r"(active));
+    if (wanted && (wanted & ~0xFFFull) != (active & ~0xFFFull))
         __asm__ volatile("mov %0, %%cr3" :: "r"(wanted) : "memory");
-        active_pml4 = wanted;
-    }
 
     /* Ab hier laeuft ein anderer Thread; die Rueckkehr erfolgt erst,
-     * wenn previous wieder an der Reihe ist. */
+     * wenn previous wieder an der Reihe ist. Die Sperre gibt der frei,
+     * der als naechstes hier herauskommt. */
     context_switch(&previous->rsp, next->rsp);
 
+    /* Ab hier laeuft wieder ein anderer Thread - moeglicherweise auf
+     * einem anderen Kern als vorhin. */
+    sched_release_after_switch();
     irq_restore(flags);
 }
 
 void scheduler_tick(void)
 {
+    struct cpu *self = cpu_current();
+
+    self->ticks++;
+
     if (!started)
         return;
 
-    if (--slice_remaining <= 0)
-        resched_wanted = true;
+    if (--self->slice_remaining <= 0)
+        self->resched_wanted = true;
 
-    /* Schlafende Threads, deren Zeit um ist, wieder wecken. */
-    for (size_t i = 0; i < THREAD_MAX; i++) {
-        struct thread *t = &threads[i];
+    /* Schlafende Threads, deren Zeit um ist, wieder wecken. Das macht
+     * nur der Bootkern - einmal je Takt genuegt, und es spart den
+     * uebrigen Kernen den Zugriff auf die gemeinsame Liste. */
+    if (self->index != 0)
+        return;
 
-        if (t->id == 0)
-            continue;
-        if ((t->state == THREAD_SLEEPING || t->state == THREAD_BLOCKED) &&
-            t->wake_at_ms && timer_ms() >= t->wake_at_ms) {
-            t->state = THREAD_READY;
-            t->wait_object = NULL;
-            t->wake_at_ms = 0;
-            resched_wanted = true;
+    if (!spin_held(&sched_lock)) {
+        spin_lock(&sched_lock);
+        for (size_t i = 0; i < THREAD_MAX; i++) {
+            struct thread *t = &threads[i];
+
+            if (t->id == 0)
+                continue;
+            if ((t->state == THREAD_SLEEPING || t->state == THREAD_BLOCKED) &&
+                t->wake_at_ms && timer_ms() >= t->wake_at_ms) {
+                t->state = THREAD_READY;
+                t->wait_object = NULL;
+                t->wake_at_ms = 0;
+                self->resched_wanted = true;
+            }
         }
+        spin_unlock(&sched_lock);
     }
 }
 
 bool scheduler_should_switch(void)
 {
-    return started && resched_wanted && preempt_depth == 0;
+    struct cpu *self = cpu_current();
+
+    return started && self->resched_wanted && self->preempt_depth == 0;
 }
 
 void preempt_disable(void)
 {
     uint64_t flags = irq_save();
 
-    preempt_depth++;
+    cpu_current()->preempt_depth++;
     irq_restore(flags);
 }
 
 bool preempt_blocked(void)
 {
-    return preempt_depth > 0;
+    return cpu_current()->preempt_depth > 0;
 }
 
 void preempt_enable(void)
 {
     uint64_t flags = irq_save();
+    struct cpu *self = cpu_current();
     bool due = false;
 
-    if (preempt_depth > 0 && --preempt_depth == 0 && resched_wanted)
+    if (self->preempt_depth > 0 && --self->preempt_depth == 0 &&
+        self->resched_wanted)
         due = true;
     irq_restore(flags);
 
@@ -220,32 +310,33 @@ bool scheduler_running(void)
 
 /* --- Threads erzeugen ------------------------------------------------ */
 
+/* Die Ringliste ist mit mehreren Kernen entfallen - der Scheduler geht
+ * die Tabelle durch und faengt bei jedem Kern woanders an. Der Zeiger
+ * bleibt nur, damit alter Code, der ihn liest, nichts Falsches sieht. */
 static void link_thread(struct thread *t)
 {
-    /* In die Ringliste einhaengen. */
-    if (!current) {
-        t->next = t;
-        return;
-    }
-
-    t->next = current->next;
-    current->next = t;
+    t->next = NULL;
 }
 
-struct thread *thread_create(const char *name, thread_entry_t entry,
-                             void *argument, enum thread_priority priority)
+static struct thread *create_thread(const char *name, thread_entry_t entry,
+                                    void *argument,
+                                    enum thread_priority priority,
+                                    int32_t pin, uint8_t exact_priority)
 {
-    uint64_t flags = irq_save();
+    /* Der Stapel wird vor der Sperre geholt: pmm_alloc_pages hat seine
+     * eigene und die beiden ineinander zu schachteln waere eine
+     * Verklemmung in Wartestellung. */
+    uint64_t stack = pmm_alloc_pages(THREAD_STACK_SIZE / PAGE_SIZE);
+
+    if (!stack)
+        return NULL;
+
+    uint64_t flags = spin_lock_irq(&sched_lock);
     struct thread *t = alloc_slot();
 
     if (!t) {
-        irq_restore(flags);
-        return NULL;
-    }
-
-    uint64_t stack = pmm_alloc_pages(THREAD_STACK_SIZE / PAGE_SIZE);
-    if (!stack) {
-        irq_restore(flags);
+        spin_unlock_irq(&sched_lock, flags);
+        pmm_free_pages(stack, THREAD_STACK_SIZE / PAGE_SIZE);
         return NULL;
     }
 
@@ -255,6 +346,9 @@ struct thread *thread_create(const char *name, thread_entry_t entry,
     t->priority   = (uint8_t)priority;
     t->state      = THREAD_READY;
     t->stack_base = stack;
+    t->cpu_pin    = pin;
+    if (exact_priority)
+        t->priority = exact_priority;
 
     uint8_t *top = (uint8_t *)phys_to_virt(stack) + THREAD_STACK_SIZE;
     t->kernel_stack_top = (uint64_t)top;
@@ -274,17 +368,24 @@ struct thread *thread_create(const char *name, thread_entry_t entry,
     t->rsp = (uint64_t)sp;
 
     link_thread(t);
-    irq_restore(flags);
+    spin_unlock_irq(&sched_lock, flags);
     return t;
+}
+
+struct thread *thread_create(const char *name, thread_entry_t entry,
+                             void *argument, enum thread_priority priority)
+{
+    return create_thread(name, entry, argument, priority, -1, 0);
 }
 
 NORETURN void thread_exit(void)
 {
-    uint64_t flags = irq_save();
+    uint64_t flags = spin_lock_irq(&sched_lock);
+    struct thread *self = cpu_current()->current;
 
-    current->state = THREAD_DEAD;
-    wake_all(current);
-    irq_restore(flags);
+    self->state = THREAD_DEAD;
+    wake_all_locked(self);
+    spin_unlock_irq(&sched_lock, flags);
 
     schedule();
 
@@ -295,7 +396,7 @@ NORETURN void thread_exit(void)
 
 struct thread *thread_current(void)
 {
-    return current;
+    return cpu_current()->current;
 }
 
 void thread_yield(void)
@@ -315,13 +416,15 @@ void thread_sleep(uint32_t milliseconds)
      * niemand weitermachen. Das ist immer ein Programmfehler, und er faellt
      * sonst nur als raetselhaftes Stocken auf. */
     if (preempt_blocked())
-        panic("thread_sleep() im geschuetzten Abschnitt (%s)", current->name);
+        panic("thread_sleep() im geschuetzten Abschnitt (%s)",
+              cpu_current()->current->name);
 
-    uint64_t flags = irq_save();
+    uint64_t flags = spin_lock_irq(&sched_lock);
+    struct thread *self = cpu_current()->current;
 
-    current->wake_at_ms = timer_ms() + milliseconds;
-    current->state = THREAD_SLEEPING;
-    irq_restore(flags);
+    self->wake_at_ms = timer_ms() + milliseconds;
+    self->state = THREAD_SLEEPING;
+    spin_unlock_irq(&sched_lock, flags);
 
     schedule();
 }
@@ -367,26 +470,28 @@ void mutex_lock(struct mutex *m)
     }
 
     for (;;) {
-        uint64_t flags = irq_save();
+        uint64_t flags = spin_lock_irq(&sched_lock);
 
         if (!m->locked) {
             m->locked = true;
-            m->owner  = current;
-            irq_restore(flags);
+            m->owner  = cpu_current()->current;
+            spin_unlock_irq(&sched_lock, flags);
             return;
         }
 
-        if (m->owner == current) {
+        if (m->owner == cpu_current()->current) {
             /* Selbstblockade waere ein Programmfehler. */
-            irq_restore(flags);
+            spin_unlock_irq(&sched_lock, flags);
             panic("mutex_lock(%s): Sperre bereits vom selben Thread gehalten",
                   m->name ? m->name : "?");
         }
 
-        current->wait_object = m;
-        current->state = THREAD_BLOCKED;
-        current->wake_at_ms = 0;
-        irq_restore(flags);
+        struct thread *self = cpu_current()->current;
+
+        self->wait_object = m;
+        self->state = THREAD_BLOCKED;
+        self->wake_at_ms = 0;
+        spin_unlock_irq(&sched_lock, flags);
 
         schedule();
     }
@@ -394,18 +499,17 @@ void mutex_lock(struct mutex *m)
 
 void mutex_unlock(struct mutex *m)
 {
-    uint64_t flags = irq_save();
+    uint64_t flags = spin_lock_irq(&sched_lock);
 
     m->locked = false;
     m->owner  = NULL;
-    irq_restore(flags);
-
-    wake_one(m);
+    wake_one_locked(m);
+    spin_unlock_irq(&sched_lock, flags);
 }
 
 bool mutex_held(const struct mutex *m)
 {
-    return m->locked && m->owner == current;
+    return m->locked && m->owner == cpu_current()->current;
 }
 
 /* --- Warten und Wecken ----------------------------------------------- */
@@ -419,14 +523,16 @@ void wait_on(void *object, struct mutex *release, uint32_t timeout_ms)
     }
 
     if (preempt_blocked())
-        panic("wait_on() im geschuetzten Abschnitt (%s)", current->name);
+        panic("wait_on() im geschuetzten Abschnitt (%s)",
+              cpu_current()->current->name);
 
-    uint64_t flags = irq_save();
+    uint64_t flags = spin_lock_irq(&sched_lock);
+    struct thread *self = cpu_current()->current;
 
-    current->wait_object = object;
-    current->state = THREAD_BLOCKED;
-    current->wake_at_ms = timeout_ms ? timer_ms() + timeout_ms : 0;
-    irq_restore(flags);
+    self->wait_object = object;
+    self->state = THREAD_BLOCKED;
+    self->wake_at_ms = timeout_ms ? timer_ms() + timeout_ms : 0;
+    spin_unlock_irq(&sched_lock, flags);
 
     if (release)
         mutex_unlock(release);
@@ -437,10 +543,10 @@ void wait_on(void *object, struct mutex *release, uint32_t timeout_ms)
         mutex_lock(release);
 }
 
-void wake_one(void *object)
+/* Die inneren Fassungen setzen voraus, dass die Sperre schon gehalten
+ * wird - so lassen sie sich aus Stellen rufen, die sie ohnehin haben. */
+static void wake_one_locked(void *object)
 {
-    uint64_t flags = irq_save();
-
     for (size_t i = 0; i < THREAD_MAX; i++) {
         struct thread *t = &threads[i];
 
@@ -449,29 +555,41 @@ void wake_one(void *object)
             t->state = THREAD_READY;
             t->wait_object = NULL;
             t->wake_at_ms = 0;
-            resched_wanted = true;
+            cpu_current()->resched_wanted = true;
             break;
         }
     }
-    irq_restore(flags);
+}
+
+void wake_one(void *object)
+{
+    uint64_t flags = spin_lock_irq(&sched_lock);
+
+    wake_one_locked(object);
+    spin_unlock_irq(&sched_lock, flags);
+}
+
+static void wake_all_locked(void *object)
+{
+    for (size_t i = 0; i < THREAD_MAX; i++) {
+        struct thread *t = &threads[i];
+
+        if (t->id != 0 && t->state == THREAD_BLOCKED &&
+            t->wait_object == object) {
+            t->state = THREAD_READY;
+            t->wait_object = NULL;
+            t->wake_at_ms = 0;
+            cpu_current()->resched_wanted = true;
+        }
+    }
 }
 
 void wake_all(void *object)
 {
-    uint64_t flags = irq_save();
+    uint64_t flags = spin_lock_irq(&sched_lock);
 
-    for (size_t i = 0; i < THREAD_MAX; i++) {
-        struct thread *t = &threads[i];
-
-        if (t->id != 0 && t->state == THREAD_BLOCKED &&
-            t->wait_object == object) {
-            t->state = THREAD_READY;
-            t->wait_object = NULL;
-            t->wake_at_ms = 0;
-            resched_wanted = true;
-        }
-    }
-    irq_restore(flags);
+    wake_all_locked(object);
+    spin_unlock_irq(&sched_lock, flags);
 }
 
 /* --- Leerlauf -------------------------------------------------------- */
@@ -485,10 +603,27 @@ static void idle_entry(void *argument)
     }
 }
 
+/* Jeder Kern braucht seinen eigenen Leerlauffaden - sonst wuerden sich
+ * zwei um denselben streiten, und einer bliebe ohne. */
+static struct thread *make_idle(struct cpu *self)
+{
+    char name[16];
+
+    ksnprintf(name, sizeof(name), "leerlauf%u", (unsigned)self->index);
+
+    /* Bindung und Wichtigkeit muessen schon beim Anlegen stehen: Waere
+     * der Faden auch nur einen Augenblick ungebunden und lauffaehig,
+     * koennte ein anderer Kern ihn sich nehmen - und dann liefe
+     * derselbe Thread auf zweien. */
+    return create_thread(name, idle_entry, NULL, PRIO_LOW,
+                         (int32_t)self->index, 255);
+}
+
 void thread_init(void)
 {
+    struct cpu *self = cpu_current();
+
     memset(threads, 0, sizeof(threads));
-    active_pml4 = vmm_kernel_pml4();
 
     /* Der bereits laufende Code wird zum ersten Thread. */
     struct thread *main_thread = &threads[0];
@@ -497,16 +632,51 @@ void thread_init(void)
     strlcpy(main_thread->name, "kernel", sizeof(main_thread->name));
     main_thread->state = THREAD_RUNNING;
     main_thread->priority = PRIO_NORMAL;
-    main_thread->next = main_thread;
+    main_thread->cpu_pin = -1;
+    main_thread->next = NULL;
 
-    current = main_thread;
-    slice_remaining = TIME_SLICE_MS;
+    main_thread->on_cpu = true;
+    self->current = main_thread;
+    self->slice_remaining = TIME_SLICE_MS;
     started = true;
 
-    idle_thread = thread_create("leerlauf", idle_entry, NULL, PRIO_LOW);
-    if (!idle_thread)
+    self->idle = make_idle(self);
+    if (!self->idle)
         panic("Der Leerlauf-Thread laesst sich nicht anlegen");
-    idle_thread->priority = 255;       /* nur, wenn sonst nichts laeuft */
 
     kprintf("Scheduler   : bereit, Zeitscheibe %u ms\n", TIME_SLICE_MS);
+}
+
+/* Einstieg eines weiteren Kerns: Er bekommt einen Leerlauffaden als
+ * ersten Thread und faellt von da an in den gewoehnlichen Wechsel. */
+NORETURN void thread_enter_ap(void)
+{
+    struct cpu *self = cpu_current();
+
+    self->idle = make_idle(self);
+    if (!self->idle) {
+        for (;;)
+            __asm__ volatile("hlt");
+    }
+
+    uint64_t flags = spin_lock_irq(&sched_lock);
+
+    self->idle->state = THREAD_RUNNING;
+    self->idle->on_cpu = true;
+    self->current = self->idle;
+    self->slice_remaining = TIME_SLICE_MS;
+    spin_unlock_irq(&sched_lock, flags);
+
+    syscall_init_ap();
+    timer_init_ap();
+
+    /* Auf den eigenen Stapel wechseln. Bis hierher laeuft der Kern auf
+     * dem, den der Bootloader mitgegeben hat - der ist klein und
+     * gehoert uns nicht. Die Sperre gibt context_start frei. */
+    uint64_t discard = 0;
+
+    spin_lock(&sched_lock);
+    context_switch(&discard, self->idle->rsp);
+
+    __builtin_unreachable();
 }

@@ -3,8 +3,15 @@
  * Der Befehl "syscall" wechselt nur den Ring und legt die Ruecksprung-
  * adresse in rcx und die Flags in r11 ab - um den Stapel muss sich der
  * Kernel selbst kuemmern. Waehrend der ersten beiden Befehle sind die
- * Interrupts gesperrt (dafuer sorgt das FMASK-Register), deshalb genuegt
- * eine einzelne Ablage fuer den Benutzerstapel.
+ * Interrupts gesperrt (dafuer sorgt das FMASK-Register).
+ *
+ * Mit mehreren Kernen darf die Ablage fuer den Benutzerstapel keine
+ * einzelne Variable mehr sein: Zwei Kerne koennten gleichzeitig
+ * hereinkommen. Deshalb zeigt GS auf einen Bereich je Kern - swapgs
+ * holt ihn hervor und legt ihn beim Ruecksprung wieder weg.
+ *
+ *     %gs:0   Kernelstapel dieses Kerns
+ *     %gs:8   Ablage fuer den Stapel des Benutzers
  */
 
 .section .text
@@ -12,10 +19,11 @@
 .extern syscall_dispatch
 
 syscall_entry:
-    movq %rsp, syscall_scratch_rsp(%rip)
-    movq syscall_kernel_rsp(%rip), %rsp
+    swapgs
+    movq %rsp, %gs:8
+    movq %gs:0, %rsp
 
-    pushq syscall_scratch_rsp(%rip)   /* Stapel des Benutzers          */
+    pushq %gs:8                       /* Stapel des Benutzers          */
     pushq %rax
     pushq %rbx
     pushq %rcx                        /* Ruecksprungadresse            */
@@ -55,13 +63,7 @@ syscall_entry:
     popq %rax
     popq %rsp
 
+    swapgs
     sysretq
-
-.section .data
-.global syscall_kernel_rsp
-syscall_kernel_rsp:
-    .quad 0
-syscall_scratch_rsp:
-    .quad 0
 
 .section .note.GNU-stack,"",@progbits

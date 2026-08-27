@@ -15,6 +15,7 @@
  */
 
 #include "arch.h"
+#include "cpu.h"
 #include "kstring.h"
 
 struct gdt_entry {
@@ -53,44 +54,48 @@ struct tss {
     uint16_t iomap_base;
 } PACKED;
 
-static struct gdt_entry gdt[7];
-static struct gdt_ptr   gdtr;
-static struct tss       tss ALIGNED(16);
+/* Jeder Kern braucht seine eigene Tabelle: Im TSS steht der Stapel,
+ * auf den die CPU bei einem Interrupt aus Ring 3 wechselt, und der ist
+ * je Kern ein anderer. */
+static struct gdt_entry gdt[CPU_MAX][7];
+static struct gdt_ptr   gdtr[CPU_MAX];
+static struct tss       tss[CPU_MAX] ALIGNED(16);
 
-static void set_entry(int i, uint8_t access, uint8_t granularity)
+static void set_entry(uint32_t cpu, int i, uint8_t access,
+                      uint8_t granularity)
 {
-    gdt[i].limit_low   = 0xFFFF;
-    gdt[i].base_low    = 0;
-    gdt[i].base_mid    = 0;
-    gdt[i].access      = access;
-    gdt[i].granularity = granularity;
-    gdt[i].base_high   = 0;
+    gdt[cpu][i].limit_low   = 0xFFFF;
+    gdt[cpu][i].base_low    = 0;
+    gdt[cpu][i].base_mid    = 0;
+    gdt[cpu][i].access      = access;
+    gdt[cpu][i].granularity = granularity;
+    gdt[cpu][i].base_high   = 0;
 }
 
 void tss_set_kernel_stack(uint64_t top)
 {
-    tss.rsp0 = top;
+    tss[cpu_current()->index].rsp0 = top;
 }
 
-void gdt_init(void)
+static void gdt_setup(uint32_t cpu)
 {
-    memset(gdt, 0, sizeof(gdt));
-    memset(&tss, 0, sizeof(tss));
+    memset(gdt[cpu], 0, sizeof(gdt[cpu]));
+    memset(&tss[cpu], 0, sizeof(tss[cpu]));
 
     /* 0x08: Code Ring 0, ausfuehrbar, Long-Mode-Flag (L) gesetzt. */
-    set_entry(1, 0x9A, 0xA0 | 0x0F);
+    set_entry(cpu, 1, 0x9A, 0xA0 | 0x0F);
     /* 0x10: Daten Ring 0, beschreibbar. */
-    set_entry(2, 0x92, 0xC0 | 0x0F);
+    set_entry(cpu, 2, 0x92, 0xC0 | 0x0F);
     /* 0x18: Daten Ring 3. */
-    set_entry(3, 0xF2, 0xC0 | 0x0F);
+    set_entry(cpu, 3, 0xF2, 0xC0 | 0x0F);
     /* 0x20: Code Ring 3. */
-    set_entry(4, 0xFA, 0xA0 | 0x0F);
+    set_entry(cpu, 4, 0xFA, 0xA0 | 0x0F);
 
     /* 0x28: das TSS, ueber zwei Eintraege verteilt. */
-    struct tss_descriptor *desc = (struct tss_descriptor *)&gdt[5];
-    uint64_t base = (uint64_t)&tss;
+    struct tss_descriptor *desc = (struct tss_descriptor *)&gdt[cpu][5];
+    uint64_t base = (uint64_t)&tss[cpu];
 
-    desc->limit_low   = sizeof(tss) - 1;
+    desc->limit_low   = sizeof(tss[cpu]) - 1;
     desc->base_low    = (uint16_t)(base & 0xFFFF);
     desc->base_mid    = (uint8_t)((base >> 16) & 0xFF);
     desc->access      = 0x89;          /* vorhanden, 64-Bit-TSS, frei */
@@ -99,10 +104,10 @@ void gdt_init(void)
     desc->base_upper  = (uint32_t)(base >> 32);
     desc->reserved    = 0;
 
-    tss.iomap_base = sizeof(tss);
+    tss[cpu].iomap_base = sizeof(tss[cpu]);
 
-    gdtr.limit = sizeof(gdt) - 1;
-    gdtr.base  = (uint64_t)&gdt;
+    gdtr[cpu].limit = sizeof(gdt[cpu]) - 1;
+    gdtr[cpu].base  = (uint64_t)&gdt[cpu];
 
     __asm__ volatile(
         "lgdt %0\n"
@@ -118,8 +123,18 @@ void gdt_init(void)
         "movw %%ax, %%ss\n"
         "movw %%ax, %%fs\n"
         "movw %%ax, %%gs\n"
-        :: "m"(gdtr) : "rax", "memory");
+        :: "m"(gdtr[cpu]) : "rax", "memory");
 
     /* Das TSS in die Task-Register laden. */
     __asm__ volatile("ltr %0" :: "r"((uint16_t)0x28));
+}
+
+void gdt_init(void)
+{
+    gdt_setup(cpu_current()->index);
+}
+
+void gdt_init_ap(void)
+{
+    gdt_setup(cpu_current()->index);
 }

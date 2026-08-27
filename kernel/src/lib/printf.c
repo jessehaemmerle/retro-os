@@ -10,6 +10,7 @@
 #include "serial.h"
 
 #include <stdarg.h>
+#include "spinlock.h"
 
 struct sink {
     char  *buf;   /* NULL => Ausgabe auf die serielle Konsole */
@@ -170,12 +171,19 @@ int ksnprintf(char *buf, size_t size, const char *fmt, ...)
     return n;
 }
 
+/* Ohne Sperre schieben sich die Zeilen mehrerer Kerne ineinander -
+ * dann steht auf der seriellen Schnittstelle Buchstabensalat. */
+static struct spinlock print_lock = SPINLOCK_INIT("ausgabe");
+
 void kprintf(const char *fmt, ...)
 {
     struct sink s = { .buf = NULL, .size = 0, .used = 0 };
     va_list ap;
+    uint64_t flags = spin_lock_irq(&print_lock);
 
     va_start(ap, fmt);
     do_format(&s, fmt, ap);
     va_end(ap);
+
+    spin_unlock_irq(&print_lock, flags);
 }

@@ -9,6 +9,7 @@
 #include "font.h"
 #include "kstring.h"
 #include "block.h"
+#include "cpu.h"
 #include "mm.h"
 #include "net.h"
 #include "nic.h"
@@ -97,7 +98,32 @@ static void sys_paint(struct window *win, struct canvas *c)
                   timer_uses_apic() ? ", eigener Zeitgeber" : "");
     else
         strlcpy(buf, "8259A-PIC mit PIT", sizeof(buf));
-    row(&local, y, "Unterbrechungen", buf);                 y += 28;
+    row(&local, y, "Unterbrechungen", buf);                 y += 18;
+
+    /* Was die Kerne tatsaechlich tun - nicht nur, wie viele es gibt. */
+    if (cpu_count() > 1) {
+        ksnprintf(buf, sizeof(buf), "%u in Betrieb", (unsigned)cpu_count());
+        row(&local, y, "Kerne", buf);
+        y += 18;
+
+        for (uint32_t i = 0; i < cpu_count(); i++) {
+            struct cpu *c = cpu_at(i);
+            char name[16];
+
+            if (!c)
+                continue;
+
+            ksnprintf(name, sizeof(name), "  Kern %u", (unsigned)i);
+            ksnprintf(buf, sizeof(buf), "%s, %u Wechsel",
+                      c->current ? c->current->name : "-",
+                      (unsigned)c->switches);
+            row(&local, y, name, buf);
+            y += 16;
+        }
+        y += 6;
+    } else {
+        y += 10;
+    }
 
     gfx_text_bold(&local, 16, y, "Speicher", COL_SELECT);
     y += 22;

@@ -10,6 +10,7 @@
 
 #include "arch.h"
 #include "apic.h"
+#include "cpu.h"
 #include "io.h"
 #include "thread.h"
 
@@ -20,11 +21,18 @@
 static volatile uint64_t ticks;
 static uint32_t          hz = 1000;
 static bool              using_apic;
+static int32_t           timer_vector = -1;
 
 static void timer_tick(struct registers *regs)
 {
     UNUSED(regs);
-    ticks++;
+
+    /* Die Uhr des Systems fuehrt nur der Bootkern - sonst liefe sie mit
+     * jedem weiteren Kern schneller. Der Scheduler dagegen geht jeden
+     * Kern etwas an. */
+    if (cpu_current()->index == 0)
+        ticks++;
+
     scheduler_tick();
 }
 
@@ -57,6 +65,7 @@ void timer_init(uint32_t frequency_hz)
 
         if (vector >= 0 && apic_timer_start(hz, (uint8_t)vector)) {
             using_apic = true;
+            timer_vector = vector;
             return;
         }
         if (vector >= 0)
@@ -65,6 +74,24 @@ void timer_init(uint32_t frequency_hz)
 
     pit_init(hz);
     kprintf("Systemtakt  : PIT mit %u Hz\n", (unsigned)hz);
+}
+
+/* Jeder weitere Kern braucht seinen eigenen Zeitgeber, sonst wuerde er
+ * nie verdraengt. Den Vektor teilen sich alle. */
+void timer_init_ap(void)
+{
+    if (using_apic && timer_vector >= 0)
+        apic_timer_start(hz, (uint8_t)timer_vector);
+}
+
+/* Wartet, ohne den Scheduler zu bemuehen - fuer die Zeit vor seinem
+ * Start. */
+void timer_wait_ms(uint32_t ms)
+{
+    uint64_t target = timer_ms() + ms;
+
+    while (timer_ms() < target)
+        __asm__ volatile("pause");
 }
 
 bool timer_uses_apic(void)

@@ -93,6 +93,10 @@ struct syscall_frame {
 } PACKED;
 
 void syscall_init(void);
+/* Dasselbe fuer einen weiteren Kern. */
+void syscall_init_ap(void);
+/* Setzt GS auf den Bereich des Kerns, auf dem gerade gewechselt wird. */
+void syscall_bind_cpu(void);
 void syscall_dispatch(struct syscall_frame *frame);
 
 /* Wird beim Threadwechsel gesetzt, damit der Einsprung den richtigen

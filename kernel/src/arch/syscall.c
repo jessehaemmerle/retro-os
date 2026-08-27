@@ -9,6 +9,7 @@
 
 #include "syscall.h"
 #include "arch.h"
+#include "cpu.h"
 #include "kstring.h"
 #include "mm.h"
 #include "process.h"
@@ -27,7 +28,18 @@
 #define COPY_CHUNK 512
 
 void syscall_entry(void);
-extern uint64_t syscall_kernel_rsp;
+
+/* Ein Bereich je Kern, auf den GS zeigt. Der Einsprung in Assembler
+ * liest daraus seinen Kernelstapel und legt den des Benutzers ab. */
+struct syscall_area {
+    uint64_t kernel_rsp;
+    uint64_t scratch_rsp;
+} ALIGNED(64);
+
+static struct syscall_area areas[CPU_MAX];
+
+#define MSR_KERNEL_GS_BASE 0xC0000102
+#define MSR_GS_BASE        0xC0000101
 
 static void wrmsr(uint32_t msr, uint64_t value)
 {
@@ -45,10 +57,36 @@ static uint64_t rdmsr(uint32_t msr)
 
 void syscall_set_kernel_stack(uint64_t top)
 {
-    syscall_kernel_rsp = top;
+    areas[cpu_current()->index].kernel_rsp = top;
 }
 
-void syscall_init(void)
+/* Traegt fuer diesen Kern ein, wohin GS zeigen soll.
+ *
+ * Beide Register bekommen denselben Wert. Der Grund ist der Wechsel
+ * zwischen Kernen: Wandert ein Thread mitten im Systemaufruf auf einen
+ * anderen Kern, tauscht das swapgs beim Ruecksprung sonst die
+ * Kennung des alten Kerns in das Register des neuen - und der naechste
+ * Systemaufruf dort greift ins Leere. Stehen in beiden dieselben
+ * Adressen, ist der Tausch gleichgueltig.
+ *
+ * Der Preis: Ein Benutzerprogramm kann GS nicht fuer sich benutzen.
+ * RetroOS-Programme tun das nicht. */
+void syscall_bind_cpu(void)
+{
+    uint64_t area = (uint64_t)&areas[cpu_current()->index];
+
+    wrmsr(MSR_KERNEL_GS_BASE, area);
+    wrmsr(MSR_GS_BASE, area);
+}
+
+static void bind_gs(void)
+{
+    syscall_bind_cpu();
+}
+
+/* Die MSRs gelten je Kern und muessen auf jedem eigens gesetzt
+ * werden. */
+static void setup_msrs(void)
 {
     /* Den Befehl "syscall" ueberhaupt erst freischalten. */
     wrmsr(MSR_EFER, rdmsr(MSR_EFER) | 1);
@@ -59,6 +97,18 @@ void syscall_init(void)
 
     /* Beim Eintritt Interrupts und Richtungsflag loeschen. */
     wrmsr(MSR_FMASK, (1 << 9) | (1 << 10) | (1 << 18));
+
+    bind_gs();
+}
+
+void syscall_init_ap(void)
+{
+    setup_msrs();
+}
+
+void syscall_init(void)
+{
+    setup_msrs();
 
     kprintf("Systemaufrufe: bereit (%u Nummern)\n", (unsigned)SYS_COUNT);
 }

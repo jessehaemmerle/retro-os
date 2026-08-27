@@ -14,6 +14,8 @@
 /* Sucht die MADT und richtet lokalen APIC und IOAPIC ein.
  * Gibt false zurueck, wenn der Rechner keinen APIC hat. */
 bool apic_init(void);
+/* Schaltet den lokalen APIC eines weiteren Kerns ein. */
+void apic_init_ap(void);
 bool apic_available(void);
 
 /* Kennung des lokalen APIC dieses Kerns. */

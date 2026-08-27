@@ -18,6 +18,7 @@
 
 #include "block.h"
 #include "kstring.h"
+#include "spinlock.h"
 #include "thread.h"
 
 static struct block_device *devices[BLOCK_MAX_DEVICES];
@@ -40,6 +41,7 @@ struct cache_slot {
 
 static struct cache_slot cache[CACHE_SLOTS];
 static uint64_t          cache_clock;
+static struct spinlock   cache_lock = SPINLOCK_INIT("sektorpuffer");
 static bool              cache_enabled = true;
 
 static struct cache_slot *cache_find(struct block_device *dev, uint64_t lba)
@@ -88,14 +90,14 @@ bool block_flush(struct block_device *dev)
 {
     bool ok = true;
 
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&cache_lock);
     for (size_t i = 0; i < CACHE_SLOTS; i++) {
         if (cache[i].valid && (!dev || cache[i].dev == dev)) {
             if (!slot_flush(&cache[i]))
                 ok = false;
         }
     }
-    preempt_enable();
+    spin_unlock_irq(&cache_lock, __flags);
     return ok;
 }
 
@@ -103,14 +105,14 @@ bool block_flush(struct block_device *dev)
  * unter dem Puffer weg neu beschrieben wurde. */
 void block_cache_drop(struct block_device *dev)
 {
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&cache_lock);
     for (size_t i = 0; i < CACHE_SLOTS; i++) {
         if (!dev || cache[i].dev == dev) {
             cache[i].valid = false;
             cache[i].dirty = false;
         }
     }
-    preempt_enable();
+    spin_unlock_irq(&cache_lock, __flags);
 }
 
 void block_register(struct block_device *dev)
@@ -193,26 +195,26 @@ bool block_read(struct block_device *dev, uint64_t lba, uint32_t count, void *bu
      * leerraeumen, und der Treiber holt sie ohnehin in einem Stueck.
      * Geaenderte Sektoren darin muessen aber vorher heraus. */
     if (!cache_enabled || dev->sector_size != BLOCK_SECTOR_SIZE || count > 8) {
-        preempt_disable();
+        uint64_t __flags = spin_lock_irq(&cache_lock);
         for (uint32_t i = 0; i < count; i++) {
             struct cache_slot *slot = cache_find(dev, lba + i);
 
             if (slot && !slot_flush(slot)) {
-                preempt_enable();
+                spin_unlock_irq(&cache_lock, __flags);
                 return false;
             }
         }
-        preempt_enable();
+        spin_unlock_irq(&cache_lock, __flags);
         return dev->read(dev, lba, count, buf);
     }
 
     uint8_t *out = buf;
     bool ok = true;
 
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&cache_lock);
     for (uint32_t i = 0; i < count && ok; i++)
         ok = cached_read(dev, lba + i, out + (size_t)i * BLOCK_SECTOR_SIZE);
-    preempt_enable();
+    spin_unlock_irq(&cache_lock, __flags);
     return ok;
 }
 
@@ -225,7 +227,7 @@ bool block_write(struct block_device *dev, uint64_t lba, uint32_t count,
         return false;
 
     if (!cache_enabled || dev->sector_size != BLOCK_SECTOR_SIZE || count > 8) {
-        preempt_disable();
+        uint64_t __flags = spin_lock_irq(&cache_lock);
         for (uint32_t i = 0; i < count; i++) {
             struct cache_slot *slot = cache_find(dev, lba + i);
 
@@ -234,17 +236,17 @@ bool block_write(struct block_device *dev, uint64_t lba, uint32_t count,
                 slot->dirty = false;
             }
         }
-        preempt_enable();
+        spin_unlock_irq(&cache_lock, __flags);
         return dev->write(dev, lba, count, (void *)buf);
     }
 
     const uint8_t *in = buf;
     bool ok = true;
 
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&cache_lock);
     for (uint32_t i = 0; i < count && ok; i++)
         ok = cached_write(dev, lba + i, in + (size_t)i * BLOCK_SECTOR_SIZE);
-    preempt_enable();
+    spin_unlock_irq(&cache_lock, __flags);
     return ok;
 }
 

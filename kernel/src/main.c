@@ -13,6 +13,7 @@
 #include "block.h"
 #include "config.h"
 #include "boot.h"
+#include "cpu.h"
 #include "fb.h"
 #include "gui.h"
 #include "input.h"
@@ -46,6 +47,7 @@ NORETURN void kmain(void)
             (unsigned)bi->fb_width, (unsigned)bi->fb_height, bi->fb_bpp);
 
     /* CPU-Strukturen */
+    cpu_init_bsp();
     gdt_init();
     idt_init();
     pic_init();
@@ -58,8 +60,13 @@ NORETURN void kmain(void)
     /* Unterbrechungen: der APIC, wo es ihn gibt. Dafuer muessen die
      * ACPI-Tabellen schon gelesen sein - dort steht, wo er liegt. */
     acpi_init();
-    if (apic_init())
+    if (apic_init()) {
         pic_disable();
+
+        /* Der Bootkern hat jetzt seine endgueltige APIC-Nummer. */
+        cpu_init_bsp();
+        gdt_init();
+    }
 
     /* Zeit und Eingabe */
     timer_init(1000);
@@ -95,6 +102,12 @@ NORETURN void kmain(void)
     thread_init();
     syscall_init();
     process_init();
+
+    /* Und jetzt auch auf mehreren Kernen. */
+    uint32_t cores = smp_start();
+
+    if (cores > 1)
+        kprintf("Kerne       : %u in Betrieb\n", (unsigned)cores);
 
     /* Die Eingabegeraete am USB-Bus brauchen einen eigenen Thread. */
     usb_start_polling();

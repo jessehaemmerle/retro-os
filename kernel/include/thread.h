@@ -44,6 +44,10 @@ struct thread {
     void     *wait_object;
 
     uint64_t  cpu_ticks;         /* wie oft dieser Thread lief */
+    int32_t   cpu_pin;           /* fest an einen Kern, -1 = beliebig */
+    bool      reapable;          /* beendet und von seinem Stapel herunter */
+    volatile bool on_cpu;        /* laeuft noch auf seinem Stapel          */
+    uint32_t  last_cpu;          /* wo er zuletzt lief                */
 
     struct process *process;     /* NULL = reiner Kernel-Thread */
     struct thread  *next;
@@ -55,6 +59,8 @@ void thread_init(void);
 struct thread *thread_create(const char *name, thread_entry_t entry,
                              void *argument, enum thread_priority priority);
 void thread_exit(void) NORETURN;
+/* Einstieg eines weiteren Kerns in den Scheduler. */
+NORETURN void thread_enter_ap(void);
 
 struct thread *thread_current(void);
 void thread_yield(void);

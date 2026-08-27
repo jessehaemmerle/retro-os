@@ -9,6 +9,7 @@
 #include "apic.h"
 #include "acpi.h"
 #include "arch.h"
+#include "cpu.h"
 #include "io.h"
 #include "kstring.h"
 
@@ -58,7 +59,7 @@ static struct ioapic      ioapics[MAX_IOAPICS];
 static uint32_t           ioapic_count;
 static struct override    overrides[MAX_OVERRIDES];
 static uint32_t           override_count;
-static uint32_t           cpu_count;
+static uint32_t           madt_cpu_count;
 static bool               ready;
 
 /* ------------------------------------------------------------------ */
@@ -146,7 +147,7 @@ static void read_madt(const struct madt *madt)
         switch (type) {
         case 0:                     /* Kern mit lokalem APIC */
             if (length >= 8 && (p[4] & 1))
-                cpu_count++;
+                madt_cpu_count++;
             break;
 
         case 1:                     /* IOAPIC */
@@ -188,7 +189,7 @@ static void read_madt(const struct madt *madt)
 
         case 9:                     /* Kern mit x2APIC */
             if (length >= 16 && (p[8] & 1))
-                cpu_count++;
+                madt_cpu_count++;
             break;
 
         default:
@@ -286,7 +287,7 @@ void apic_send_eoi(void)
 }
 
 bool apic_available(void) { return ready; }
-uint32_t apic_cpu_count(void) { return cpu_count ? cpu_count : 1; }
+uint32_t apic_cpu_count(void) { return madt_cpu_count ? madt_cpu_count : 1; }
 
 uint64_t apic_msi_address(void)
 {
@@ -299,12 +300,34 @@ uint32_t apic_msi_data(uint8_t vector)
     return vector;              /* flankengesteuert, feste Prioritaet */
 }
 
+/* Der lokale APIC gehoert dem Kern, nicht dem System - jeder muss ihn
+ * fuer sich einschalten. Die IOAPICs dagegen sind gemeinsam und werden
+ * nur einmal vom Bootkern eingerichtet. */
+static void enable_local_apic(void)
+{
+    uint64_t base = read_msr(IA32_APIC_BASE);
+
+    write_msr(IA32_APIC_BASE, base | (1ull << 11));
+
+    /* Alle Prioritaeten zulassen und den Baustein scharf schalten. */
+    lapic_write(LAPIC_TPR, 0);
+    lapic_write(LAPIC_SPURIOUS, IRQ_VECTOR_SPURIOUS | 0x100);
+    lapic_write(LAPIC_LVT_ERROR, LVT_MASKED);
+    lapic_write(LAPIC_LVT_TIMER, LVT_MASKED);
+}
+
+void apic_init_ap(void)
+{
+    if (ready)
+        enable_local_apic();
+}
+
 bool apic_init(void)
 {
     ready = false;
     ioapic_count = 0;
     override_count = 0;
-    cpu_count = 0;
+    madt_cpu_count = 0;
 
     if (!cpu_has_apic())
         return false;
@@ -320,16 +343,7 @@ bool apic_init(void)
     if (ioapic_count == 0)
         return false;
 
-    /* Den lokalen APIC ueber sein eigenes MSR einschalten. */
-    uint64_t base = read_msr(IA32_APIC_BASE);
-
-    write_msr(IA32_APIC_BASE, base | (1ull << 11));
-
-    /* Alle Prioritaeten zulassen und den Baustein scharf schalten. */
-    lapic_write(LAPIC_TPR, 0);
-    lapic_write(LAPIC_SPURIOUS, IRQ_VECTOR_SPURIOUS | 0x100);
-    lapic_write(LAPIC_LVT_ERROR, LVT_MASKED);
-    lapic_write(LAPIC_LVT_TIMER, LVT_MASKED);
+    enable_local_apic();
 
     ready = true;
 
@@ -411,7 +425,8 @@ bool apic_timer_start(uint32_t frequency_hz, uint8_t vector)
     lapic_write(LAPIC_LVT_TIMER, vector | TIMER_PERIODIC);
     lapic_write(LAPIC_TIMER_INIT, initial);
 
-    kprintf("APIC-Timer  : %u Hz, %u Takte je Millisekunde\n",
-            (unsigned)frequency_hz, (unsigned)per_ms);
+    if (cpu_current()->index == 0)
+        kprintf("APIC-Timer  : %u Hz, %u Takte je Millisekunde\n",
+                (unsigned)frequency_hz, (unsigned)per_ms);
     return true;
 }

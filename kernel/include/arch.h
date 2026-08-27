@@ -27,10 +27,14 @@ typedef void (*irq_handler_t)(struct registers *regs);
 #define IRQ_VECTOR_SPURIOUS 255
 
 void gdt_init(void);
+/* Dasselbe fuer einen weiteren Kern - eigene Tabelle, eigenes TSS. */
+void gdt_init_ap(void);
 /* Legt fest, auf welchen Stapel die CPU wechselt, wenn ein Interrupt
  * aus einem Benutzerprogramm kommt. */
 void tss_set_kernel_stack(uint64_t top);
 void idt_init(void);
+/* Laedt die (gemeinsame) Tabelle in das Register dieses Kerns. */
+void idt_load(void);
 
 /* IRQ 0-15; der Handler laeuft mit gesperrten Interrupts. */
 void irq_install(uint8_t irq, irq_handler_t handler);
@@ -55,6 +59,10 @@ void pit_init(uint32_t frequency_hz);
 
 /* Waehlt den besten Zeitgeber: den des lokalen APIC, sonst den PIT. */
 void timer_init(uint32_t frequency_hz);
+/* Startet den Zeitgeber dieses Kerns - jeder braucht seinen eigenen. */
+void timer_init_ap(void);
+/* Wartet, ohne den Scheduler zu bemuehen. */
+void timer_wait_ms(uint32_t ms);
 bool timer_uses_apic(void);
 
 /* Millisekunden seit Systemstart. */

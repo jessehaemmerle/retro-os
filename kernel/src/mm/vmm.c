@@ -14,7 +14,11 @@
 #include "vmm.h"
 #include "kstring.h"
 #include "mm.h"
+#include "spinlock.h"
 #include "thread.h"
+
+/* Seitentabellen werden von allen Kernen geteilt. */
+static struct spinlock vmm_lock = SPINLOCK_INIT("vmm");
 
 static uint64_t kernel_pml4;
 static bool     no_execute_available;
@@ -165,26 +169,26 @@ bool vmm_map(struct address_space *space, uint64_t virt, uint64_t phys,
     if (!no_execute_available)
         flags &= ~PTE_NX;
 
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&vmm_lock);
 
     /* Eine Zwischentabelle darf die Ausfuehrsperre nicht tragen - sie
      * wuerde sonst fuer alles darunter gelten. */
     uint64_t table_flags = flags & ~PTE_NX;
 
     uint64_t *pdpt = walk(root, virt, 4, true, table_flags);
-    if (!pdpt) { preempt_enable(); return false; }
+    if (!pdpt) { spin_unlock_irq(&vmm_lock, __flags); return false; }
 
     uint64_t *pd = walk((uint64_t)pdpt - g_hhdm_offset, virt, 3, true,
                         table_flags);
-    if (!pd) { preempt_enable(); return false; }
+    if (!pd) { spin_unlock_irq(&vmm_lock, __flags); return false; }
 
     uint64_t *pt = walk((uint64_t)pd - g_hhdm_offset, virt, 2, true,
                         table_flags);
-    if (!pt) { preempt_enable(); return false; }
+    if (!pt) { spin_unlock_irq(&vmm_lock, __flags); return false; }
 
     pt[index_of(virt, 1)] = (phys & PTE_ADDR_MASK) | flags | PTE_PRESENT;
 
-    preempt_enable();
+    spin_unlock_irq(&vmm_lock, __flags);
     return true;
 }
 
@@ -202,7 +206,7 @@ bool vmm_protect_range(struct address_space *space, uint64_t virt,
     if (!vmm_no_execute())
         flags &= ~PTE_NX;
 
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&vmm_lock);
 
     for (uint64_t page = start; page < end; page += PAGE_SIZE) {
         uint64_t *pdpt = walk(root, page, 4, false, 0);
@@ -227,7 +231,7 @@ bool vmm_protect_range(struct address_space *space, uint64_t virt,
         *entry = (*entry & PTE_ADDR_MASK) | flags | PTE_PRESENT;
     }
 
-    preempt_enable();
+    spin_unlock_irq(&vmm_lock, __flags);
 
     /* Der Adressraum des Prozesses laeuft noch nicht - ein Umschalten
      * auf ihn laedt die Tabellen ohnehin neu. */
@@ -238,7 +242,7 @@ void vmm_unmap(struct address_space *space, uint64_t virt)
 {
     uint64_t root = space ? space->pml4_phys : kernel_pml4;
 
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&vmm_lock);
 
     uint64_t *pdpt = walk(root, virt, 4, false, 0);
     if (pdpt) {
@@ -250,7 +254,7 @@ void vmm_unmap(struct address_space *space, uint64_t virt)
         }
     }
 
-    preempt_enable();
+    spin_unlock_irq(&vmm_lock, __flags);
     __asm__ volatile("invlpg (%0)" :: "r"(virt) : "memory");
 }
 

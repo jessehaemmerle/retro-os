@@ -34,8 +34,8 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 │  Installation auf Festplatte  │  Kryptografie: SHA-2 · HMAC · HKDF · │
 │  Dateibaum: RAM + FAT32       │  ChaCha20 · AES-GCM · X25519 · RSA · │
 ├───────────────────────────────┤  ECDSA · X.509 · 152 Wurzeln         │
-│  Prozesse in Ring 3           ├──────────────────────────────────────┤
-│  Scheduler · Threads          │  TCP · UDP · DHCP · DNS · ICMP       │
+│  Ring 3: Fenster · Sockets    ├──────────────────────────────────────┤
+│  Scheduler auf mehreren Kernen│  TCP · UDP · DHCP · DNS · ICMP       │
 ├───────────────────────────────┤  IPv4 · ARP · Ethernet               │
 │  Seitenverwaltung · Heap      │                                      │
 ├───────────────────────────────┼──────────────────────────────────────┤
@@ -50,7 +50,7 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 │  Unterbrechungen: lokaler APIC · IOAPIC · MSI/MSI-X · 8259A ersatz-  │
 │  weise · Zeitgeber des APIC, sonst PIT                               │
 ├──────────────────────────────────────────────────────────────────────┤
-│  Kern: GDT · IDT · TSS · Systemaufrufe (SYSCALL/SYSRET)              │
+│  Kern: GDT · IDT · TSS je Kern · Systemaufrufe · Spinlocks           │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -205,7 +205,11 @@ also so, wie es ein Betriebssystem tut.
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, sieben Ring-3-Programme |
+| **Kerne** | Alle Kerne des Rechners werden gestartet; eigene GDT, TSS und Zeitgeber je Kern, gemeinsame Daten unter Warteschlangensperren |
+| **Ring 3** | Eigene Fenster und TCP-Verbindungen über Systemaufrufe – ein Benutzerprogramm kann zeichnen und ins Netz |
+| **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername und Hintergrund in `/Festplatte/retroos.conf` |
+| **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, neun Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 
@@ -329,10 +333,10 @@ kernel/
   src/
     main.c            Startreihenfolge des Systems
     arch/             GDT, IDT, Interrupt-Stubs, APIC, IOAPIC, PIC, Zeitgeber,
-                      ACPI, Systemaufrufe
+                      ACPI, Systemaufrufe, Kerne und ihr Start
     mm/               Seitenverwaltung, Adressräume und Heap
-    sched/            Threads und präemptiver Scheduler
-    proc/             ELF64-Lader und Prozesse in Ring 3
+    sched/            Threads und präemptiver Scheduler auf allen Kernen
+    proc/             ELF64-Lader, Prozesse in Ring 3, Fenster für Programme
     drivers/          Framebuffer, PS/2, Tastatur, Maus, RTC, UART, PCI,
                       NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID,
                       USB-Speicher, virtio-net, igb, e1000e, e1000,
@@ -347,7 +351,8 @@ kernel/
     lib/              Zeichenketten, Ausgabe, 128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
-    apps/             Dateimanager, Browser, Installation, Dokumentbaum, HTML-Leser,
+    apps/             Dateimanager, Browser, Installation, Einstellungen,
+                      Dokumentbaum, HTML-Leser,
                       CSS, Umbruch, Editor, Konsole, Systeminformation, Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate und Beispielbilder

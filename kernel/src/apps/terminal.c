@@ -12,6 +12,7 @@
 #include "net.h"
 #include "clipboard.h"
 #include "nic.h"
+#include "cpu.h"
 #include "setup.h"
 #include "process.h"
 #include "thread.h"
@@ -726,8 +727,8 @@ static const char *thread_state_name(uint8_t state)
 
 static void cmd_threads(struct term_state *st)
 {
-    term_printf(st, C_HIGHLIGHT, "%-4s %-16s %-10s %-6s %s",
-                "Nr.", "Name", "Zustand", "Wicht.", "Laeufe");
+    term_printf(st, C_HIGHLIGHT, "%-4s %-16s %-10s %-6s %-8s %s",
+                "Nr.", "Name", "Zustand", "Wicht.", "Laeufe", "Kern");
 
     for (size_t i = 0; i < thread_count(); i++) {
         struct thread *t = thread_at(i);
@@ -736,9 +737,23 @@ static void cmd_threads(struct term_state *st)
             continue;
 
         term_printf(st, t == thread_current() ? C_HIGHLIGHT : C_NORMAL,
-                    "%-4u %-16s %-10s %-6u %u",
+                    "%-4u %-16s %-10s %-6u %-8u %u",
                     (unsigned)t->id, t->name, thread_state_name(t->state),
-                    (unsigned)t->priority, (unsigned)t->cpu_ticks);
+                    (unsigned)t->priority, (unsigned)t->cpu_ticks,
+                    (unsigned)t->last_cpu);
+    }
+
+    if (cpu_count() > 1) {
+        term_line(st, C_NORMAL, "");
+        for (uint32_t i = 0; i < cpu_count(); i++) {
+            struct cpu *c = cpu_at(i);
+
+            if (c)
+                term_printf(st, C_NORMAL,
+                            "Kern %u: %s, %u Takte, %u Wechsel", (unsigned)i,
+                            c->current ? c->current->name : "-",
+                            (unsigned)c->ticks, (unsigned)c->switches);
+        }
     }
 }
 

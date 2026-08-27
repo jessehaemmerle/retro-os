@@ -7,8 +7,12 @@
  */
 
 #include "mm.h"
+#include "spinlock.h"
 #include "kstring.h"
 #include "thread.h"
+
+/* Ein Kern zur Zeit in der Freiliste. */
+static struct spinlock heap_lock = SPINLOCK_INIT("heap");
 
 #define HEAP_MAGIC     0x52455452u   /* "RETR" */
 #define HEAP_GROW_MIN  (256 * 1024)  /* mindestens 256 KiB nachfordern */
@@ -97,28 +101,28 @@ void *kmalloc(size_t size)
         return NULL;
 
     size = ALIGN_UP(size, 16);
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&heap_lock);
 
     for (struct block *b = head; b; b = b->next) {
         if (b->free && b->size >= size) {
             split(b, size);
             b->free = 0;
             used_bytes += b->size;
-            preempt_enable();
+            spin_unlock_irq(&heap_lock, __flags);
             return b + 1;
         }
     }
 
     struct block *b = grow(size);
     if (!b) {
-        preempt_enable();
+        spin_unlock_irq(&heap_lock, __flags);
         return NULL;
     }
 
     split(b, size);
     b->free = 0;
     used_bytes += b->size;
-    preempt_enable();
+    spin_unlock_irq(&heap_lock, __flags);
     return b + 1;
 }
 
@@ -156,10 +160,10 @@ void kfree(void *ptr)
     if (b->magic != HEAP_MAGIC)
         panic("kfree(): beschaedigter Heap-Block bei %p", ptr);
 
-    preempt_disable();
+    uint64_t __flags = spin_lock_irq(&heap_lock);
 
     if (b->free) {
-        preempt_enable();
+        spin_unlock_irq(&heap_lock, __flags);
         return;
     }
 
@@ -170,7 +174,7 @@ void kfree(void *ptr)
     if (b->prev && b->prev->free)
         merge_forward(b->prev);
 
-    preempt_enable();
+    spin_unlock_irq(&heap_lock, __flags);
 }
 
 void *krealloc(void *ptr, size_t size)

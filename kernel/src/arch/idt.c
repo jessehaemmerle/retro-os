@@ -101,6 +101,13 @@ void idt_init(void)
     __asm__ volatile("lidt %0" :: "m"(idtr));
 }
 
+/* Die Tabelle selbst ist fuer alle Kerne dieselbe - jeder muss sie nur
+ * in sein eigenes Register laden. */
+void idt_load(void)
+{
+    __asm__ volatile("lidt %0" :: "m"(idtr));
+}
+
 bool scheduler_should_switch(void);
 
 void irq_install(uint8_t irq, irq_handler_t handler)
