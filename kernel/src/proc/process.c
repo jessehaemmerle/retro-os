@@ -11,7 +11,9 @@
 #include "arch.h"
 #include "kstring.h"
 #include "mm.h"
+#include "net.h"
 #include "syscall.h"
+#include "uiapi.h"
 #include "thread.h"
 
 void enter_user_mode(uint64_t entry, uint64_t stack) NORETURN;
@@ -315,10 +317,27 @@ struct process *process_start(const char *path, const char *args,
     return proc;
 }
 
+/* Fenster und Verbindungen gehoeren dem Programm; endet es, muessen
+ * sie weg - auch dann, wenn es sich nicht selbst darum gekuemmert
+ * hat. */
+static void release_resources(struct process *proc)
+{
+    uiapi_release(proc);
+
+    for (int i = 0; i < PROCESS_SOCKETS_MAX; i++) {
+        if (proc->sockets[i]) {
+            tcp_close(proc->sockets[i]);
+            proc->sockets[i] = NULL;
+        }
+    }
+}
+
 void process_exit(struct process *proc, int code)
 {
     proc->exit_code = code;
     proc->finished = true;
+
+    release_resources(proc);
 
     /* Der Adressraum wird erst freigegeben, wenn niemand mehr darin
      * laeuft - deshalb vorher zurueck in den Kernel-Adressraum. */
@@ -334,6 +353,8 @@ void process_kill(struct process *proc)
 
     proc->finished = true;
     proc->exit_code = -1;
+
+    release_resources(proc);
 
     if (proc->thread && proc->thread->state != THREAD_DEAD)
         proc->thread->state = THREAD_DEAD;

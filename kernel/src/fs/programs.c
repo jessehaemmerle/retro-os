@@ -19,6 +19,8 @@ PROGRAM(liste);
 PROGRAM(schreiben);
 PROGRAM(absturz);
 PROGRAM(schutz);
+PROGRAM(uhr);
+PROGRAM(abrufen);
 
 #define ENTRY(name, beschreibung)                                \
     { #name ".elf", _binary_##name##_elf_start,                  \
@@ -37,6 +39,8 @@ static const struct {
     ENTRY(schreiben, "legt eine Datei an"),
     ENTRY(absturz,   "greift absichtlich daneben"),
     ENTRY(schutz,    "prueft die Ausfuehrsperre"),
+    ENTRY(uhr,       "eine Uhr mit eigenem Fenster"),
+    ENTRY(abrufen,   "holt eine Seite aus dem Netz"),
 };
 
 void programs_install(struct fs_node *directory)

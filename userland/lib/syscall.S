@@ -33,4 +33,16 @@ DEFCALL sys_args,    11
 DEFCALL sys_filesize, 12
 DEFCALL sys_readdir, 13
 
+/* Fenster */
+DEFCALL ui_open,     14
+DEFCALL sys_ui_draw, 15
+DEFCALL sys_ui_event, 16
+DEFCALL ui_close,    17
+
+/* Netz */
+DEFCALL net_connect, 18
+DEFCALL net_send,    19
+DEFCALL sys_net_recv, 20
+DEFCALL net_close,   21
+
 .section .note.GNU-stack,"",@progbits

@@ -24,8 +24,59 @@ enum {
     SYS_ARGS      = 11,  /* (puffer, laenge) -> Anzahl      */
     SYS_FILESIZE  = 12,  /* (fd) -> Groesse                 */
     SYS_READDIR   = 13,  /* (pfad, index, puffer, laenge)   */
+
+    /* --- Fenster --- */
+    SYS_WIN_OPEN  = 14,  /* (titel, breite, hoehe) -> Nummer */
+    SYS_WIN_DRAW  = 15,  /* (fenster, befehle, anzahl)       */
+    SYS_WIN_EVENT = 16,  /* (fenster, ereignis, wartezeit)   */
+    SYS_WIN_CLOSE = 17,  /* (fenster)                        */
+
+    /* --- Netz --- */
+    SYS_CONNECT   = 18,  /* (name, port) -> Verbindung       */
+    SYS_SEND      = 19,  /* (verbindung, puffer, laenge)     */
+    SYS_RECV      = 20,  /* (verbindung, puffer, laenge, ms) */
+    SYS_DISCONNECT = 21, /* (verbindung)                     */
+
     SYS_COUNT
 };
+
+/* Ein Zeichenbefehl, wie ihn das Programm hinueberreicht. Der Aufbau
+ * steht so auch in userland/include/retroui.h - beide Seiten muessen
+ * sich einig sein. */
+#define USER_DRAW_TEXT_MAX 48
+
+enum user_draw_op {
+    UDRAW_CLEAR = 0,
+    UDRAW_FILL,
+    UDRAW_RECT,
+    UDRAW_LINE,
+    UDRAW_TEXT,
+    UDRAW_PIXEL,
+};
+
+struct user_draw_cmd {
+    uint32_t op;
+    int32_t  x, y, w, h;
+    uint32_t color;
+    char     text[USER_DRAW_TEXT_MAX];
+} PACKED;
+
+enum user_event_type {
+    UEV_NONE = 0,
+    UEV_KEY,
+    UEV_MOUSE_DOWN,
+    UEV_MOUSE_UP,
+    UEV_MOUSE_MOVE,
+    UEV_CLOSE,
+};
+
+struct user_event {
+    uint32_t type;
+    int32_t  x, y;
+    uint32_t key;
+    char     ascii;
+    uint8_t  mods, button;
+} PACKED;
 
 /* Fehlerwerte (als negative Rueckgabe). */
 #define SYS_ERR_BADFD    (-1)

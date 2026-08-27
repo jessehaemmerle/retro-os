@@ -14,6 +14,9 @@
 #include "process.h"
 #include "thread.h"
 #include "vfs.h"
+#include "gui.h"
+#include "net.h"
+#include "uiapi.h"
 #include "vmm.h"
 
 #define MSR_EFER   0xC0000080
@@ -234,6 +237,137 @@ static int64_t do_readdir(struct process *proc, uint64_t path_ptr,
 
 /* --- Verteiler --- */
 
+/* --- Fenster --- */
+
+/* Die Zeichenbefehle kommen aus dem Programm; sie werden in Haeppchen
+ * herueberkopiert und erst dann ausgefuehrt. So kann das Programm sie
+ * nicht mehr aendern, waehrend der Kernel sie abarbeitet. */
+static int64_t do_draw(struct process *proc, int32_t handle, uint64_t ptr,
+                       uint64_t count)
+{
+    if (count == 0 || count > 512)
+        return SYS_ERR_INVAL;
+
+    struct user_draw_cmd batch[32];
+    uint64_t done = 0;
+
+    while (done < count) {
+        size_t take = MIN((size_t)(count - done), ARRAY_LEN(batch));
+
+        if (!user_read(proc, batch, ptr + done * sizeof(batch[0]),
+                       take * sizeof(batch[0])))
+            return SYS_ERR_INVAL;
+
+        int64_t rc = uiapi_draw(proc, handle, batch, take);
+
+        if (rc < 0)
+            return rc;
+        done += take;
+    }
+    return 0;
+}
+
+/* --- Netz --- */
+
+static int64_t do_connect(struct process *proc, const char *host, uint16_t port)
+{
+    if (!net_ready())
+        return SYS_ERR_NOENT;
+
+    int slot = -1;
+
+    for (int i = 0; i < PROCESS_SOCKETS_MAX; i++) {
+        if (!proc->sockets[i]) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0)
+        return SYS_ERR_INVAL;
+
+    /* Erst als Adresse lesen, sonst als Namen aufloesen. */
+    ip_addr_t addr;
+
+    if (!ip_parse(host, &addr) && !dns_resolve(host, &addr))
+        return SYS_ERR_NOENT;
+
+    struct tcp_socket *sock = tcp_connect(addr, port, 5000);
+
+    if (!sock)
+        return SYS_ERR_NOENT;
+
+    proc->sockets[slot] = sock;
+    return slot;
+}
+
+static struct tcp_socket *socket_of(struct process *proc, int32_t handle)
+{
+    if (handle < 0 || handle >= PROCESS_SOCKETS_MAX)
+        return NULL;
+    return proc->sockets[handle];
+}
+
+static int64_t do_send(struct process *proc, int32_t handle, uint64_t ptr,
+                       uint64_t length)
+{
+    struct tcp_socket *sock = socket_of(proc, handle);
+
+    if (!sock)
+        return SYS_ERR_BADFD;
+    if (length == 0 || length > 64 * 1024)
+        return SYS_ERR_INVAL;
+
+    char chunk[COPY_CHUNK];
+    uint64_t sent = 0;
+
+    while (sent < length) {
+        size_t take = MIN((size_t)(length - sent), sizeof(chunk));
+
+        if (!user_read(proc, chunk, ptr + sent, take))
+            return SYS_ERR_INVAL;
+
+        int written = tcp_send(sock, chunk, (uint32_t)take);
+
+        if (written <= 0)
+            return sent > 0 ? (int64_t)sent : SYS_ERR_INVAL;
+        sent += (uint64_t)written;
+    }
+    return (int64_t)sent;
+}
+
+static int64_t do_recv(struct process *proc, int32_t handle, uint64_t ptr,
+                       uint64_t length, uint32_t timeout_ms)
+{
+    struct tcp_socket *sock = socket_of(proc, handle);
+
+    if (!sock)
+        return SYS_ERR_BADFD;
+    if (length == 0)
+        return SYS_ERR_INVAL;
+
+    char chunk[COPY_CHUNK];
+    size_t take = MIN((size_t)length, sizeof(chunk));
+    int got = tcp_receive(sock, chunk, (uint32_t)take, timeout_ms);
+
+    if (got <= 0)
+        return 0;
+    if (!user_write(proc, ptr, chunk, (size_t)got))
+        return SYS_ERR_INVAL;
+    return got;
+}
+
+static int64_t do_disconnect(struct process *proc, int32_t handle)
+{
+    struct tcp_socket *sock = socket_of(proc, handle);
+
+    if (!sock)
+        return SYS_ERR_BADFD;
+
+    tcp_close(sock);
+    proc->sockets[handle] = NULL;
+    return 0;
+}
+
 void syscall_dispatch(struct syscall_frame *frame)
 {
     struct process *proc = process_current();
@@ -335,6 +469,59 @@ void syscall_dispatch(struct syscall_frame *frame)
 
     case SYS_READDIR:
         result = do_readdir(proc, a1, a2, a3, a4);
+        break;
+
+    /* --- Fenster --- */
+    case SYS_WIN_OPEN: {
+        char title[WIN_TITLE_MAX + 1];
+
+        if (!user_string(proc, title, a1, sizeof(title))) {
+            result = SYS_ERR_INVAL;
+            break;
+        }
+        result = uiapi_open(proc, title, (int32_t)a2, (int32_t)a3);
+        break;
+    }
+
+    case SYS_WIN_DRAW:
+        result = do_draw(proc, (int32_t)a1, a2, a3);
+        break;
+
+    case SYS_WIN_EVENT: {
+        struct user_event ev;
+
+        result = uiapi_event(proc, (int32_t)a1, &ev, (uint32_t)a3);
+        if (result == 1 && !user_write(proc, a2, &ev, sizeof(ev)))
+            result = SYS_ERR_INVAL;
+        break;
+    }
+
+    case SYS_WIN_CLOSE:
+        result = uiapi_close(proc, (int32_t)a1);
+        break;
+
+    /* --- Netz --- */
+    case SYS_CONNECT: {
+        char host[128];
+
+        if (!user_string(proc, host, a1, sizeof(host))) {
+            result = SYS_ERR_INVAL;
+            break;
+        }
+        result = do_connect(proc, host, (uint16_t)a2);
+        break;
+    }
+
+    case SYS_SEND:
+        result = do_send(proc, (int32_t)a1, a2, a3);
+        break;
+
+    case SYS_RECV:
+        result = do_recv(proc, (int32_t)a1, a2, a3, (uint32_t)a4);
+        break;
+
+    case SYS_DISCONNECT:
+        result = do_disconnect(proc, (int32_t)a1);
         break;
 
     default:

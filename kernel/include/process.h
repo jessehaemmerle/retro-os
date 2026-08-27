@@ -14,6 +14,8 @@
 
 #define PROCESS_MAX       8
 #define PROCESS_FILES_MAX 8
+#define PROCESS_WINDOWS_MAX 4
+#define PROCESS_SOCKETS_MAX 4
 #define PROCESS_OUT_SIZE  8192
 #define PROCESS_IN_SIZE   512
 #define PROCESS_ARGS_MAX  128
@@ -42,6 +44,12 @@ struct process {
 
     struct fs_node *files[PROCESS_FILES_MAX];
     size_t          file_pos[PROCESS_FILES_MAX];
+
+    /* Fenster und Verbindungen, die das Programm geoeffnet hat. Beim
+     * Beenden raeumt der Kernel sie ab - ein Programm, das abstuerzt,
+     * soll kein Fenster zuruecklassen. */
+    struct user_window *windows[PROCESS_WINDOWS_MAX];
+    struct tcp_socket  *sockets[PROCESS_SOCKETS_MAX];
 };
 
 void process_init(void);
