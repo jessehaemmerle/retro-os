@@ -10,6 +10,7 @@
  * Belegung - dieselbe, die auch die PS/2-Tastatur benutzt.
  */
 
+#include "keymap.h"
 #include "usb.h"
 #include "input.h"
 #include "kstring.h"
@@ -30,73 +31,6 @@ static size_t            hid_count;
 /* Verwendungsnummern der Tastatur                                     */
 /* ------------------------------------------------------------------ */
 
-/* Die Tabellen laufen von Verwendung 0x04 bis 0x64. */
-#define USAGE_FIRST 0x04
-#define USAGE_LAST  0x64
-#define USAGE_COUNT (USAGE_LAST - USAGE_FIRST + 1)
-
-static const uint16_t base_map[USAGE_COUNT] = {
-    /* 04 */ 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
-    /* 0e */ 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
-    /* 18 */ 'u', 'v', 'w', 'x', 'z', 'y',        /* deutsche Belegung */
-    /* 1e */ '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
-    /* 28 */ KEY_ENTER, KEY_ESCAPE, KEY_BACKSPACE, KEY_TAB, ' ',
-    /* 2d */ 223 /* sz */, 180 /* Akut */, 252 /* ue */, '+',
-    /* 31 */ '#', '#', 246 /* oe */, 228 /* ae */, '^',
-    /* 36 */ ',', '.', '-',
-    /* 39 */ KEY_CAPSLOCK,
-    /* 3a */ KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6,
-    /* 40 */ KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12,
-    /* 46 */ 0 /* Druck */, 0 /* Rollen */, 0 /* Pause */,
-    /* 49 */ KEY_INSERT, KEY_HOME, KEY_PAGEUP, KEY_DELETE, KEY_END,
-    /* 4e */ KEY_PAGEDOWN, KEY_RIGHT, KEY_LEFT, KEY_DOWN, KEY_UP,
-    /* 53 */ 0 /* Num */, '/', '*', '-', '+', KEY_ENTER,
-    /* 59 */ '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', ',',
-    /* 64 */ '<',
-};
-
-static const uint16_t shift_map[USAGE_COUNT] = {
-    /* 04 */ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-    /* 0e */ 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-    /* 18 */ 'U', 'V', 'W', 'X', 'Z', 'Y',
-    /* 1e */ '!', '"', 167 /* Paragraf */, '$', '%', '&', '/', '(',
-    /* 26 */ ')', '=',
-    /* 28 */ KEY_ENTER, KEY_ESCAPE, KEY_BACKSPACE, KEY_TAB, ' ',
-    /* 2d */ '?', '`', 220 /* Ue */, '*',
-    /* 31 */ '\'', '\'', 214 /* Oe */, 196 /* Ae */, 176 /* Grad */,
-    /* 36 */ ';', ':', '_',
-    /* 39 */ KEY_CAPSLOCK,
-    /* 3a */ KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6,
-    /* 40 */ KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12,
-    /* 46 */ 0, 0, 0,
-    /* 49 */ KEY_INSERT, KEY_HOME, KEY_PAGEUP, KEY_DELETE, KEY_END,
-    /* 4e */ KEY_PAGEDOWN, KEY_RIGHT, KEY_LEFT, KEY_DOWN, KEY_UP,
-    /* 53 */ 0, '/', '*', '-', '+', KEY_ENTER,
-    /* 59 */ '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', ',',
-    /* 64 */ '>',
-};
-
-static const uint16_t altgr_map[USAGE_COUNT] = {
-    /* 04 */ 0, 0, 0, 0, 8364 /* Euro */, 0, 0, 0, 0, 0,
-    /* 0e */ 0, 0, 181 /* Mikro */, 0, 0, 0, '@', 0, 0, 0,
-    /* 18 */ 0, 0, 0, 0, 0, 0,
-    /* 1e */ 0, 178 /* hoch2 */, 179 /* hoch3 */, 0, 0, 0, '{', '[',
-    /* 26 */ ']', '}',
-    /* 28 */ 0, 0, 0, 0, 0,
-    /* 2d */ '\\', 0, 0, '~',
-    /* 31 */ 0, 0, 0, 0, 0,
-    /* 36 */ 0, 0, 0,
-    /* 39 */ 0,
-    /* 3a */ 0, 0, 0, 0, 0, 0,
-    /* 40 */ 0, 0, 0, 0, 0, 0,
-    /* 46 */ 0, 0, 0,
-    /* 49 */ 0, 0, 0, 0, 0,
-    /* 4e */ 0, 0, 0, 0, 0,
-    /* 53 */ 0, 0, 0, 0, 0, 0,
-    /* 59 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    /* 64 */ '|',
-};
-
 /* Die acht Steuertasten stehen im ersten Byte des Pakets. */
 static const uint16_t modifier_key[8] = {
     KEY_LCTRL, KEY_LSHIFT, KEY_LALT, KEY_SUPER,
@@ -105,18 +39,19 @@ static const uint16_t modifier_key[8] = {
 
 static uint16_t translate(uint8_t usage, uint8_t modifiers)
 {
-    if (usage < USAGE_FIRST || usage > USAGE_LAST)
+    if (usage < KEYMAP_HID_FIRST || usage > KEYMAP_HID_LAST)
         return 0;
 
-    size_t index = usage - USAGE_FIRST;
+    const struct keymap *map = keymap_current();
+    size_t index = usage - KEYMAP_HID_FIRST;
     bool shift = (modifiers & 0x22) != 0;       /* linke oder rechte */
     bool altgr = (modifiers & 0x40) != 0;       /* rechte Alt-Taste  */
 
-    if (altgr && altgr_map[index])
-        return altgr_map[index];
-    if (shift && shift_map[index])
-        return shift_map[index];
-    return base_map[index];
+    if (altgr && map->hid_altgr[index])
+        return map->hid_altgr[index];
+    if (shift && map->hid_shift[index])
+        return map->hid_shift[index];
+    return map->hid_base[index];
 }
 
 /* ------------------------------------------------------------------ */

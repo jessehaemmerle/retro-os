@@ -21,6 +21,7 @@
  */
 
 #include "apps.h"
+#include "clipboard.h"
 #include "css.h"
 #include "font.h"
 #include "htmlparse.h"
@@ -1166,15 +1167,72 @@ static void br_action(struct window *win, int action)
     }
 }
 
+/* Legt den Text der angezeigten Seite in die Zwischenablage. Ohne
+ * Auswahl im Dokument ist das die naheliegende Bedeutung von Strg+C:
+ * die ganze Seite. */
+static void copy_page_text(struct window *win)
+{
+    struct br_state *st = win->user;
+    size_t room = 64 * 1024;
+    char *buffer = kmalloc(room);
+
+    if (!buffer)
+        return;
+
+    buffer[0] = '\0';
+    if (st->doc.root)
+        dom_text_content(st->doc.root, buffer, room);
+
+    clipboard_set(buffer, strlen(buffer));
+    kfree(buffer);
+
+    ksnprintf(st->status, sizeof(st->status), "Seitentext kopiert (%u Zeichen)",
+              (unsigned)strlen(clipboard_get(NULL) ? clipboard_get(NULL) : ""));
+    gui_invalidate();
+}
+
 static void br_address_key(struct window *win, const struct gui_event *ev)
 {
     struct br_state *st = win->user;
     size_t length = strlen(st->address);
 
-    /* Strg+A markiert alles - das naechste Zeichen ersetzt die Adresse. */
-    if ((ev->mods & MOD_CTRL) && (ev->ascii == 'a' || ev->ascii == 'A')) {
-        st->address_selected = true;
-        gui_invalidate();
+    if (ev->mods & MOD_CTRL) {
+        char c = (ev->ascii >= 'A' && ev->ascii <= 'Z')
+                 ? (char)(ev->ascii + 32) : ev->ascii;
+
+        /* Strg+A markiert alles - das naechste Zeichen ersetzt sie. */
+        if (c == 'a') {
+            st->address_selected = true;
+            gui_invalidate();
+            return;
+        }
+        if (c == 'c') {
+            clipboard_set(st->address, length);
+            return;
+        }
+        if (c == 'v') {
+            size_t bytes = 0;
+            const char *text = clipboard_get(&bytes);
+
+            if (st->address_selected) {
+                st->address[0] = '\0';
+                st->address_cursor = 0;
+                st->address_selected = false;
+                length = 0;
+            }
+            for (size_t i = 0; text && i < bytes &&
+                               length + 1 < sizeof(st->address); i++) {
+                if (text[i] < 32 || (unsigned char)text[i] == 127)
+                    continue;
+                memmove(&st->address[st->address_cursor + 1],
+                        &st->address[st->address_cursor],
+                        length - st->address_cursor + 1);
+                st->address[st->address_cursor++] = text[i];
+                length++;
+            }
+            gui_invalidate();
+            return;
+        }
         return;
     }
 
@@ -1461,6 +1519,11 @@ static void br_event(struct window *win, const struct gui_event *ev)
         }
         if (st->focused) {
             field_key(win, ev);
+            return;
+        }
+        if ((ev->mods & MOD_CTRL) &&
+            (ev->ascii == 'c' || ev->ascii == 'C')) {
+            copy_page_text(win);
             return;
         }
         switch (ev->key) {

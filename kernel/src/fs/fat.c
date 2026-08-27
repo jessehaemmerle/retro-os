@@ -1140,6 +1140,20 @@ bool fat_format_at(struct block_device *dev, uint64_t lba, uint64_t sectors,
             return false;
     }
 
+    /* Die Bezeichnung steht zweimal auf dem Traeger: im Bootsektor und
+     * als besonderer Eintrag ganz vorn im Wurzelverzeichnis. Windows
+     * und Linux lesen nur den zweiten - ohne ihn bleibt der Datentraeger
+     * dort namenlos. */
+    if (label && label[0]) {
+        memset(&sector[0], ' ', 11);
+        for (int i = 0; i < 11 && label[i]; i++)
+            sector[i] = (uint8_t)upcase(label[i]);
+        sector[11] = ATTR_VOLUME_ID;
+
+        if (!block_write(dev, lba + data_start, 1, sector))
+            return false;
+    }
+
     invalidate_fat_cache();
     kprintf("FAT         : formatiert - %u Cluster zu je %u Byte\n",
             (unsigned)clusters, (unsigned)(spc * 512));

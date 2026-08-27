@@ -1,6 +1,7 @@
 /* net.c - Kern der Netzwerkschicht: Schnittstelle, Abfrage, Adressformate. */
 
 #include "net.h"
+#include "config.h"
 #include "nic.h"
 #include "arch.h"
 #include "kstring.h"
@@ -15,7 +16,8 @@ static volatile bool  in_rx;
 void net_init(void)
 {
     memset(&g_netif, 0, sizeof(g_netif));
-    strlcpy(g_netif.hostname, "retroos", sizeof(g_netif.hostname));
+    strlcpy(g_netif.hostname, config_current()->hostname,
+            sizeof(g_netif.hostname));
 
     if (!nic_init())
         return;

@@ -5,6 +5,7 @@
  * akzeptiert, das sich nicht veraendert hat.
  */
 
+#include "config.h"
 #include "rtc.h"
 #include "io.h"
 
@@ -35,6 +36,48 @@ static void read_raw(struct datetime *dt)
     dt->day    = cmos_read(0x07);
     dt->month  = cmos_read(0x08);
     dt->year   = cmos_read(0x09);
+}
+
+/* Wie viele Tage hat dieser Monat? */
+static uint8_t days_in_month(uint16_t year, uint8_t month)
+{
+    static const uint8_t days[13] = { 0, 31, 28, 31, 30, 31, 30,
+                                      31, 31, 30, 31, 30, 31 };
+
+    if (month == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0))
+        return 29;
+    return month >= 1 && month <= 12 ? days[month] : 30;
+}
+
+/* Verschiebt eine Zeitangabe um Minuten - auch ueber Tages-, Monats-
+ * und Jahresgrenzen hinweg. */
+static void shift_minutes(struct datetime *dt, int32_t minutes)
+{
+    int32_t total = dt->hour * 60 + dt->minute + minutes;
+
+    while (total < 0) {
+        total += 24 * 60;
+        if (--dt->day == 0) {
+            if (--dt->month == 0) {
+                dt->month = 12;
+                dt->year--;
+            }
+            dt->day = days_in_month(dt->year, dt->month);
+        }
+    }
+    while (total >= 24 * 60) {
+        total -= 24 * 60;
+        if (++dt->day > days_in_month(dt->year, dt->month)) {
+            dt->day = 1;
+            if (++dt->month > 12) {
+                dt->month = 1;
+                dt->year++;
+            }
+        }
+    }
+
+    dt->hour   = (uint8_t)(total / 60);
+    dt->minute = (uint8_t)(total % 60);
 }
 
 void rtc_read(struct datetime *out)
@@ -77,6 +120,13 @@ void rtc_read(struct datetime *out)
         a.hour = 0;
 
     a.year = (uint16_t)(a.year + 2000);
+
+    /* Steht die Batterieuhr auf UTC, kommt die Zeitzone dazu. Auf
+     * Ortszeit gestellt (so machen es Rechner, auf denen auch Windows
+     * laeuft) bleibt sie, wie sie ist. */
+    if (config_current()->clock == CLOCK_UTC)
+        shift_minutes(&a, config_current()->timezone);
+
     *out = a;
 }
 

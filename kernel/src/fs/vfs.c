@@ -310,6 +310,9 @@ bool fs_write(struct fs_node *file, const void *data, size_t size)
     file->data[size] = '\0';
     file->size = size;
     stamp(file);
+    /* Geaenderte Sektoren gleich hinausschreiben - ein Rechner wird
+     * abgeschaltet, ohne zu fragen. */
+    block_flush(disk_volume.dev);
     return true;
 }
 

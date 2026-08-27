@@ -13,6 +13,7 @@ const struct app_entry app_list[] = {
     { "Browser",           ICON_BROWSER,     app_browser,     true  },
     { "Konsole",           ICON_TERMINAL,    app_terminal,    true  },
     { "Systeminformation", ICON_COMPUTER,    app_sysinfo,     true  },
+    { "Einstellungen",     ICON_SETTINGS,    app_settings,    true  },
     { "Installieren",      ICON_DISK,        app_setup,       true  },
     { "Ueber RetroOS",     ICON_INFO,        app_about,       false },
 };

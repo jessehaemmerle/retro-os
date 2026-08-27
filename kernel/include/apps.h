@@ -22,6 +22,7 @@ void app_sysinfo(void);
 void app_about(void);
 void app_browser(void);
 void app_setup(void);
+void app_settings(void);
 
 /* Oeffnet eine Adresse im Browser (auch aus anderen Programmen heraus). */
 void browser_open(const char *url);

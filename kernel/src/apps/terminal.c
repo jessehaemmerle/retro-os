@@ -10,6 +10,7 @@
 #include "arch.h"
 #include "block.h"
 #include "net.h"
+#include "clipboard.h"
 #include "nic.h"
 #include "setup.h"
 #include "process.h"
@@ -994,6 +995,35 @@ static void term_key(struct window *win, const struct gui_event *ev)
             st->input[0] = '\0';
             st->cursor = 0;
             gui_invalidate();
+            return;
+        }
+    }
+
+    /* Strg+V fuegt die Zwischenablage in die Eingabezeile ein,
+     * Strg+Umschalt+C legt sie dort hinein. Strg+C allein bleibt der
+     * Abbruch - so kennt man es von einer Konsole. */
+    if (ev->mods & MOD_CTRL) {
+        char c = (ev->ascii >= 'A' && ev->ascii <= 'Z')
+                 ? (char)(ev->ascii + 32) : ev->ascii;
+
+        if (c == 'v') {
+            size_t bytes = 0;
+            const char *text = clipboard_get(&bytes);
+
+            for (size_t i = 0; text && i < bytes && len < TERM_INPUT_MAX; i++) {
+                if (text[i] < 32 || (unsigned char)text[i] == 127)
+                    continue;      /* Zeilenumbrueche bleiben draussen */
+                memmove(&st->input[st->cursor + 1], &st->input[st->cursor],
+                        len - (size_t)st->cursor + 1);
+                st->input[st->cursor++] = text[i];
+                len++;
+            }
+            st->caret_on = true;
+            gui_invalidate();
+            return;
+        }
+        if (c == 'c' && (ev->mods & MOD_SHIFT)) {
+            clipboard_set(st->input, len);
             return;
         }
     }

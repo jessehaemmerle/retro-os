@@ -32,6 +32,14 @@ bool block_read(struct block_device *dev, uint64_t lba, uint32_t count, void *bu
 bool block_write(struct block_device *dev, uint64_t lba, uint32_t count,
                  const void *buf);
 
+/* Schreibt geaenderte Sektoren aus dem Puffer zurueck. NULL heisst
+ * "alle Datentraeger". Vor dem Abschalten und nach jedem Speichern. */
+bool block_flush(struct block_device *dev);
+
+/* Wirft den Puffer weg, ohne zurueckzuschreiben - noetig, wenn ein
+ * Traeger an ihm vorbei neu beschrieben wurde. */
+void block_cache_drop(struct block_device *dev);
+
 /* Sucht auf allen Bussen nach Laufwerken. */
 void storage_init(void);
 

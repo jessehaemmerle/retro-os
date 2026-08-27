@@ -1,5 +1,6 @@
 /* desktop.c - Hintergrund, Symbole auf dem Desktop, Taskleiste, Startmenue. */
 
+#include "config.h"
 #include "gui.h"
 #include "apps.h"
 #include "arch.h"
@@ -86,7 +87,10 @@ static void paint_wallpaper(struct canvas *c)
 {
     struct rect area = rect_make(0, 0, c->w, desktop_work_height());
 
-    gfx_gradient_v(c, area, COL_DESKTOP_TOP, COL_DESKTOP_BOTTOM);
+    uint32_t top, bottom;
+
+    background_colors(config_current()->background, &top, &bottom);
+    gfx_gradient_v(c, area, top, bottom);
 
     /* Ein dezentes Rautenmuster - kostet kaum Rechenzeit und nimmt der
      * Flaeche die Leere. */

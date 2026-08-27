@@ -3,60 +3,18 @@
  * Der Treiber liest im Interrupt nur Scancodes ein, uebersetzt sie in
  * Tastenereignisse und legt sie in einen Ringpuffer. Die grafische
  * Oberflaeche holt sie dort in ihrer Hauptschleife wieder ab.
+ *
+ * Welches Zeichen zu einem Scancode gehoert, steht in keymap.c - die
+ * Belegung laesst sich im Betrieb umschalten.
  */
 
 #include "input.h"
 #include "arch.h"
 #include "io.h"
+#include "keymap.h"
 #include "kstring.h"
 
 #define QUEUE_SIZE 64
-
-/* Scancode-Satz 1, deutsche Tastaturbelegung (QWERTZ). */
-static const uint16_t base_map[0x60] = {
-    [0x01] = KEY_ESCAPE,
-    [0x02] = '1', [0x03] = '2', [0x04] = '3', [0x05] = '4', [0x06] = '5',
-    [0x07] = '6', [0x08] = '7', [0x09] = '8', [0x0A] = '9', [0x0B] = '0',
-    [0x0C] = 0xDF /* ss */, [0x0D] = '\'',
-    [0x0E] = KEY_BACKSPACE, [0x0F] = KEY_TAB,
-    [0x10] = 'q', [0x11] = 'w', [0x12] = 'e', [0x13] = 'r', [0x14] = 't',
-    [0x15] = 'z', [0x16] = 'u', [0x17] = 'i', [0x18] = 'o', [0x19] = 'p',
-    [0x1A] = 0xFC /* ue */, [0x1B] = '+',
-    [0x1C] = KEY_ENTER, [0x1D] = KEY_LCTRL,
-    [0x1E] = 'a', [0x1F] = 's', [0x20] = 'd', [0x21] = 'f', [0x22] = 'g',
-    [0x23] = 'h', [0x24] = 'j', [0x25] = 'k', [0x26] = 'l',
-    [0x27] = 0xF6 /* oe */, [0x28] = 0xE4 /* ae */, [0x29] = '^',
-    [0x2A] = KEY_LSHIFT, [0x2B] = '#',
-    [0x2C] = 'y', [0x2D] = 'x', [0x2E] = 'c', [0x2F] = 'v', [0x30] = 'b',
-    [0x31] = 'n', [0x32] = 'm', [0x33] = ',', [0x34] = '.', [0x35] = '-',
-    [0x36] = KEY_RSHIFT, [0x37] = '*', [0x38] = KEY_LALT, [0x39] = ' ',
-    [0x3A] = KEY_CAPSLOCK,
-    [0x3B] = KEY_F1, [0x3C] = KEY_F2, [0x3D] = KEY_F3, [0x3E] = KEY_F4,
-    [0x3F] = KEY_F5, [0x40] = KEY_F6, [0x41] = KEY_F7, [0x42] = KEY_F8,
-    [0x43] = KEY_F9, [0x44] = KEY_F10,
-    [0x47] = KEY_HOME, [0x48] = KEY_UP, [0x49] = KEY_PAGEUP,
-    [0x4A] = '-', [0x4B] = KEY_LEFT, [0x4D] = KEY_RIGHT, [0x4E] = '+',
-    [0x4F] = KEY_END, [0x50] = KEY_DOWN, [0x51] = KEY_PAGEDOWN,
-    [0x52] = KEY_INSERT, [0x53] = KEY_DELETE,
-    [0x56] = '<', [0x57] = KEY_F11, [0x58] = KEY_F12,
-};
-
-/* Zeichen, die sich mit gedrueckter Umschalttaste aendern. */
-static const uint16_t shift_map[0x60] = {
-    [0x02] = '!', [0x03] = '"', [0x04] = 0xA7 /* Paragraf */, [0x05] = '$',
-    [0x06] = '%', [0x07] = '&', [0x08] = '/', [0x09] = '(', [0x0A] = ')',
-    [0x0B] = '=', [0x0C] = '?', [0x0D] = '`',
-    [0x1B] = '*', [0x29] = 0xB0 /* Grad */, [0x2B] = '\'',
-    [0x33] = ';', [0x34] = ':', [0x35] = '_', [0x56] = '>',
-};
-
-/* AltGr-Ebene: die fuer Programmierer wichtigen Zeichen. */
-static const uint16_t altgr_map[0x60] = {
-    [0x03] = 0xB2, [0x04] = 0xB3,
-    [0x08] = '{', [0x09] = '[', [0x0A] = ']', [0x0B] = '}', [0x0C] = '\\',
-    [0x10] = '@', [0x11] = 0x80 /* Euro */,
-    [0x1B] = '~', [0x2B] = '|', [0x38] = KEY_RALT, [0x56] = '|',
-};
 
 static struct key_event queue[QUEUE_SIZE];
 static volatile uint32_t q_head, q_tail;
@@ -137,12 +95,15 @@ static void keyboard_irq(struct registers *regs)
         case 0x35: key = '/';          break;
         default:   return;
         }
-    } else if ((mods & MOD_ALT) && altgr_map[code]) {
-        key = altgr_map[code];
-    } else if ((mods & MOD_SHIFT) && shift_map[code]) {
-        key = shift_map[code];
     } else {
-        key = base_map[code];
+        const struct keymap *map = keymap_current();
+
+        if ((mods & MOD_ALT) && map->ps2_altgr[code])
+            key = map->ps2_altgr[code];
+        else if ((mods & MOD_SHIFT) && map->ps2_shift[code])
+            key = map->ps2_shift[code];
+        else
+            key = map->ps2_base[code];
     }
 
     if (!key)

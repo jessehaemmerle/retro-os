@@ -5,12 +5,16 @@
  * wird die Maschine angehalten.
  */
 
+#include "block.h"
 #include "power.h"
 #include "acpi.h"
 #include "io.h"
 
 NORETURN void power_reboot(void)
 {
+    /* Was noch im Sektorpuffer steht, gehoert auf die Platte. */
+    block_flush(NULL);
+
     cli();
 
     /* Der saubere Weg: das Reset-Register aus der ACPI-Tabelle. */
@@ -34,6 +38,9 @@ NORETURN void power_reboot(void)
 
 NORETURN void power_shutdown(void)
 {
+    /* Was noch im Sektorpuffer steht, gehoert auf die Platte. */
+    block_flush(NULL);
+
     cli();
 
     /* Der richtige Weg: der von der Firmware beschriebene S5-Uebergang. */

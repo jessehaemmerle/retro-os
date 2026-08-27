@@ -315,6 +315,7 @@ bool setup_run(const struct setup_plan *plan, setup_report_fn report,
     /* Ist die Zielplatte gerade eingehaengt, muss der Baum sie zuerst
      * vergessen - gleich zeigen alle gemerkten Cluster ins Leere. */
     fs_detach_disk();
+    block_cache_drop(plan->dev);
 
     say(report, user, 5, "Partitionstabelle wird angelegt ...");
 
@@ -374,6 +375,11 @@ bool setup_run(const struct setup_plan *plan, setup_report_fn report,
         return fail(error, size, "Der Startsektor liess sich nicht "
                                  "schreiben. Ueber UEFI startet das System "
                                  "trotzdem.");
+
+    /* Alles, was noch im Puffer steht, muss jetzt auf die Platte -
+     * gleich soll der Rechner davon starten. */
+    if (!block_flush(plan->dev))
+        return fail(error, size, "Die Platte hat die Daten nicht angenommen.");
 
     say(report, user, 100, "Fertig.");
     kprintf("Installation: %s eingerichtet - EFI ab Sektor %llu, "

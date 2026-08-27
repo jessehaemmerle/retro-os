@@ -11,6 +11,7 @@
 #include "usb.h"
 #include "arch.h"
 #include "block.h"
+#include "config.h"
 #include "boot.h"
 #include "fb.h"
 #include "gui.h"
@@ -80,8 +81,15 @@ NORETURN void kmain(void)
     mouse_init((int32_t)bi->fb_width, (int32_t)bi->fb_height);
 
     /* Daten und Oberflaeche */
+    config_defaults();
     fs_init();
     fs_mount_disk();
+
+    /* Erst jetzt gibt es die Festplatte - und damit die gespeicherten
+     * Einstellungen. Bis hierher galt die Werkseinstellung. */
+    if (config_load())
+        kprintf("Einstellung : aus %s uebernommen\n", CONFIG_PATH);
+    config_apply();
 
     /* Ab hier laufen mehrere Threads nebeneinander. */
     thread_init();

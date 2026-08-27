@@ -6,6 +6,7 @@
  */
 
 #include "apps.h"
+#include "clipboard.h"
 #include "font.h"
 #include "kstring.h"
 #include "mm.h"
@@ -28,6 +29,8 @@ struct ed_state {
     size_t  cap;
 
     size_t  cursor;        /* Byteposition im Puffer */
+    size_t  anchor;        /* Anfang der Auswahl                     */
+    bool    selecting;     /* liegt gerade eine Auswahl vor?         */
     int32_t scroll;        /* erste sichtbare Zeile  */
     bool    modified;
     bool    caret_on;
@@ -211,6 +214,10 @@ static void ed_paint(struct window *win, struct canvas *c)
     int32_t cur_line = ed_line_of(st, st->cursor);
     int32_t cur_col  = (int32_t)st->cursor - st->line_start[cur_line];
 
+    bool   selected = st->selecting && st->anchor != st->cursor;
+    size_t sel_from = MIN(st->anchor, st->cursor);
+    size_t sel_to   = MAX(st->anchor, st->cursor);
+
     for (int32_t i = 0; i < rows; i++) {
         int32_t line = st->scroll + i;
 
@@ -222,9 +229,26 @@ static void ed_paint(struct window *win, struct canvas *c)
         int32_t y     = area.y + 3 + i * ED_LINE_H;
         int32_t max   = (area.w - 2 * ED_MARGIN) / FONT_WIDTH;
 
-        for (int32_t k = 0; k < len && k < max; k++)
-            gfx_char(&text, area.x + ED_MARGIN + k * FONT_WIDTH, y,
-                     (unsigned char)st->text[start + k], COL_TEXT, false);
+        for (int32_t k = 0; k < len && k < max; k++) {
+            size_t at = (size_t)(start + k);
+            bool picked = selected && at >= sel_from && at < sel_to;
+            int32_t cx = area.x + ED_MARGIN + k * FONT_WIDTH;
+
+            if (picked)
+                gfx_fill(&text, rect_make(cx, y, FONT_WIDTH, FONT_HEIGHT),
+                         COL_SELECT);
+            gfx_char(&text, cx, y, (unsigned char)st->text[at],
+                     picked ? COL_SELECT_TEXT : COL_TEXT, false);
+        }
+
+        /* Ein ausgewaehlter Zeilenumbruch wird als schmaler Streifen
+         * hinter dem letzten Zeichen sichtbar. */
+        if (selected && (size_t)(start + len) >= sel_from &&
+            (size_t)(start + len) < sel_to && len < max) {
+            gfx_fill(&text,
+                     rect_make(area.x + ED_MARGIN + len * FONT_WIDTH, y,
+                               FONT_WIDTH / 2, FONT_HEIGHT), COL_SELECT);
+        }
 
         if (line == cur_line && st->caret_on) {
             int32_t cx = area.x + ED_MARGIN + MIN(cur_col, max) * FONT_WIDTH;
@@ -245,15 +269,142 @@ static void ed_paint(struct window *win, struct canvas *c)
                                        local.w, ED_STATUS_H), left, right);
 }
 
+/* ------------------------------------------------------------------ */
+/* Auswahl und Zwischenablage                                          */
+/* ------------------------------------------------------------------ */
+
+static void ed_selection(struct ed_state *st, size_t *from, size_t *to)
+{
+    *from = MIN(st->anchor, st->cursor);
+    *to   = MAX(st->anchor, st->cursor);
+}
+
+static bool ed_has_selection(struct ed_state *st)
+{
+    return st->selecting && st->anchor != st->cursor;
+}
+
+/* Loescht die Auswahl und setzt die Schreibmarke an ihren Anfang. */
+static void ed_delete_selection(struct ed_state *st)
+{
+    if (!ed_has_selection(st))
+        return;
+
+    size_t from, to;
+
+    ed_selection(st, &from, &to);
+    memmove(&st->text[from], &st->text[to], st->len - to + 1);
+    st->len -= to - from;
+    st->cursor = from;
+    st->selecting = false;
+    st->modified = true;
+    ed_recount(st);
+}
+
+static void ed_copy(struct ed_state *st, bool cut)
+{
+    if (!ed_has_selection(st))
+        return;
+
+    size_t from, to;
+
+    ed_selection(st, &from, &to);
+    if (!clipboard_set(&st->text[from], to - from))
+        return;
+    if (cut)
+        ed_delete_selection(st);
+}
+
+static void ed_paste(struct ed_state *st)
+{
+    size_t bytes = 0;
+    const char *text = clipboard_get(&bytes);
+
+    if (!text || bytes == 0)
+        return;
+
+    ed_delete_selection(st);
+
+    if (!ed_reserve(st, st->len + bytes + 1))
+        return;
+
+    memmove(&st->text[st->cursor + bytes], &st->text[st->cursor],
+            st->len - st->cursor + 1);
+    memcpy(&st->text[st->cursor], text, bytes);
+    st->len += bytes;
+    st->cursor += bytes;
+    st->text[st->len] = '\0';
+    st->selecting = false;
+    st->modified = true;
+    ed_recount(st);
+}
+
 static void ed_key(struct window *win, const struct gui_event *ev)
 {
     struct ed_state *st = win->user;
     int32_t line = ed_line_of(st, st->cursor);
     int32_t col  = (int32_t)st->cursor - st->line_start[line];
 
-    if ((ev->mods & MOD_CTRL) && (ev->ascii == 's' || ev->ascii == 'S')) {
-        ed_save(win);
+    if (ev->mods & MOD_CTRL) {
+        char c = (ev->ascii >= 'A' && ev->ascii <= 'Z')
+                 ? (char)(ev->ascii + 32) : ev->ascii;
+
+        switch (c) {
+        case 's': ed_save(win); return;
+        case 'c': ed_copy(st, false); gui_invalidate(); return;
+        case 'x': ed_copy(st, true);  break;
+        case 'v': ed_paste(st);       break;
+        case 'a':
+            st->anchor = 0;
+            st->cursor = st->len;
+            st->selecting = true;
+            gui_invalidate();
+            return;
+        default:
+            return;
+        }
+
+        st->caret_on = true;
+        ed_ensure_visible(win, st);
+        ed_update_title(win, st);
+        gui_invalidate();
         return;
+    }
+
+    /* Mit gedrueckter Umschalttaste waechst die Auswahl mit; ohne sie
+     * faellt sie weg, sobald die Marke sich bewegt. */
+    bool shifted = (ev->mods & MOD_SHIFT) != 0;
+    bool moves = ev->key == KEY_LEFT || ev->key == KEY_RIGHT ||
+                 ev->key == KEY_UP || ev->key == KEY_DOWN ||
+                 ev->key == KEY_HOME || ev->key == KEY_END ||
+                 ev->key == KEY_PAGEUP || ev->key == KEY_PAGEDOWN;
+
+    if (moves && shifted && !st->selecting) {
+        st->anchor = st->cursor;
+        st->selecting = true;
+    } else if (moves && !shifted) {
+        st->selecting = false;
+    }
+
+    /* Schreiben oder Loeschen ersetzt eine bestehende Auswahl. */
+    if (!moves && ed_has_selection(st)) {
+        bool replaces = ev->key == KEY_BACKSPACE || ev->key == KEY_DELETE ||
+                        ev->key == KEY_ENTER || ev->key == KEY_TAB ||
+                        (ev->ascii >= 32 && (unsigned char)ev->ascii != 127);
+
+        if (replaces) {
+            ed_delete_selection(st);
+            line = ed_line_of(st, st->cursor);
+            col  = (int32_t)st->cursor - st->line_start[line];
+
+            if (ev->key == KEY_BACKSPACE || ev->key == KEY_DELETE) {
+                st->caret_on = true;
+                ed_ensure_visible(win, st);
+                ed_update_title(win, st);
+                gui_invalidate();
+                return;
+            }
+        }
     }
 
     switch (ev->key) {
@@ -338,6 +489,22 @@ static void ed_click_text(struct window *win, int32_t x, int32_t y)
     gui_invalidate();
 }
 
+/* Ziehen mit gedrueckter Taste spannt die Auswahl auf. */
+static void ed_drag_text(struct window *win, int32_t x, int32_t y)
+{
+    struct ed_state *st = win->user;
+    size_t before = st->cursor;
+
+    if (!st->selecting) {
+        st->anchor = st->cursor;
+        st->selecting = true;
+    }
+    ed_click_text(win, x, y);
+    if (st->cursor == before)
+        return;
+    gui_invalidate();
+}
+
 static void ed_event(struct window *win, const struct gui_event *ev)
 {
     struct ed_state *st = win->user;
@@ -357,8 +524,18 @@ static void ed_event(struct window *win, const struct gui_event *ev)
                 ev->y, st->scroll, st->line_count, ed_visible_lines(win));
             gui_invalidate();
         } else if (rect_contains(area, ev->x, ev->y)) {
+            st->selecting = false;
             ed_click_text(win, ev->x, ev->y);
+            st->anchor = st->cursor;
         }
+        break;
+    }
+
+    case EV_MOUSE_DRAG: {
+        struct rect area = ed_text_rect(win);
+
+        if (rect_contains(area, ev->x, ev->y))
+            ed_drag_text(win, ev->x, ev->y);
         break;
     }
 
