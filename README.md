@@ -171,6 +171,7 @@ mit Knöpfen.
 | `aufloesen <name>` | Namen in eine Adresse wandeln |
 | `holen <adresse> [datei]` | Seite abrufen und wahlweise speichern |
 | `starte server [port] [wurzel]` | Webserver – die Ablage vom Wirtsrechner aus durchsehen |
+| `prozesse` | laufende Programme mit Verwandtschaft und geteiltem Speicher |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
 
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
@@ -187,8 +188,8 @@ also so, wie es ein Betriebssystem tut.
 | **Interrupts** | lokaler APIC, IOAPIC samt Umlegungen aus der MADT, MSI und MSI-X für PCIe; 8259A als Rückfallebene |
 | **Systemtakt** | Zeitgeber des lokalen APIC mit 1000 Hz, gegen den PIT ausgezählt; sonst der PIT selbst |
 | **Scheduler** | präemptiv, Zeitscheiben von 20 ms, drei Prioritäten, Schlafen und Warten |
-| **Prozesse** | ELF64-Lader, eigener Adressraum je Prozess, Ring 3, Systemaufrufe über `SYSCALL`/`SYSRET` |
-| **Speicher** | Bitmap-Allokator für Seitenrahmen, vierstufige Seitentabellen, Heap mit Blockverschmelzung |
+| **Prozesse** | ELF64-Lader, eigener Adressraum je Prozess, Ring 3, Systemaufrufe über `SYSCALL`/`SYSRET`; Abspalten mit Kopie beim Schreiben, Warten auf Kinder, Prozessgruppen an einer Konsole |
+| **Speicher** | Bitmap-Allokator für Seitenrahmen, Besitzerzähler je Seite, vierstufige Seitentabellen, Heap mit Blockverschmelzung |
 | **Busse** | PCI und PCIe über Konfigurationsmechanismus 1, 64-Bit-Adressbereiche, Fähigkeitenliste |
 | **Datenträger** | NVMe über PCIe mit eigenen Warteschlangen, AHCI (SATA, DMA), ATA-PIO, USB-Speicher über SCSI |
 | **Partitionen** | GPT samt Sicherungstabelle, MBR mit erweiterten Abschnitten, roher Datenträger |
@@ -208,10 +209,10 @@ also so, wie es ein Betriebssystem tut.
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
 | **Kerne** | Alle Kerne des Rechners werden gestartet; eigene GDT, TSS und Zeitgeber je Kern, gemeinsame Daten unter Warteschlangensperren |
 | **Ring 3** | Eigene Fenster und TCP-Verbindungen über Systemaufrufe – ein Benutzerprogramm kann zeichnen, ins Netz und selbst zuhören |
-| **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und ausliefert |
+| **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
 | **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername und Hintergrund in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, zehn Ring-3-Programme |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, elf Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 
@@ -368,6 +369,18 @@ Erzeugte und eingecheckte Dateien: die Schrift in
 Wurzelzertifikate in `data/wurzelzertifikate.der`
 (`python3 scripts/gen_trust_store.py`) und die Beispielbilder in `data/`
 (`python3 scripts/gen_bilder.py`).
+
+## Bekannte Grenzen
+
+**Viele kurzlebige Prozesse auf mehreren Kernen.** Wer rasch hintereinander
+Programme startet und beendet – `starte gabeln 8` etwa, oder der Webserver
+unter Last –, bringt RetroOS auf zwei und mehr Kernen nach einigen Sekunden
+zum Stehen: ein Kernel-Stapel wird beschrieben, während sein Thread noch
+darauf steht. Der Fehler steckt im Abbau von Threads und ist älter als das
+Abspalten; er lässt sich auch ohne `fork` auslösen, indem man auf vier Kernen
+sechsmal `starte hallo` hintereinander eingibt. Mit einem Kern
+(`-smp 1`, die Voreinstellung) tritt er nicht auf. Bis das behoben ist,
+gehören mehrere Kerne und starker Prozesswechsel nicht zusammen.
 
 ## Fehlersuche
 

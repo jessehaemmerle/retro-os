@@ -55,9 +55,15 @@ static uint64_t rdmsr(uint32_t msr)
     return ((uint64_t)high << 32) | low;
 }
 
+/* Wie bei der TSS: Kern lesen und Feld schreiben muessen zusammen
+ * geschehen. Ein Wechsel dazwischen wuerde den Einsprung eines
+ * fremden Kerns auf diesen Stapel zeigen lassen. */
 void syscall_set_kernel_stack(uint64_t top)
 {
+    uint64_t flags = irq_save();
+
     areas[cpu_current()->index].kernel_rsp = top;
+    irq_restore(flags);
 }
 
 /* Traegt fuer diesen Kern ein, wohin GS zeigen soll.
@@ -73,10 +79,12 @@ void syscall_set_kernel_stack(uint64_t top)
  * RetroOS-Programme tun das nicht. */
 void syscall_bind_cpu(void)
 {
+    uint64_t flags = irq_save();
     uint64_t area = (uint64_t)&areas[cpu_current()->index];
 
     wrmsr(MSR_KERNEL_GS_BASE, area);
     wrmsr(MSR_GS_BASE, area);
+    irq_restore(flags);
 }
 
 static void bind_gs(void)
@@ -639,6 +647,30 @@ void syscall_dispatch(struct syscall_frame *frame)
     case SYS_ACCEPT:
         result = do_accept(proc, (int32_t)a1, (uint32_t)a2);
         break;
+
+    /* --- Prozesse --- */
+    case SYS_FORK: {
+        struct process *child = process_fork(proc, frame);
+
+        result = child ? (int64_t)child->pid : SYS_ERR_NOMEM;
+        break;
+    }
+
+    case SYS_WAIT: {
+        int code = 0;
+        int32_t found = process_wait(proc, (uint32_t)a1, &code, (uint32_t)a3);
+
+        if (found < 0) {
+            result = SYS_ERR_NOCHILD;
+            break;
+        }
+        if (found > 0 && a2 && !user_write(proc, a2, &code, sizeof(code))) {
+            result = SYS_ERR_INVAL;
+            break;
+        }
+        result = found;
+        break;
+    }
 
     default:
         result = SYS_ERR_NOSYS;

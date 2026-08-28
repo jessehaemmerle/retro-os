@@ -159,6 +159,11 @@ int  tcp_send(struct tcp_socket *sock, const void *data, uint32_t length);
 int  tcp_receive(struct tcp_socket *sock, void *buffer, uint32_t capacity,
                  uint32_t timeout_ms);
 void tcp_close(struct tcp_socket *sock);
+
+/* Meldet einen weiteren Besitzer an. Gebraucht wird das beim Abspalten
+ * eines Prozesses: Eltern und Kind halten dieselbe Verbindung, und sie
+ * geht erst zu, wenn beide sie geschlossen haben. */
+void tcp_share(struct tcp_socket *sock);
 bool tcp_finished(const struct tcp_socket *sock);
 void tcp_receive_segment(ip_addr_t src, const uint8_t *segment, uint16_t length);
 

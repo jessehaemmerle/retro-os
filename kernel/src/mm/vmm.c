@@ -159,6 +159,139 @@ void vmm_destroy(struct address_space *space)
     space->pml4_phys = 0;
 }
 
+/* Laeuft bis zur Blatttabelle hinunter, ohne etwas anzulegen. Liefert
+ * NULL, wenn unterwegs eine Ebene fehlt. Die Sperre muss gehalten
+ * werden. */
+static uint64_t *leaf_table(uint64_t root, uint64_t virt)
+{
+    uint64_t *pdpt = walk(root, virt, 4, false, 0);
+
+    if (!pdpt)
+        return NULL;
+
+    uint64_t *pd = walk((uint64_t)pdpt - g_hhdm_offset, virt, 3, false, 0);
+
+    if (!pd)
+        return NULL;
+
+    return walk((uint64_t)pd - g_hhdm_offset, virt, 2, false, 0);
+}
+
+/* Haengt eine Ebene der unteren Haelfte in einen zweiten Adressraum.
+ *
+ * Zwischentabellen werden verdoppelt - sie gehoeren dem jeweiligen
+ * Adressraum. Die Seiten ganz unten dagegen werden geteilt: Beide
+ * Eintraege zeigen auf denselben Rahmen, das Schreibrecht faellt weg,
+ * und dafuer wird PTE_COW gesetzt. Wer als Erster hineinschreibt,
+ * bekommt seine eigene Kopie.
+ *
+ * Nur lesbare Seiten - Programmcode etwa - brauchen die Markierung
+ * nicht: An ihnen aendert sich ohnehin nichts. */
+static bool fork_level(uint64_t dst_phys, uint64_t src_phys, int level)
+{
+    uint64_t *src = table_at(src_phys);
+    uint64_t *dst = table_at(dst_phys);
+    size_t limit = (level == 4) ? 256 : 512;
+
+    for (size_t i = 0; i < limit; i++) {
+        uint64_t entry = src[i];
+
+        if (!(entry & PTE_PRESENT) || (entry & PTE_HUGE))
+            continue;
+
+        if (level == 1) {
+            if (entry & PTE_WRITE) {
+                entry = (entry & ~PTE_WRITE) | PTE_COW;
+                src[i] = entry;
+            }
+            pmm_share_page(entry & PTE_ADDR_MASK);
+            dst[i] = entry;
+            continue;
+        }
+
+        uint64_t table = pmm_alloc_page();
+
+        if (!table)
+            return false;
+
+        memset(phys_to_virt(table), 0, PAGE_SIZE);
+        dst[i] = table | (entry & ~PTE_ADDR_MASK);
+
+        if (!fork_level(table, entry & PTE_ADDR_MASK, level - 1))
+            return false;
+    }
+    return true;
+}
+
+bool vmm_fork(struct address_space *child, struct address_space *parent)
+{
+    if (!vmm_create(child))
+        return false;
+
+    uint64_t flags = spin_lock_irq(&vmm_lock);
+    bool ok = fork_level(child->pml4_phys, parent->pml4_phys, 4);
+
+    spin_unlock_irq(&vmm_lock, flags);
+
+    if (!ok) {
+        vmm_destroy(child);
+        return false;
+    }
+
+    child->heap_break = parent->heap_break;
+
+    /* Dem Elternteil wurde gerade das Schreibrecht entzogen. Der
+     * Zwischenspeicher der Adressuebersetzung weiss davon nichts -
+     * also einmal neu laden. Der Adressraum laeuft nur auf diesem
+     * Kern, ein Neuladen von CR3 raeumt ihn dort vollstaendig aus. */
+    vmm_switch(parent);
+    return true;
+}
+
+bool vmm_cow_fault(struct address_space *space, uint64_t virt)
+{
+    uint64_t root = space ? space->pml4_phys : kernel_pml4;
+    uint64_t page = ALIGN_DOWN(virt, PAGE_SIZE);
+
+    uint64_t flags = spin_lock_irq(&vmm_lock);
+    uint64_t *pt = leaf_table(root, page);
+
+    if (!pt) {
+        spin_unlock_irq(&vmm_lock, flags);
+        return false;
+    }
+
+    uint64_t *entry = &pt[index_of(page, 1)];
+
+    if (!(*entry & PTE_PRESENT) || !(*entry & PTE_COW)) {
+        spin_unlock_irq(&vmm_lock, flags);
+        return false;
+    }
+
+    uint64_t old = *entry & PTE_ADDR_MASK;
+
+    if (pmm_shared(old)) {
+        uint64_t fresh = pmm_alloc_page();
+
+        if (!fresh) {
+            spin_unlock_irq(&vmm_lock, flags);
+            return false;
+        }
+
+        memcpy(phys_to_virt(fresh), phys_to_virt(old), PAGE_SIZE);
+        pmm_free_page(old);           /* zaehlt nur herunter */
+        *entry = fresh | ((*entry & ~PTE_ADDR_MASK & ~PTE_COW) | PTE_WRITE);
+    } else {
+        /* Der letzte Besitzer braucht keine Kopie - er bekommt sein
+         * Schreibrecht einfach zurueck. */
+        *entry = (*entry & ~PTE_COW) | PTE_WRITE;
+    }
+
+    spin_unlock_irq(&vmm_lock, flags);
+    __asm__ volatile("invlpg (%0)" :: "r"(page) : "memory");
+    return true;
+}
+
 bool vmm_map(struct address_space *space, uint64_t virt, uint64_t phys,
              uint64_t flags)
 {
@@ -322,6 +455,12 @@ bool vmm_copy_to_user(struct address_space *space, uint64_t dst,
     const uint8_t *in = src;
 
     while (length > 0) {
+        /* Der Kernel schreibt an der Seitentabelle vorbei - also muss
+         * er selbst dafuer sorgen, dass eine geteilte Seite vorher
+         * verdoppelt wird. Sonst saehe das Geschwisterprogramm, was
+         * hier hineingeschrieben wird. */
+        vmm_cow_fault(space, dst);
+
         uint64_t phys = vmm_resolve(space, dst);
 
         if (!phys)

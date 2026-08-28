@@ -4,6 +4,16 @@
  * Ring 3 laeuft und den Kernel nur ueber Systemaufrufe erreicht. Ein
  * Fehler darin kann das System nicht mehr anhalten - die CPU faengt den
  * Zugriff ab, und der Prozess wird beendet.
+ *
+ * Ein Prozess kann sich abspalten: Das Kind bekommt eine Kopie des
+ * Adressraums, die zunaechst gar keine ist - beide benutzen dieselben
+ * Seiten, bis eine davon beschrieben wird (siehe vmm_fork). Damit sind
+ * mehrere Programme zugleich moeglich, die aus einem hervorgegangen
+ * sind: ein Webserver etwa, der je Verbindung ein Kind abspaltet.
+ *
+ * Alle, die so zusammengehoeren, bilden eine Gruppe. Ihr Anfuehrer ist
+ * der Prozess, den die Konsole gestartet hat; seine Ein- und Ausgabe
+ * benutzen alle gemeinsam, und endet er, endet die ganze Gruppe.
  */
 #ifndef PROCESS_H
 #define PROCESS_H
@@ -11,8 +21,9 @@
 #include "retro.h"
 #include "vmm.h"
 #include "vfs.h"
+#include "syscall.h"
 
-#define PROCESS_MAX       8
+#define PROCESS_MAX       16
 #define PROCESS_FILES_MAX 8
 #define PROCESS_WINDOWS_MAX 4
 #define PROCESS_SOCKETS_MAX 8
@@ -30,9 +41,18 @@ struct process {
     struct address_space space;
     struct thread       *thread;
 
+    /* Wer hat mich abgespalten, und wem gehoert die Konsole? */
+    struct process *parent;
+    struct process *leader;
+    uint32_t        parent_pid;
+
     bool     used;
     bool     finished;
+    bool     reaping;        /* jemand raeumt gerade ab */
     int      exit_code;
+
+    /* Registerabbild fuer ein frisch abgespaltenes Kind. */
+    struct syscall_frame fork_frame;
 
     /* Ausgabe des Programms, die die Konsole abholt. */
     char     out[PROCESS_OUT_SIZE];
@@ -61,6 +81,22 @@ struct process *process_start(const char *path, const char *args,
 
 struct process *process_current(void);
 void process_kill(struct process *proc);
+
+/* Spaltet den aufrufenden Prozess ab. Das Kind faengt hinter demselben
+ * Systemaufruf wieder an, nur mit 0 als Ergebnis. Liefert NULL, wenn
+ * kein Platz mehr ist. */
+struct process *process_fork(struct process *parent,
+                             const struct syscall_frame *frame);
+
+/* Holt den Ausgang eines beendeten Kindes ab. pid 0 heisst "irgendeins".
+ * Liefert die Nummer des abgeholten Kindes, 0 wenn in der Wartezeit
+ * keines fertig wurde, und -1, wenn es gar keine Kinder gibt. */
+int32_t process_wait(struct process *parent, uint32_t pid, int *code,
+                     uint32_t timeout_ms);
+
+/* Gibt den Steckplatz eines beendeten Prozesses frei - samt allem, was
+ * unter ihm haengt. Danach zeigt der Zeiger ins Leere. */
+void process_release(struct process *proc);
 
 /* Ausgabe abholen; liefert die Anzahl der kopierten Zeichen. */
 size_t process_read_output(struct process *proc, char *buffer, size_t size);

@@ -15,6 +15,10 @@
 #define PTE_WRITE     (1ULL << 1)
 #define PTE_USER      (1ULL << 2)
 #define PTE_HUGE      (1ULL << 7)
+/* Bit 9 bis 11 gehoeren der Software. Bit 9 merkt sich, dass eine Seite
+ * zwei Adressraeumen gehoert und beim ersten Schreibzugriff verdoppelt
+ * werden muss. */
+#define PTE_COW       (1ULL << 9)
 #define PTE_NX        (1ULL << 63)
 
 #define PTE_ADDR_MASK 0x000FFFFFFFFFF000ULL
@@ -42,6 +46,19 @@ bool vmm_protect_range(struct address_space *space, uint64_t virt,
 /* Legt einen Adressraum an, der die Kernel-Haelfte mitbenutzt. */
 bool vmm_create(struct address_space *space);
 void vmm_destroy(struct address_space *space);
+
+/* Verdoppelt einen Adressraum, ohne den Inhalt zu kopieren: Beide
+ * Seiten benutzen dieselben Seitenrahmen, aber keine darf mehr
+ * hineinschreiben. Der erste Schreibversuch loest einen Seitenfehler
+ * aus, und erst dort entsteht die Kopie. Das macht das Abspalten
+ * billig - ein Kind, das gleich ein anderes Programm laedt oder nur
+ * liest, kostet fast nichts. */
+bool vmm_fork(struct address_space *child, struct address_space *parent);
+
+/* Behandelt einen Schreibfehler auf einer geteilten Seite. Liefert
+ * false, wenn der Fehler nichts damit zu tun hatte - dann war es ein
+ * echter Fehler des Programms. */
+bool vmm_cow_fault(struct address_space *space, uint64_t virt);
 
 /* Bildet eine virtuelle Seite auf eine physische ab. */
 bool vmm_map(struct address_space *space, uint64_t virt, uint64_t phys,

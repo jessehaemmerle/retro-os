@@ -147,6 +147,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  ping <ziel>      Erreichbarkeit pruefen");
     term_line(st, C_NORMAL, "  aufloesen <name> Namen in eine Adresse wandeln");
     term_line(st, C_NORMAL, "  holen <adresse> [datei]  Seite abrufen/speichern");
+    term_line(st, C_NORMAL, "  prozesse                 laufende Programme mit Verwandtschaft");
     term_line(st, C_NORMAL, "  installieren [ziel]      RetroOS auf eine Platte bringen");
     term_line(st, C_NORMAL, "  platte           Datentraeger anzeigen");
     term_line(st, C_NORMAL, "  usb              Geraete am USB-Bus anzeigen");
@@ -682,22 +683,26 @@ static void drain_process(struct term_state *st)
     if (!st->running)
         return;
 
-    size_t n = process_read_output(st->running, chunk, sizeof(chunk));
+    /* Bis der Puffer leer ist - sonst ginge der letzte Satz eines
+     * Programms verloren, das gleich danach endet. */
+    size_t n;
 
-    for (size_t i = 0; i < n; i++) {
-        char c = chunk[i];
+    while ((n = process_read_output(st->running, chunk, sizeof(chunk))) > 0) {
+        for (size_t i = 0; i < n; i++) {
+            char c = chunk[i];
 
-        if (c == '\n' || st->partial_len >= TERM_COLS - 2) {
-            st->partial[st->partial_len] = '\0';
-            term_line(st, C_NORMAL, st->partial);
-            st->partial_len = 0;
-            if (c == '\n')
-                continue;
+            if (c == '\n' || st->partial_len >= TERM_COLS - 2) {
+                st->partial[st->partial_len] = '\0';
+                term_line(st, C_NORMAL, st->partial);
+                st->partial_len = 0;
+                if (c == '\n')
+                    continue;
+            }
+            if (c == '\r' || c == '\t')
+                c = ' ';
+            if (c >= 32 || c < 0)
+                st->partial[st->partial_len++] = c;
         }
-        if (c == '\r' || c == '\t')
-            c = ' ';
-        if (c >= 32 || c < 0)
-            st->partial[st->partial_len++] = c;
     }
 
     if (st->running->finished) {
@@ -708,6 +713,10 @@ static void drain_process(struct term_state *st)
         }
         term_printf(st, C_HIGHLIGHT, "[%s beendet, Ergebnis %d]",
                     st->running->name, st->running->exit_code);
+
+        /* Erst jetzt gibt der Prozess seinen Steckplatz her - samt
+         * allem, was er noch abgespalten hatte. */
+        process_release(st->running);
         st->running = NULL;
     }
 
@@ -723,6 +732,40 @@ static const char *thread_state_name(uint8_t state)
     case THREAD_BLOCKED:  return "wartet";
     default:              return "beendet";
     }
+}
+
+/* Was gerade in Ring 3 laeuft - mit der Verwandtschaft, seit ein
+ * Programm sich abspalten kann. */
+static void cmd_processes(struct term_state *st)
+{
+    size_t n = process_count();
+
+    if (n == 0) {
+        term_line(st, C_NORMAL, "Zurzeit laeuft kein Programm.");
+        return;
+    }
+
+    term_printf(st, C_HIGHLIGHT, "%-5s %-6s %-16s %-10s %s",
+                "Nr.", "Eltern", "Name", "Zustand", "Speicher");
+
+    for (size_t i = 0; i < n; i++) {
+        struct process *p = process_at(i);
+        char parent[8] = "-";
+
+        if (!p)
+            continue;
+        if (p->parent_pid)
+            ksnprintf(parent, sizeof(parent), "%u", (unsigned)p->parent_pid);
+
+        term_printf(st, C_NORMAL, "%-5u %-6s %-16s %-10s %u KiB",
+                    (unsigned)p->pid, parent, p->name,
+                    p->finished ? "beendet" : "laeuft",
+                    (unsigned)(p->space.heap_break / 1024));
+    }
+
+    term_printf(st, C_NORMAL, "");
+    term_printf(st, C_NORMAL, "Mehrfach genutzt: %u KiB",
+                (unsigned)(pmm_shared_bytes() / 1024));
 }
 
 static void cmd_threads(struct term_state *st)
@@ -888,6 +931,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);
+
+    } else if (!strcasecmp(cmd, "prozesse")) {
+        cmd_processes(st);
 
     } else if (!strcasecmp(cmd, "laufzeit") || !strcasecmp(cmd, "uptime")) {
         uint64_t ms = timer_ms();

@@ -86,9 +86,17 @@ static struct thread *alloc_slot(void)
 
     /* Sonst den Platz eines beendeten Threads wiederverwenden - aber
      * erst, wenn er seinen Stapel auch verlassen hat. Zwischen
-     * "beendet" und dem letzten Umschalten laeuft er noch darauf. */
+     * "beendet" und dem letzten Umschalten laeuft er noch darauf.
+     *
+     * "reapable" wird gesetzt, bevor umgeschaltet wird; erst "on_cpu"
+     * faellt, wenn der Wechsel wirklich durch ist. Mit einem Kern
+     * lagen beide nahe beieinander, mit mehreren klafft dazwischen ein
+     * Spalt: Ein anderer Kern koennte den Stapel freigeben, waehrend
+     * der Sterbende noch mitten im Umschalten darauf steht - und der
+     * naechste, der Speicher holt, bekommt genau diese Seiten. */
     for (size_t i = 0; i < THREAD_MAX; i++) {
-        if (threads[i].state == THREAD_DEAD && threads[i].reapable) {
+        if (threads[i].state == THREAD_DEAD && threads[i].reapable &&
+            !threads[i].on_cpu) {
             if (threads[i].stack_base) {
                 pmm_free_pages(threads[i].stack_base,
                                THREAD_STACK_SIZE / PAGE_SIZE);
@@ -321,7 +329,8 @@ static void link_thread(struct thread *t)
 static struct thread *create_thread(const char *name, thread_entry_t entry,
                                     void *argument,
                                     enum thread_priority priority,
-                                    int32_t pin, uint8_t exact_priority)
+                                    int32_t pin, uint8_t exact_priority,
+                                    struct process *owner, bool runnable)
 {
     /* Der Stapel wird vor der Sperre geholt: pmm_alloc_pages hat seine
      * eigene und die beiden ineinander zu schachteln waere eine
@@ -344,9 +353,10 @@ static struct thread *create_thread(const char *name, thread_entry_t entry,
     t->id = next_id++;
     strlcpy(t->name, name, sizeof(t->name));
     t->priority   = (uint8_t)priority;
-    t->state      = THREAD_READY;
+    t->state      = runnable ? THREAD_READY : THREAD_BLOCKED;
     t->stack_base = stack;
     t->cpu_pin    = pin;
+    t->process    = owner;
     if (exact_priority)
         t->priority = exact_priority;
 
@@ -375,7 +385,32 @@ static struct thread *create_thread(const char *name, thread_entry_t entry,
 struct thread *thread_create(const char *name, thread_entry_t entry,
                              void *argument, enum thread_priority priority)
 {
-    return create_thread(name, entry, argument, priority, -1, 0);
+    return create_thread(name, entry, argument, priority, -1, 0, NULL, true);
+}
+
+/* Fuer einen Thread, der zu einem Prozess gehoert. Er entsteht
+ * angehalten: Der Aufrufer traegt erst alles ein, was der Prozess
+ * braucht, und laesst ihn dann mit thread_start() los. Sonst koennte
+ * ein anderer Kern ihn aufgreifen, waehrend die Haelfte noch fehlt. */
+struct thread *thread_create_owned(const char *name, thread_entry_t entry,
+                                   void *argument,
+                                   enum thread_priority priority,
+                                   struct process *owner)
+{
+    return create_thread(name, entry, argument, priority, -1, 0, owner, false);
+}
+
+void thread_start(struct thread *t)
+{
+    if (!t)
+        return;
+
+    uint64_t flags = spin_lock_irq(&sched_lock);
+
+    if (t->state == THREAD_BLOCKED && !t->wait_object)
+        t->state = THREAD_READY;
+
+    spin_unlock_irq(&sched_lock, flags);
 }
 
 NORETURN void thread_exit(void)
@@ -616,7 +651,7 @@ static struct thread *make_idle(struct cpu *self)
      * koennte ein anderer Kern ihn sich nehmen - und dann liefe
      * derselbe Thread auf zweien. */
     return create_thread(name, idle_entry, NULL, PRIO_LOW,
-                         (int32_t)self->index, 255);
+                         (int32_t)self->index, 255, NULL, true);
 }
 
 void thread_init(void)

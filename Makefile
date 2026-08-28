@@ -32,7 +32,7 @@ LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -z noexecstack \
            -T kernel/linker.ld -m elf_x86_64
 
 # --- Benutzerprogramme (laufen in Ring 3) ---------------------------------
-UPROGS   := hallo zaehler katze liste schreiben absturz schutz uhr abrufen server
+UPROGS   := hallo zaehler katze liste schreiben absturz schutz uhr abrufen server gabeln
 UDIR     := $(BUILD)/userland
 UOBJDIR  := $(BUILD)/obj/userland
 

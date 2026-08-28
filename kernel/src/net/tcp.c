@@ -32,6 +32,7 @@
 #include "kstring.h"
 #include "mm.h"
 #include "thread.h"
+#include "spinlock.h"
 
 #define TCP_MAX_SOCKETS   16
 #define TCP_BACKLOG       6
@@ -80,6 +81,10 @@ struct ooo_segment {
 
 struct tcp_socket {
     bool           used;
+    /* Wie viele Prozesse halten diesen Steckplatz? Beim Abspalten
+     * erbt das Kind die Verbindung des Elternteils; zugehen darf sie
+     * erst, wenn der Letzte sie loslaesst. */
+    uint16_t       users;
     enum tcp_state state;
 
     ip_addr_t remote_ip;
@@ -118,6 +123,17 @@ struct tcp_socket {
 
 static struct tcp_socket sockets[TCP_MAX_SOCKETS];
 static uint16_t          next_local_port = 40000;
+
+/* Seit ein Prozess sich abspalten kann, greifen mehrere Kerne auf
+ * dieselben Steckplaetze zu: Der Elternteil laesst eine Verbindung
+ * los, waehrend das Kind sie beantwortet, und der Netzfaden legt
+ * gleichzeitig eine neue in die Warteschlange eines Zuhoerers.
+ *
+ * Diese Sperre schuetzt genau das: das Belegen und Freigeben eines
+ * Steckplatzes, den Besitzerzaehler und die Warteschlange. Sie wird
+ * nur fuer wenige Befehle gehalten - alles, was warten koennte
+ * (Senden, das FIN abwarten, Puffer freigeben), geschieht ausserhalb. */
+static struct spinlock socket_lock = SPINLOCK_INIT("tcp-steckplaetze");
 
 /* Vergleich, der den Ueberlauf der Sequenznummern beruecksichtigt. */
 static inline bool seq_after(uint32_t a, uint32_t b)
@@ -219,6 +235,11 @@ static bool send_segment(struct tcp_socket *sock, uint32_t seq, uint8_t flags,
 static void deliver(struct tcp_socket *sock, const uint8_t *data,
                     uint16_t length)
 {
+    /* Der Steckplatz kann waehrenddessen geschlossen worden sein -
+     * dann gibt es keinen Puffer mehr, und die Daten sind hinfaellig. */
+    if (!sock->rx)
+        return;
+
     uint32_t room = TCP_RX_CAPACITY - sock->rx_length;
     uint32_t take = MIN((uint32_t)length, room);
 
@@ -288,7 +309,8 @@ static struct tcp_socket *find_socket(ip_addr_t src, uint16_t src_port,
     for (size_t i = 0; i < TCP_MAX_SOCKETS; i++) {
         struct tcp_socket *s = &sockets[i];
 
-        if (s->used && s->state != TCP_LISTEN && s->remote_ip == src &&
+        if (s->used && s->users > 0 && s->state != TCP_LISTEN &&
+            s->remote_ip == src &&
             s->remote_port == src_port && s->local_port == dst_port)
             return s;
     }
@@ -301,18 +323,31 @@ static struct tcp_socket *find_listener(uint16_t port)
     for (size_t i = 0; i < TCP_MAX_SOCKETS; i++) {
         struct tcp_socket *s = &sockets[i];
 
-        if (s->used && s->state == TCP_LISTEN && s->local_port == port)
+        if (s->used && s->users > 0 && s->state == TCP_LISTEN &&
+            s->local_port == port)
             return s;
     }
     return NULL;
 }
 
+/* Belegt einen Steckplatz und gibt ihn geleert zurueck. Das Belegen
+ * gehoert mit in die Sperre - sonst nehmen zwei Kerne denselben. */
 static struct tcp_socket *alloc_socket(void)
 {
+    uint64_t flags = spin_lock_irq(&socket_lock);
+
     for (size_t i = 0; i < TCP_MAX_SOCKETS; i++) {
-        if (!sockets[i].used)
-            return &sockets[i];
+        if (sockets[i].used)
+            continue;
+
+        memset(&sockets[i], 0, sizeof(sockets[i]));
+        sockets[i].used  = true;
+        sockets[i].users = 1;
+        spin_unlock_irq(&socket_lock, flags);
+        return &sockets[i];
     }
+
+    spin_unlock_irq(&socket_lock, flags);
     return NULL;
 }
 
@@ -388,11 +423,11 @@ static void accept_syn(struct tcp_socket *listener, ip_addr_t src,
     if (!sock)
         return;
 
-    memset(sock, 0, sizeof(*sock));
-    if (!alloc_buffers(sock))
+    if (!alloc_buffers(sock)) {
+        sock->used = false;
         return;
+    }
 
-    sock->used        = true;
     sock->state       = TCP_SYN_RCVD;
     sock->remote_ip   = src;
     sock->remote_port = src_port;
@@ -475,10 +510,13 @@ void tcp_receive_segment(ip_addr_t src, const uint8_t *data, uint16_t length)
             sock->last_progress_ms = timer_ms();
 
             /* Ab jetzt kann der Zuhoerer sie abholen. */
+            uint64_t queued = spin_lock_irq(&socket_lock);
+
             if (sock->listener &&
                 sock->listener->backlog_count < TCP_BACKLOG) {
                 sock->listener->backlog[sock->listener->backlog_count++] = sock;
             }
+            spin_unlock_irq(&socket_lock, queued);
 
             /* Manche Gegenstellen haengen die ersten Daten gleich an. */
             if (payload_length > 0 && seq == sock->recv_next) {
@@ -567,11 +605,11 @@ struct tcp_socket *tcp_connect(ip_addr_t dst, uint16_t port, uint32_t timeout_ms
     if (!sock)
         return NULL;
 
-    memset(sock, 0, sizeof(*sock));
-    if (!alloc_buffers(sock))
+    if (!alloc_buffers(sock)) {
+        sock->used = false;
         return NULL;
+    }
 
-    sock->used        = true;
     sock->state       = TCP_SYN_SENT;
     sock->remote_ip   = dst;
     sock->remote_port = port;
@@ -634,8 +672,6 @@ struct tcp_socket *tcp_listen(uint16_t port)
 
     /* Ein Zuhoerer braucht weder Empfangspuffer noch Ablage fuer
      * verfruehte Segmente - er nimmt selbst nie Daten entgegen. */
-    memset(sock, 0, sizeof(*sock));
-    sock->used       = true;
     sock->state      = TCP_LISTEN;
     sock->local_port = port;
     return sock;
@@ -649,6 +685,8 @@ struct tcp_socket *tcp_accept(struct tcp_socket *listener, uint32_t timeout_ms)
     uint64_t deadline = timer_ms() + timeout_ms;
 
     for (;;) {
+        uint64_t flags = spin_lock_irq(&socket_lock);
+
         if (listener->backlog_count > 0) {
             struct tcp_socket *sock = listener->backlog[0];
 
@@ -657,8 +695,10 @@ struct tcp_socket *tcp_accept(struct tcp_socket *listener, uint32_t timeout_ms)
             listener->backlog_count--;
 
             sock->listener = NULL;
+            spin_unlock_irq(&socket_lock, flags);
             return sock;
         }
+        spin_unlock_irq(&socket_lock, flags);
 
         if (timer_ms() >= deadline)
             return NULL;
@@ -806,23 +846,61 @@ bool tcp_finished(const struct tcp_socket *sock)
            sock->state != TCP_ESTABLISHED;
 }
 
+void tcp_share(struct tcp_socket *sock)
+{
+    if (!sock)
+        return;
+
+    uint64_t flags = spin_lock_irq(&socket_lock);
+
+    if (sock->used && sock->users > 0 && sock->users < 0xFFFF)
+        sock->users++;
+
+    spin_unlock_irq(&socket_lock, flags);
+}
+
 void tcp_close(struct tcp_socket *sock)
 {
-    if (!sock || !sock->used)
+    if (!sock)
         return;
+
+    uint64_t flags = spin_lock_irq(&socket_lock);
+
+    /* Schon zu, oder ein anderer raeumt gerade auf. */
+    if (!sock->used || sock->users == 0) {
+        spin_unlock_irq(&socket_lock, flags);
+        return;
+    }
+
+    /* Es haelt noch jemand daran fest. */
+    if (sock->users > 1) {
+        sock->users--;
+        spin_unlock_irq(&socket_lock, flags);
+        return;
+    }
+
+    /* Ab hier gehoert das Aufraeumen mir allein: Der Zaehler auf null
+     * haelt jeden anderen draussen, waehrend der Steckplatz noch
+     * belegt aussieht. */
+    sock->users = 0;
 
     /* Ein Zuhoerer nimmt alles mit, was noch in seiner Warteschlange
      * steht - sonst blieben halbfertige Verbindungen liegen. */
     if (sock->state == TCP_LISTEN) {
-        for (uint32_t i = 0; i < sock->backlog_count; i++) {
-            struct tcp_socket *pending = sock->backlog[i];
+        struct tcp_socket *pending[TCP_BACKLOG];
+        uint32_t count = sock->backlog_count;
 
-            pending->listener = NULL;
-            tcp_close(pending);
+        for (uint32_t i = 0; i < count; i++) {
+            pending[i] = sock->backlog[i];
+            pending[i]->listener = NULL;
         }
         sock->backlog_count = 0;
         sock->used = false;
         sock->state = TCP_CLOSED;
+        spin_unlock_irq(&socket_lock, flags);
+
+        for (uint32_t i = 0; i < count; i++)
+            tcp_close(pending[i]);
         return;
     }
 
@@ -842,6 +920,8 @@ void tcp_close(struct tcp_socket *sock)
         sock->listener = NULL;
     }
 
+    spin_unlock_irq(&socket_lock, flags);
+
     if (sock->state == TCP_ESTABLISHED && !sock->reset) {
         send_segment(sock, sock->send_next, FLAG_FIN | FLAG_ACK, NULL, 0);
         sock->send_next++;
@@ -852,10 +932,20 @@ void tcp_close(struct tcp_socket *sock)
             net_idle();
     }
 
-    kfree(sock->rx);
-    kfree(sock->ooo);
+    /* Erst aushaengen, dann freigeben: Solange die Sperre gehalten
+     * wird, kann der Netzfaden den Steckplatz nicht mehr finden, und
+     * die Puffer gehoeren niemandem mehr. */
+    flags = spin_lock_irq(&socket_lock);
+
+    uint8_t *rx = sock->rx;
+    struct ooo_segment *ooo = sock->ooo;
+
     sock->rx = NULL;
     sock->ooo = NULL;
     sock->used = false;
     sock->state = TCP_CLOSED;
+    spin_unlock_irq(&socket_lock, flags);
+
+    kfree(rx);
+    kfree(ooo);
 }

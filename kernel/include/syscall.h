@@ -39,6 +39,10 @@ enum {
     SYS_LISTEN    = 22,  /* (port) -> Zuhoerer                */
     SYS_ACCEPT    = 23,  /* (zuhoerer, wartezeit) -> Verbindung */
 
+    /* --- Prozesse --- */
+    SYS_FORK      = 24,  /* () -> 0 beim Kind, Nummer beim Elternteil */
+    SYS_WAIT      = 25,  /* (pid, &code, wartezeit) -> Nummer         */
+
     SYS_COUNT
 };
 
@@ -86,6 +90,7 @@ struct user_event {
 #define SYS_ERR_INVAL    (-3)
 #define SYS_ERR_NOMEM    (-4)
 #define SYS_ERR_NOSYS    (-5)
+#define SYS_ERR_NOCHILD  (-6)
 
 /* Registerabbild, das der Einsprung in Assembler auf dem Stapel ablegt. */
 struct syscall_frame {

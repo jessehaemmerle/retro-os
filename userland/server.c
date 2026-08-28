@@ -3,10 +3,16 @@
  * Damit ist RetroOS nicht nur ansprechbar, sondern erreichbar: Vom
  * Wirtsrechner aus laesst sich die Ablage im Browser durchsehen.
  *
- * Der Server ist absichtlich der einfachste, der noch richtig ist: Er
- * nimmt eine Verbindung an, liest die Anfrage, antwortet und schliesst
- * wieder. Mehrere gleichzeitig behandelt er nicht - dafuer stehen sie
- * in der Warteschlange des Zuhoerers und kommen nacheinander dran.
+ * Fuer jede Verbindung spaltet er sich ab: Das Kind beantwortet die
+ * eine Anfrage und ist danach fertig, der Elternteil nimmt sofort die
+ * naechste an. Das kostet fast nichts, weil das Kind den Speicher des
+ * Elternteils zunaechst nur mitbenutzt (siehe vmm_fork im Kernel), und
+ * es macht den Server unempfindlich: Eine Verbindung, die haengt,
+ * blockiert nur ihr eigenes Kind.
+ *
+ * Geht das Abspalten nicht mehr - weil schon zu viele Kinder laufen -,
+ * beantwortet der Elternteil die Anfrage selbst. Lieber langsam als
+ * gar nicht.
  *
  *     starte server            hoert auf Port 8080, liefert /Festplatte
  *     starte server 8000 /     anderer Port, andere Wurzel
@@ -395,10 +401,35 @@ int main(void)
     for (;;) {
         int sock = net_accept(listener, 1000);
 
-        if (sock < 0)
-            continue;              /* in der Sekunde kam keine */
+        if (sock < 0) {
+            /* In der Sekunde kam keine. Gute Gelegenheit, fertige
+             * Kinder einzusammeln. */
+            while (sys_wait(0, 0, 0) > 0)
+                ;
+            continue;
+        }
 
-        handle(sock);
+        int kind = sys_fork();
+
+        if (kind == 0) {
+            /* Das Kind braucht den Zuhoerer nicht - es hat schon, was
+             * es beantworten soll. */
+            net_close(listener);
+            handle(sock);
+            net_close(sock);
+            sys_exit(0);
+        }
+
+        /* Kein Platz mehr fuer ein Kind - dann eben selbst. */
+        if (kind < 0)
+            handle(sock);
+
+        /* Der Elternteil gibt seine Fassung der Verbindung ab; das
+         * Kind haelt sie weiter. */
         net_close(sock);
+
+        /* Was schon fertig ist, gleich einsammeln. */
+        while (sys_wait(0, 0, 0) > 0)
+            ;
     }
 }

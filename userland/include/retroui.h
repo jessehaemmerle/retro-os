@@ -106,4 +106,21 @@ static inline int net_accept(int listener, int timeout_ms)
     return sys_net_accept(listener, timeout_ms);
 }
 
+/* --- Abspalten ---
+ *
+ * sys_fork verdoppelt das laufende Programm. Beide laufen hinter dem
+ * Aufruf weiter; das Kind bekommt 0 zurueck, der Elternteil die Nummer
+ * des Kindes. Der Speicher wird dabei nicht kopiert - erst wenn einer
+ * von beiden hineinschreibt, entsteht seine eigene Fassung der Seite.
+ *
+ * sys_wait holt den Ausgang eines beendeten Kindes ab und gibt dessen
+ * Steckplatz frei. pid 0 heisst "irgendeines". Der Rueckgabewert ist
+ * die Nummer des abgeholten Kindes, 0 wenn in der Wartezeit keines
+ * fertig wurde, und ein negativer Wert, wenn es gar keine Kinder gibt.
+ * Mit timeout_ms 0 fragt man nur nach, ohne zu warten. */
+int sys_fork(void);
+int sys_wait(int pid, int *code, int timeout_ms);
+
+static inline int fork_process(void)  { return sys_fork(); }
+
 #endif /* RETROUI_H */

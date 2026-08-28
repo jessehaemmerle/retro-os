@@ -11,6 +11,15 @@ uint64_t pmm_alloc_pages(size_t count);
 void     pmm_free_page(uint64_t phys);
 void     pmm_free_pages(uint64_t phys, size_t count);
 
+/* Eine Seite kann mehreren Adressraeumen zugleich gehoeren - beim
+ * Abspalten eines Prozesses etwa. Deshalb zaehlt die Verwaltung mit,
+ * wie viele Besitzer eine Seite hat: pmm_share_page zaehlt hoch,
+ * pmm_free_page zaehlt herunter und gibt erst beim letzten wirklich
+ * frei. */
+void     pmm_share_page(uint64_t phys);
+bool     pmm_shared(uint64_t phys);         /* mehr als ein Besitzer? */
+uint64_t pmm_shared_bytes(void);            /* mehrfach genutzter Speicher */
+
 uint64_t pmm_total_bytes(void);
 uint64_t pmm_used_bytes(void);
 uint64_t pmm_free_bytes(void);

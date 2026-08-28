@@ -47,4 +47,8 @@ DEFCALL net_close,   21
 DEFCALL net_listen,  22
 DEFCALL sys_net_accept, 23
 
+/* Prozesse */
+DEFCALL sys_fork,    24
+DEFCALL sys_wait,    25
+
 .section .note.GNU-stack,"",@progbits

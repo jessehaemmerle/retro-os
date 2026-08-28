@@ -58,6 +58,15 @@ typedef void (*thread_entry_t)(void *argument);
 void thread_init(void);
 struct thread *thread_create(const char *name, thread_entry_t entry,
                              void *argument, enum thread_priority priority);
+/* Dasselbe fuer einen Thread, der zu einem Prozess gehoert. Er
+ * entsteht angehalten und laeuft erst nach thread_start() los - so
+ * bekommt kein anderer Kern ihn zu fassen, bevor der Prozess
+ * vollstaendig eingerichtet ist. */
+struct thread *thread_create_owned(const char *name, thread_entry_t entry,
+                                   void *argument,
+                                   enum thread_priority priority,
+                                   struct process *owner);
+void thread_start(struct thread *t);
 void thread_exit(void) NORETURN;
 /* Einstieg eines weiteren Kerns in den Scheduler. */
 NORETURN void thread_enter_ap(void);

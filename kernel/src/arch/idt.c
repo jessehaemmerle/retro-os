@@ -5,6 +5,8 @@
 #include "kstring.h"
 #include "thread.h"
 #include "process.h"
+#include "vmm.h"
+#include "cpu.h"
 
 struct idt_entry {
     uint16_t offset_low;
@@ -176,6 +178,16 @@ void isr_dispatch(struct registers *regs)
     if (regs->int_no == 14)
         __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
 
+    /* Ein Schreibversuch auf eine vorhandene, aber geteilte Seite ist
+     * kein Fehler des Programms, sondern der Zeitpunkt, an dem die
+     * Kopie entsteht. Danach geht der Befehl einfach weiter. */
+    if (regs->int_no == 14 && (regs->err_code & 0x3) == 0x3) {
+        struct process *proc = process_current();
+
+        if (proc && vmm_cow_fault(&proc->space, cr2))
+            return;
+    }
+
     /* Kam sie aus einem Benutzerprogramm, stirbt nur dieses - genau
      * dafuer gibt es die Trennung in Ringe. */
     if ((regs->cs & 3) == 3) {
@@ -195,11 +207,18 @@ void isr_dispatch(struct registers *regs)
         thread_exit();
     }
 
+    struct thread *self = thread_current();
+
     panic("Ausnahme %u (%s)\n"
           "  Fehlercode : 0x%lx\n"
           "  RIP        : 0x%lx\n"
           "  RSP        : 0x%lx\n"
-          "  CR2        : 0x%lx",
+          "  CR2        : 0x%lx\n"
+          "  Kern       : %u\n"
+          "  Thread     : %s (%u), Prozess %s",
           (unsigned)regs->int_no, name, regs->err_code,
-          regs->rip, regs->rsp, cr2);
+          regs->rip, regs->rsp, cr2,
+          (unsigned)cpu_current()->index,
+          self ? self->name : "?", self ? (unsigned)self->id : 0,
+          (self && self->process) ? self->process->name : "-");
 }

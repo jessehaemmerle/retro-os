@@ -16,6 +16,7 @@
 
 #include "arch.h"
 #include "cpu.h"
+#include "thread.h"
 #include "kstring.h"
 
 struct gdt_entry {
@@ -72,9 +73,18 @@ static void set_entry(uint32_t cpu, int i, uint8_t access,
     gdt[cpu][i].base_high   = 0;
 }
 
+/* Welcher Kern das ist, wird gelesen - und erst danach geschrieben.
+ * Dazwischen darf nichts dazwischenkommen: Wuerde der Thread genau
+ * dort auf einen anderen Kern wandern, traege er den Stapel in die
+ * Tabelle des alten Kerns ein. Der wuerde beim naechsten Eintritt aus
+ * Ring 3 auf einen fremden Stapel springen - und zwei Threads
+ * schrieben in denselben Speicher. */
 void tss_set_kernel_stack(uint64_t top)
 {
+    uint64_t flags = irq_save();
+
     tss[cpu_current()->index].rsp0 = top;
+    irq_restore(flags);
 }
 
 static void gdt_setup(uint32_t cpu)
