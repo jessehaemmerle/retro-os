@@ -95,4 +95,15 @@ static inline int net_recv(int socket, void *buffer, unsigned int length,
 }
 int net_close(int socket);
 
+/* --- Dienste anbieten ---
+ * net_listen nimmt einen Port in Beschlag (ab 1024). net_accept holt
+ * die naechste Verbindung; ein negativer Wert heisst "in der Zeit kam
+ * keine" und ist kein Fehler. */
+int net_listen(int port);
+int sys_net_accept(int listener, int timeout_ms);
+static inline int net_accept(int listener, int timeout_ms)
+{
+    return sys_net_accept(listener, timeout_ms);
+}
+
 #endif /* RETROUI_H */

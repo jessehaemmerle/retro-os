@@ -1,4 +1,4 @@
-/* tcp.c - TCP fuer ausgehende Verbindungen.
+/* tcp.c - TCP, beide Richtungen.
  *
  * Umgesetzt ist das, was eine Verbindung ueber ein echtes Netz braucht:
  *
@@ -12,6 +12,15 @@
  *                       Wiederholung aus, ohne auf die Frist zu warten
  *   Abbau               FIN mit Bestaetigung
  *
+ * Dazu die andere Haelfte: Ein Steckplatz kann auf einem Port zuhoeren.
+ * Kommt dort ein SYN an, entsteht daneben ein zweiter Steckplatz, der
+ * den Handschlag zu Ende fuehrt und sich danach in die Warteschlange
+ * des Zuhoerers stellt. Wer annimmt, holt ihn dort ab.
+ *
+ * An einen Port, auf dem niemand zuhoert, geht ein RST zurueck - die
+ * Gegenseite soll nicht in eine Frist laufen, sondern gleich wissen,
+ * dass hier nichts ist.
+ *
  * Nicht umgesetzt sind selektive Bestaetigungen (SACK), Zeitstempel und
  * das Zusammenfassen kleiner Sendungen (Nagle) - alles Verbesserungen,
  * die eine bestehende Verbindung schneller machen, aber nichts an ihrer
@@ -24,7 +33,8 @@
 #include "mm.h"
 #include "thread.h"
 
-#define TCP_MAX_SOCKETS   4
+#define TCP_MAX_SOCKETS   16
+#define TCP_BACKLOG       6
 #define TCP_RX_CAPACITY   (128 * 1024)
 #define TCP_MSS           1400
 #define TCP_OOO_SLOTS     8
@@ -41,7 +51,9 @@
 
 enum tcp_state {
     TCP_CLOSED,
-    TCP_SYN_SENT,
+    TCP_LISTEN,        /* wartet auf ankommende Verbindungen */
+    TCP_SYN_SENT,      /* wir haben angefragt                */
+    TCP_SYN_RCVD,      /* die Gegenseite hat angefragt       */
     TCP_ESTABLISHED,
     TCP_FIN_SENT,
 };
@@ -95,6 +107,13 @@ struct tcp_socket {
     bool      reset;
 
     uint64_t  last_progress_ms;
+
+    /* --- nur bei einem Zuhoerer --- */
+    struct tcp_socket *backlog[TCP_BACKLOG];
+    uint32_t           backlog_count;
+
+    /* Zu welchem Zuhoerer gehoert dieser halbfertige Steckplatz? */
+    struct tcp_socket *listener;
 };
 
 static struct tcp_socket sockets[TCP_MAX_SOCKETS];
@@ -262,17 +281,138 @@ static void drain_stash(struct tcp_socket *sock)
     }
 }
 
+/* Zuerst der Steckplatz, der genau zu diesen vier Angaben gehoert. */
 static struct tcp_socket *find_socket(ip_addr_t src, uint16_t src_port,
                                       uint16_t dst_port)
 {
     for (size_t i = 0; i < TCP_MAX_SOCKETS; i++) {
         struct tcp_socket *s = &sockets[i];
 
-        if (s->used && s->remote_ip == src && s->remote_port == src_port &&
-            s->local_port == dst_port)
+        if (s->used && s->state != TCP_LISTEN && s->remote_ip == src &&
+            s->remote_port == src_port && s->local_port == dst_port)
             return s;
     }
     return NULL;
+}
+
+/* Hoert jemand auf diesem Port? */
+static struct tcp_socket *find_listener(uint16_t port)
+{
+    for (size_t i = 0; i < TCP_MAX_SOCKETS; i++) {
+        struct tcp_socket *s = &sockets[i];
+
+        if (s->used && s->state == TCP_LISTEN && s->local_port == port)
+            return s;
+    }
+    return NULL;
+}
+
+static struct tcp_socket *alloc_socket(void)
+{
+    for (size_t i = 0; i < TCP_MAX_SOCKETS; i++) {
+        if (!sockets[i].used)
+            return &sockets[i];
+    }
+    return NULL;
+}
+
+/* Puffer, die eine wirkliche Verbindung braucht. */
+static bool alloc_buffers(struct tcp_socket *sock)
+{
+    sock->rx = kmalloc(TCP_RX_CAPACITY);
+    sock->ooo = kzalloc(sizeof(struct ooo_segment) * TCP_OOO_SLOTS);
+
+    if (!sock->rx || !sock->ooo) {
+        kfree(sock->rx);
+        kfree(sock->ooo);
+        sock->rx = NULL;
+        sock->ooo = NULL;
+        return false;
+    }
+    return true;
+}
+
+/* Antwort auf ein Segment, zu dem es keinen Steckplatz gibt: ein RST.
+ * Ohne das liefe die Gegenseite in ihre Frist, statt gleich zu wissen,
+ * dass hier niemand zuhoert. */
+static void send_reset(ip_addr_t dst, const struct tcp_header *incoming,
+                       uint16_t payload_length)
+{
+    struct mac_addr next_hop;
+    uint8_t segment[sizeof(struct tcp_header)];
+    struct tcp_header *header = (struct tcp_header *)segment;
+    uint32_t seq = ntohl(incoming->seq);
+    uint32_t consumed = payload_length;
+
+    if (incoming->flags & (FLAG_SYN | FLAG_FIN))
+        consumed++;
+
+    if (!arp_resolve(dst, &next_hop))
+        return;
+
+    memset(header, 0, sizeof(*header));
+    header->src_port = incoming->dst_port;
+    header->dst_port = incoming->src_port;
+
+    /* Bestaetigt die Gegenseite schon etwas, antworten wir mit ihrer
+     * Nummer; sonst bestaetigen wir, was sie geschickt hat. */
+    if (incoming->flags & FLAG_ACK) {
+        header->seq   = incoming->ack;
+        header->flags = FLAG_RST;
+    } else {
+        header->seq   = 0;
+        header->ack   = htonl(seq + consumed);
+        header->flags = FLAG_RST | FLAG_ACK;
+    }
+
+    header->offset = (uint8_t)((sizeof(*header) / 4) << 4);
+    header->checksum = htons(tcp_checksum(g_netif.ip, dst, segment,
+                                          sizeof(*header)));
+
+    net_lock();
+    ip_send_via(&next_hop, dst, IP_PROTO_TCP, segment, sizeof(*header));
+    net_unlock();
+}
+
+/* Nimmt ein SYN an: neuer Steckplatz, SYN mit Bestaetigung zurueck.
+ * Fertig ist die Verbindung erst, wenn die letzte Bestaetigung kommt. */
+static void accept_syn(struct tcp_socket *listener, ip_addr_t src,
+                       uint16_t src_port, uint16_t dst_port,
+                       const struct tcp_header *header)
+{
+    if (listener->backlog_count >= TCP_BACKLOG)
+        return;                 /* Warteschlange voll - das SYN kommt wieder */
+
+    struct tcp_socket *sock = alloc_socket();
+
+    if (!sock)
+        return;
+
+    memset(sock, 0, sizeof(*sock));
+    if (!alloc_buffers(sock))
+        return;
+
+    sock->used        = true;
+    sock->state       = TCP_SYN_RCVD;
+    sock->remote_ip   = src;
+    sock->remote_port = src_port;
+    sock->local_port  = dst_port;
+    sock->listener    = listener;
+
+    sock->recv_next   = ntohl(header->seq) + 1;
+    sock->peer_window = ntohs(header->window);
+    sock->cwnd        = TCP_MSS;
+    sock->ssthresh    = 64 * TCP_MSS;
+
+    sock->send_next    = (uint32_t)(timer_ms() * 2654435761u) + src_port;
+    sock->send_unacked = sock->send_next;
+    sock->last_progress_ms = timer_ms();
+
+    if (!send_segment(sock, sock->send_next, FLAG_SYN | FLAG_ACK, NULL, 0)) {
+        kfree(sock->rx);
+        kfree(sock->ooo);
+        sock->used = false;
+    }
 }
 
 void tcp_receive_segment(ip_addr_t src, const uint8_t *data, uint16_t length)
@@ -286,10 +426,27 @@ void tcp_receive_segment(ip_addr_t src, const uint8_t *data, uint16_t length)
     if (header_size < sizeof(*header) || header_size > length)
         return;
 
-    struct tcp_socket *sock = find_socket(src, ntohs(header->src_port),
-                                          ntohs(header->dst_port));
-    if (!sock)
+    uint16_t src_port = ntohs(header->src_port);
+    uint16_t dst_port = ntohs(header->dst_port);
+    struct tcp_socket *sock = find_socket(src, src_port, dst_port);
+
+    if (!sock) {
+        struct tcp_socket *listener = find_listener(dst_port);
+
+        /* Ein SYN an einen Port, auf dem jemand zuhoert: Der Handschlag
+         * bekommt einen eigenen Steckplatz. */
+        if (listener && (header->flags & FLAG_SYN) &&
+            !(header->flags & FLAG_ACK)) {
+            accept_syn(listener, src, src_port, dst_port, header);
+            return;
+        }
+
+        /* Sonst ist hier niemand. Ein RST spart der Gegenseite das
+         * Warten - nur auf ein RST antwortet man nicht mit einem RST. */
+        if (!(header->flags & FLAG_RST))
+            send_reset(src, header, (uint16_t)(length - header_size));
         return;
+    }
 
     uint32_t seq = ntohl(header->seq);
     uint32_t ack = ntohl(header->ack);
@@ -299,6 +456,36 @@ void tcp_receive_segment(ip_addr_t src, const uint8_t *data, uint16_t length)
     if (header->flags & FLAG_RST) {
         sock->reset = true;
         sock->state = TCP_CLOSED;
+        return;
+    }
+
+    if (sock->state == TCP_SYN_RCVD) {
+        /* Noch einmal dasselbe SYN? Dann ging unsere Antwort verloren. */
+        if ((header->flags & FLAG_SYN) && !(header->flags & FLAG_ACK)) {
+            send_segment(sock, sock->send_unacked, FLAG_SYN | FLAG_ACK,
+                         NULL, 0);
+            return;
+        }
+
+        if ((header->flags & FLAG_ACK) && ack == sock->send_unacked + 1) {
+            sock->send_unacked = ack;
+            sock->send_next    = ack;
+            sock->peer_window  = ntohs(header->window);
+            sock->state        = TCP_ESTABLISHED;
+            sock->last_progress_ms = timer_ms();
+
+            /* Ab jetzt kann der Zuhoerer sie abholen. */
+            if (sock->listener &&
+                sock->listener->backlog_count < TCP_BACKLOG) {
+                sock->listener->backlog[sock->listener->backlog_count++] = sock;
+            }
+
+            /* Manche Gegenstellen haengen die ersten Daten gleich an. */
+            if (payload_length > 0 && seq == sock->recv_next) {
+                deliver(sock, payload, payload_length);
+                send_segment(sock, sock->send_next, FLAG_ACK, NULL, 0);
+            }
+        }
         return;
     }
 
@@ -375,25 +562,14 @@ struct tcp_socket *tcp_connect(ip_addr_t dst, uint16_t port, uint32_t timeout_ms
     if (!net_ready())
         return NULL;
 
-    struct tcp_socket *sock = NULL;
-    for (size_t i = 0; i < TCP_MAX_SOCKETS; i++) {
-        if (!sockets[i].used) {
-            sock = &sockets[i];
-            break;
-        }
-    }
+    struct tcp_socket *sock = alloc_socket();
+
     if (!sock)
         return NULL;
 
     memset(sock, 0, sizeof(*sock));
-    sock->rx = kmalloc(TCP_RX_CAPACITY);
-    sock->ooo = kzalloc(sizeof(struct ooo_segment) * TCP_OOO_SLOTS);
-
-    if (!sock->rx || !sock->ooo) {
-        kfree(sock->rx);
-        kfree(sock->ooo);
+    if (!alloc_buffers(sock))
         return NULL;
-    }
 
     sock->used        = true;
     sock->state       = TCP_SYN_SENT;
@@ -440,6 +616,65 @@ struct tcp_socket *tcp_connect(ip_addr_t dst, uint16_t port, uint32_t timeout_ms
     kfree(sock->ooo);
     sock->used = false;
     return NULL;
+}
+
+/* --- Zuhoeren -------------------------------------------------------- */
+
+struct tcp_socket *tcp_listen(uint16_t port)
+{
+    if (port == 0)
+        return NULL;
+    if (find_listener(port))
+        return NULL;            /* der Port ist schon vergeben */
+
+    struct tcp_socket *sock = alloc_socket();
+
+    if (!sock)
+        return NULL;
+
+    /* Ein Zuhoerer braucht weder Empfangspuffer noch Ablage fuer
+     * verfruehte Segmente - er nimmt selbst nie Daten entgegen. */
+    memset(sock, 0, sizeof(*sock));
+    sock->used       = true;
+    sock->state      = TCP_LISTEN;
+    sock->local_port = port;
+    return sock;
+}
+
+struct tcp_socket *tcp_accept(struct tcp_socket *listener, uint32_t timeout_ms)
+{
+    if (!listener || !listener->used || listener->state != TCP_LISTEN)
+        return NULL;
+
+    uint64_t deadline = timer_ms() + timeout_ms;
+
+    for (;;) {
+        if (listener->backlog_count > 0) {
+            struct tcp_socket *sock = listener->backlog[0];
+
+            for (uint32_t i = 1; i < listener->backlog_count; i++)
+                listener->backlog[i - 1] = listener->backlog[i];
+            listener->backlog_count--;
+
+            sock->listener = NULL;
+            return sock;
+        }
+
+        if (timer_ms() >= deadline)
+            return NULL;
+
+        net_idle();
+    }
+}
+
+uint16_t tcp_local_port(const struct tcp_socket *sock)
+{
+    return sock ? sock->local_port : 0;
+}
+
+ip_addr_t tcp_remote_ip(const struct tcp_socket *sock)
+{
+    return sock ? sock->remote_ip : 0;
 }
 
 /* --- Senden ---------------------------------------------------------- */
@@ -575,6 +810,37 @@ void tcp_close(struct tcp_socket *sock)
 {
     if (!sock || !sock->used)
         return;
+
+    /* Ein Zuhoerer nimmt alles mit, was noch in seiner Warteschlange
+     * steht - sonst blieben halbfertige Verbindungen liegen. */
+    if (sock->state == TCP_LISTEN) {
+        for (uint32_t i = 0; i < sock->backlog_count; i++) {
+            struct tcp_socket *pending = sock->backlog[i];
+
+            pending->listener = NULL;
+            tcp_close(pending);
+        }
+        sock->backlog_count = 0;
+        sock->used = false;
+        sock->state = TCP_CLOSED;
+        return;
+    }
+
+    /* Wird ein halbfertiger Steckplatz geschlossen, muss er aus der
+     * Warteschlange seines Zuhoerers verschwinden. */
+    if (sock->listener) {
+        struct tcp_socket *l = sock->listener;
+
+        for (uint32_t i = 0; i < l->backlog_count; i++) {
+            if (l->backlog[i] != sock)
+                continue;
+            for (uint32_t k = i + 1; k < l->backlog_count; k++)
+                l->backlog[k - 1] = l->backlog[k];
+            l->backlog_count--;
+            break;
+        }
+        sock->listener = NULL;
+    }
 
     if (sock->state == TCP_ESTABLISHED && !sock->reset) {
         send_segment(sock, sock->send_next, FLAG_FIN | FLAG_ACK, NULL, 0);

@@ -170,6 +170,7 @@ mit Knöpfen.
 | `ping <ziel>` | Erreichbarkeit prüfen |
 | `aufloesen <name>` | Namen in eine Adresse wandeln |
 | `holen <adresse> [datei]` | Seite abrufen und wahlweise speichern |
+| `starte server [port] [wurzel]` | Webserver – die Ablage vom Wirtsrechner aus durchsehen |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
 
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
@@ -199,17 +200,18 @@ also so, wie es ein Betriebssystem tut.
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
 | **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
 | **Netzwerk** | Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, HTTP/1.1 |
-| **TCP** | Fenstersteuerung, Umsortierung, langsamer Start, Überlastvermeidung, schnelle Wiederholung |
+| **TCP** | Fenstersteuerung, Umsortierung, langsamer Start, Überlastvermeidung, schnelle Wiederholung; als Client *und* als Server mit Warteschlange, geschlossene Ports antworten mit RST |
 | **Kryptografie** | SHA-256/384/512, HMAC, HKDF, ChaCha20-Poly1305, AES-128/256-GCM, X25519, RSA, ECDSA P-256 |
 | **TLS** | TLS 1.3 als Client, X.509-Ketten gegen 152 eingebaute Wurzelzertifikate |
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
 | **Kerne** | Alle Kerne des Rechners werden gestartet; eigene GDT, TSS und Zeitgeber je Kern, gemeinsame Daten unter Warteschlangensperren |
-| **Ring 3** | Eigene Fenster und TCP-Verbindungen über Systemaufrufe – ein Benutzerprogramm kann zeichnen und ins Netz |
+| **Ring 3** | Eigene Fenster und TCP-Verbindungen über Systemaufrufe – ein Benutzerprogramm kann zeichnen, ins Netz und selbst zuhören |
+| **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und ausliefert |
 | **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername und Hintergrund in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, neun Ring-3-Programme |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, zehn Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 

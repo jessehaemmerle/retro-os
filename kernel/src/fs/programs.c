@@ -21,6 +21,7 @@ PROGRAM(absturz);
 PROGRAM(schutz);
 PROGRAM(uhr);
 PROGRAM(abrufen);
+PROGRAM(server);
 
 #define ENTRY(name, beschreibung)                                \
     { #name ".elf", _binary_##name##_elf_start,                  \
@@ -41,6 +42,7 @@ static const struct {
     ENTRY(schutz,    "prueft die Ausfuehrsperre"),
     ENTRY(uhr,       "eine Uhr mit eigenem Fenster"),
     ENTRY(abrufen,   "holt eine Seite aus dem Netz"),
+    ENTRY(server,    "liefert die Ablage im Netz aus"),
 };
 
 void programs_install(struct fs_node *directory)

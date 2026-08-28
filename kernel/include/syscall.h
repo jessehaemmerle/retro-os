@@ -36,6 +36,8 @@ enum {
     SYS_SEND      = 19,  /* (verbindung, puffer, laenge)     */
     SYS_RECV      = 20,  /* (verbindung, puffer, laenge, ms) */
     SYS_DISCONNECT = 21, /* (verbindung)                     */
+    SYS_LISTEN    = 22,  /* (port) -> Zuhoerer                */
+    SYS_ACCEPT    = 23,  /* (zuhoerer, wartezeit) -> Verbindung */
 
     SYS_COUNT
 };

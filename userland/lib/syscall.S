@@ -44,5 +44,7 @@ DEFCALL net_connect, 18
 DEFCALL net_send,    19
 DEFCALL sys_net_recv, 20
 DEFCALL net_close,   21
+DEFCALL net_listen,  22
+DEFCALL sys_net_accept, 23
 
 .section .note.GNU-stack,"",@progbits

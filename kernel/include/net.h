@@ -142,6 +142,18 @@ bool dns_resolve(const char *name, ip_addr_t *out);
 struct tcp_socket;
 
 struct tcp_socket *tcp_connect(ip_addr_t dst, uint16_t port, uint32_t timeout_ms);
+
+/* Nimmt einen Port in Beschlag. Der zurueckgegebene Steckplatz traegt
+ * keine Daten - er sammelt nur ankommende Verbindungen ein. */
+struct tcp_socket *tcp_listen(uint16_t port);
+
+/* Holt die naechste fertige Verbindung ab; NULL, wenn in der Zeit keine
+ * kam. Die zurueckgegebene gehoert dem Aufrufer und will geschlossen
+ * werden. */
+struct tcp_socket *tcp_accept(struct tcp_socket *listener, uint32_t timeout_ms);
+
+uint16_t  tcp_local_port(const struct tcp_socket *sock);
+ip_addr_t tcp_remote_ip(const struct tcp_socket *sock);
 int  tcp_send(struct tcp_socket *sock, const void *data, uint32_t length);
 /* Liest, bis nichts mehr kommt oder die Zeit abgelaufen ist. */
 int  tcp_receive(struct tcp_socket *sock, void *buffer, uint32_t capacity,

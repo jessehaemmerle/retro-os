@@ -406,6 +406,64 @@ static int64_t do_recv(struct process *proc, int32_t handle, uint64_t ptr,
     return got;
 }
 
+/* Ein freier Platz in der Steckplatzliste des Programms. */
+static int free_socket_slot(struct process *proc)
+{
+    for (int i = 0; i < PROCESS_SOCKETS_MAX; i++) {
+        if (!proc->sockets[i])
+            return i;
+    }
+    return -1;
+}
+
+static int64_t do_listen(struct process *proc, uint16_t port)
+{
+    if (!net_ready())
+        return SYS_ERR_NOENT;
+
+    int slot = free_socket_slot(proc);
+
+    if (slot < 0)
+        return SYS_ERR_INVAL;
+
+    /* Die kleinen Ports gehoeren dem System; ein Benutzerprogramm
+     * bekommt sie nicht. Rechte gibt es hier sonst keine, und ohne
+     * diese Grenze koennte jedes Programm den Platz eines Dienstes
+     * belegen. */
+    if (port < 1024)
+        return SYS_ERR_INVAL;
+
+    struct tcp_socket *sock = tcp_listen(port);
+
+    if (!sock)
+        return SYS_ERR_INVAL;
+
+    proc->sockets[slot] = sock;
+    return slot;
+}
+
+static int64_t do_accept(struct process *proc, int32_t handle,
+                         uint32_t timeout_ms)
+{
+    struct tcp_socket *listener = socket_of(proc, handle);
+
+    if (!listener)
+        return SYS_ERR_BADFD;
+
+    int slot = free_socket_slot(proc);
+
+    if (slot < 0)
+        return SYS_ERR_INVAL;
+
+    struct tcp_socket *sock = tcp_accept(listener, timeout_ms);
+
+    if (!sock)
+        return SYS_ERR_NOENT;      /* in der Zeit kam keine */
+
+    proc->sockets[slot] = sock;
+    return slot;
+}
+
 static int64_t do_disconnect(struct process *proc, int32_t handle)
 {
     struct tcp_socket *sock = socket_of(proc, handle);
@@ -572,6 +630,14 @@ void syscall_dispatch(struct syscall_frame *frame)
 
     case SYS_DISCONNECT:
         result = do_disconnect(proc, (int32_t)a1);
+        break;
+
+    case SYS_LISTEN:
+        result = do_listen(proc, (uint16_t)a1);
+        break;
+
+    case SYS_ACCEPT:
+        result = do_accept(proc, (int32_t)a1, (uint32_t)a2);
         break;
 
     default:
