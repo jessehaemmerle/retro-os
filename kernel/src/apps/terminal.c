@@ -12,12 +12,14 @@
 #include "net.h"
 #include "clipboard.h"
 #include "config.h"
+#include "crypto.h"
 #include "lock.h"
 #include "audit.h"
 #include "firewall.h"
 #include "log.h"
 #include "perm.h"
 #include "sandbox.h"
+#include "shellutil.h"
 #include "tasks.h"
 #include "user.h"
 #include "nic.h"
@@ -42,6 +44,7 @@ int kvsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 #define TERM_COLS      120
 #define TERM_LINES     300
 #define TERM_INPUT_MAX 200
+#define TERM_HISTORY   20
 #define TERM_LINE_H    16
 #define TERM_PAD       6
 
@@ -61,6 +64,16 @@ struct term_state {
     bool    caret_on;
 
     struct fs_node *cwd;
+
+    /* Die zuletzt eingegebenen Zeilen. Sie liegen als Feld und nicht als
+     * Ring: Bei zwanzig Zeilen ist das Nachrutschen billiger als das
+     * Rechnen mit zwei Zeigern, und "verlauf" kann sie einfach von
+     * vorn nach hinten ausgeben. */
+    char    history[TERM_HISTORY][TERM_INPUT_MAX + 1];
+    size_t  history_count;
+    /* Wo die Pfeiltasten gerade stehen; gleich der Anzahl heisst
+     * "in der frischen Zeile". */
+    size_t  history_pos;
 
     /* Laeuft gerade ein Benutzerprogramm in diesem Fenster? */
     struct process *running;
@@ -130,53 +143,6 @@ static int split(char *line, char *argv[], int max)
             line++;
     }
     return argc;
-}
-
-static void cmd_help(struct term_state *st)
-{
-    term_line(st, C_HIGHLIGHT, "Verfuegbare Befehle:");
-    term_line(st, C_NORMAL, "  hilfe            diese Uebersicht");
-    term_line(st, C_NORMAL, "  ls [-l] [pfad]   Ordnerinhalt anzeigen (-l mit Rechten)");
-    term_line(st, C_NORMAL, "  cd <pfad>        Ordner wechseln");
-    term_line(st, C_NORMAL, "  pwd              aktuellen Pfad anzeigen");
-    term_line(st, C_NORMAL, "  cat <datei>      Datei ausgeben");
-    term_line(st, C_NORMAL, "  mkdir <name>     Ordner anlegen");
-    term_line(st, C_NORMAL, "  touch <name>     leere Datei anlegen");
-    term_line(st, C_NORMAL, "  schreib <datei> <text>   Text anhaengen");
-    term_line(st, C_NORMAL, "  rm <name>        Datei oder Ordner loeschen");
-    term_line(st, C_NORMAL, "  edit <datei>     Datei im Editor oeffnen");
-    term_line(st, C_NORMAL, "  echo <text>      Text ausgeben");
-    term_line(st, C_NORMAL, "  speicher         Speicherbelegung");
-    term_line(st, C_NORMAL, "  schrift [name]   Schriftarten zeigen oder waehlen");
-    term_line(st, C_NORMAL, "  wer              angemeldeter Benutzer und Gruppen");
-    term_line(st, C_NORMAL, "  gruppen          Gruppen und ihre Mitglieder");
-    term_line(st, C_NORMAL, "  benutzer [...]   Benutzer zeigen und verwalten");
-    term_line(st, C_NORMAL, "  rechte <datei> [modus]   Rechte zeigen oder setzen");
-    term_line(st, C_NORMAL, "  besitzer <datei> [name]  Eigentuemer zeigen oder setzen");
-    term_line(st, C_NORMAL, "  sperren          Bildschirm sperren");
-    term_line(st, C_NORMAL, "  protokoll [...]  Systemprotokoll zeigen, sichern, leeren");
-    term_line(st, C_NORMAL, "  aufgaben [...]   Aufgabenliste zeigen und pflegen");
-    term_line(st, C_NORMAL, "  firewall [...]   Paketfilter zeigen und regeln");
-    term_line(st, C_NORMAL, "  pruefspur [...]  Sicherheitsereignisse ansehen");
-    term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
-    term_line(st, C_NORMAL, "  starte <programm> [text]  Programm in Ring 3 starten");
-    term_line(st, C_NORMAL, "  kaefig [profil <programm>]  Programm eingesperrt starten");
-    term_line(st, C_NORMAL, "  programme        mitgelieferte Programme zeigen");
-    term_line(st, C_NORMAL, "  laufzeit         Zeit seit dem Start");
-    term_line(st, C_NORMAL, "  datum            Datum und Uhrzeit");
-    term_line(st, C_NORMAL, "  version          Systemversion");
-    term_line(st, C_NORMAL, "  netz             Netzwerkeinstellungen");
-    term_line(st, C_NORMAL, "  ping <ziel>      Erreichbarkeit pruefen");
-    term_line(st, C_NORMAL, "  aufloesen <name> Namen in eine Adresse wandeln");
-    term_line(st, C_NORMAL, "  holen <adresse> [datei]  Seite abrufen/speichern");
-    term_line(st, C_NORMAL, "  prozesse                 laufende Programme mit Verwandtschaft");
-    term_line(st, C_NORMAL, "  papierkorb [zurueck <n>|leeren]  Geloeschtes ansehen und holen");
-    term_line(st, C_NORMAL, "  installieren [ziel]      RetroOS auf eine Platte bringen");
-    term_line(st, C_NORMAL, "  platte           Datentraeger anzeigen");
-    term_line(st, C_NORMAL, "  usb              Geraete am USB-Bus anzeigen");
-    term_line(st, C_NORMAL, "  formatieren      Datentraeger neu formatieren");
-    term_line(st, C_NORMAL, "  leeren           Bildschirm loeschen");
-    term_line(st, C_NORMAL, "  neustart         Rechner neu starten");
 }
 
 static void cmd_ls(struct term_state *st, const char *arg, bool detail)
@@ -888,6 +854,983 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
     term_printf(st, C_NORMAL, "");
     term_printf(st, C_NORMAL, "%u Eintraege, %s - \"papierkorb leeren\" "
                 "raeumt auf", (unsigned)count, total);
+}
+
+/* --- Dateien kopieren, verschieben, durchsuchen --------------------- */
+
+/* Ein Pfad, wie ihn der Benutzer eingetippt hat, als vollstaendiger
+ * Pfad - fuer Meldungen und fuer den Vergleich zweier Ziele. */
+static void full_path(struct term_state *st, const char *given, char *out,
+                      size_t size)
+{
+    struct fs_node *node = fs_lookup(st->cwd, given);
+
+    if (node) {
+        fs_path(node, out, size);
+        return;
+    }
+    strlcpy(out, given, size);
+}
+
+/* Kopiert einen Eintrag rekursiv. Der Zielordner muss es schon geben. */
+static bool copy_entry(struct fs_node *src, struct fs_node *dest_dir,
+                       const char *name)
+{
+    if (src->type == FS_DIR) {
+        struct fs_node *copy = fs_create(dest_dir, name, FS_DIR);
+
+        if (!copy)
+            return false;
+
+        struct fs_node *entries[128];
+        size_t n = fs_list(src, entries, ARRAY_LEN(entries));
+
+        for (size_t i = 0; i < n; i++)
+            if (!copy_entry(entries[i], copy, entries[i]->name))
+                return false;
+        return true;
+    }
+
+    if (!fs_load(src))
+        return false;
+
+    struct fs_node *copy = fs_create(dest_dir, name, FS_FILE);
+
+    if (!copy)
+        return false;
+    if (!src->size)
+        return true;
+    return fs_write(copy, src->data, src->size);
+}
+
+static void cmd_copy(struct term_state *st, const char *from, const char *to)
+{
+    if (!from || !to) {
+        term_line(st, C_ERROR, "kopiere <quelle> <ziel>");
+        return;
+    }
+
+    struct fs_node *src = fs_lookup(st->cwd, from);
+
+    if (!src) {
+        term_printf(st, C_ERROR, "kopiere: \"%s\" nicht gefunden", from);
+        return;
+    }
+
+    /* Ist das Ziel ein Ordner, landet die Kopie darin - so erwartet man
+     * es, und so muss niemand den Namen zweimal tippen. */
+    struct fs_node *target = fs_lookup(st->cwd, to);
+    struct fs_node *dir = NULL;
+    char name[FS_NAME_MAX + 1];
+
+    if (target && target->type == FS_DIR) {
+        dir = target;
+        strlcpy(name, src->name, sizeof(name));
+    } else {
+        char parent[FS_PATH_MAX];
+
+        strlcpy(parent, to, sizeof(parent));
+
+        char *cut = strrchr(parent, '/');
+
+        if (cut) {
+            *cut = '\0';
+            strlcpy(name, cut + 1, sizeof(name));
+            dir = fs_lookup(st->cwd, parent[0] ? parent : "/");
+        } else {
+            strlcpy(name, to, sizeof(name));
+            dir = st->cwd;
+        }
+    }
+
+    if (!dir || dir->type != FS_DIR) {
+        term_printf(st, C_ERROR, "kopiere: \"%s\" ist kein Ordner", to);
+        return;
+    }
+    if (fs_find_child(dir, name)) {
+        term_printf(st, C_ERROR, "kopiere: \"%s\" gibt es dort schon", name);
+        return;
+    }
+
+    /* Ein Ordner in sich selbst waere eine Kopie ohne Ende. */
+    for (struct fs_node *p = dir; p; p = p->parent) {
+        if (p != src)
+            continue;
+        term_line(st, C_ERROR, "kopiere: das waere eine Kopie in sich selbst");
+        return;
+    }
+
+    if (!copy_entry(src, dir, name)) {
+        term_line(st, C_ERROR, "kopiere: es ging nicht - fehlen die Rechte?");
+        return;
+    }
+
+    char text[FS_PATH_MAX];
+
+    full_path(st, to, text, sizeof(text));
+    term_printf(st, C_NORMAL, "%s kopiert nach %s", src->name, text);
+}
+
+static void cmd_move(struct term_state *st, const char *from, const char *to)
+{
+    if (!from || !to) {
+        term_line(st, C_ERROR, "verschiebe <quelle> <ziel>");
+        return;
+    }
+
+    struct fs_node *src = fs_lookup(st->cwd, from);
+
+    if (!src) {
+        term_printf(st, C_ERROR, "verschiebe: \"%s\" nicht gefunden", from);
+        return;
+    }
+
+    struct fs_node *target = fs_lookup(st->cwd, to);
+
+    /* Zwei Faelle: In einen Ordner hinein, oder unter neuem Namen. */
+    if (target && target->type == FS_DIR) {
+        if (fs_find_child(target, src->name)) {
+            term_printf(st, C_ERROR, "verschiebe: \"%s\" gibt es dort schon",
+                        src->name);
+            return;
+        }
+
+        /* Ueber die Dateisystemgrenze hinweg geht nur kopieren und
+         * loeschen - ein Cluster auf der Platte laesst sich nicht in
+         * den Arbeitsspeicher umhaengen. */
+        if (src->backend != target->backend) {
+            if (!copy_entry(src, target, src->name)) {
+                term_line(st, C_ERROR, "verschiebe: das Kopieren scheiterte");
+                return;
+            }
+            if (!fs_remove(src)) {
+                term_line(st, C_ERROR,
+                          "verschiebe: kopiert, aber das Original blieb");
+                return;
+            }
+        } else if (!fs_move(src, target)) {
+            term_line(st, C_ERROR, "verschiebe: es ging nicht");
+            return;
+        }
+        term_printf(st, C_NORMAL, "verschoben nach %s", to);
+        return;
+    }
+
+    if (target) {
+        term_printf(st, C_ERROR, "verschiebe: \"%s\" gibt es schon", to);
+        return;
+    }
+
+    /* Ein neuer Name im selben Ordner ist ein Umbenennen. */
+    if (!strchr(to, '/')) {
+        if (!fs_rename(src, to)) {
+            term_line(st, C_ERROR, "verschiebe: das Umbenennen ging nicht");
+            return;
+        }
+        term_printf(st, C_NORMAL, "umbenannt in %s", to);
+        return;
+    }
+
+    term_printf(st, C_ERROR, "verschiebe: \"%s\" gibt es nicht", to);
+}
+
+/* --- Text ansehen --------------------------------------------------- */
+
+/* Laedt eine Datei und gibt ihren Inhalt samt Laenge zurueck. */
+static const char *read_file(struct term_state *st, const char *path,
+                             const char *who, size_t *length)
+{
+    struct fs_node *f = path ? fs_lookup(st->cwd, path) : NULL;
+
+    if (!f) {
+        term_printf(st, C_ERROR, "%s: \"%s\" nicht gefunden", who,
+                    path ? path : "");
+        return NULL;
+    }
+    if (f->type != FS_FILE) {
+        term_printf(st, C_ERROR, "%s: \"%s\" ist ein Ordner", who, path);
+        return NULL;
+    }
+    if (!fs_load(f)) {
+        term_printf(st, C_ERROR, "%s: \"%s\" laesst sich nicht lesen", who,
+                    path);
+        return NULL;
+    }
+
+    *length = f->size;
+    return (const char *)(f->data ? f->data : (const uint8_t *)"");
+}
+
+/* Kopiert die n-te Zeile heraus. Liefert false hinter der letzten. */
+static bool line_at(const char *text, size_t length, size_t index,
+                    char *out, size_t size)
+{
+    size_t start = 0;
+    size_t line = 0;
+
+    for (size_t i = 0; i <= length; i++) {
+        if (i < length && text[i] != '\n')
+            continue;
+        if (line == index) {
+            size_t take = MIN(i - start, size - 1);
+
+            memcpy(out, text + start, take);
+            out[take] = '\0';
+            return true;
+        }
+        line++;
+        start = i + 1;
+        if (i >= length)
+            break;
+    }
+    return false;
+}
+
+static size_t count_lines(const char *text, size_t length)
+{
+    size_t n = 0;
+
+    for (size_t i = 0; i < length; i++)
+        if (text[i] == '\n')
+            n++;
+    /* Eine letzte Zeile ohne Umbruch zaehlt mit. */
+    if (length && text[length - 1] != '\n')
+        n++;
+    return n;
+}
+
+/* Zahl aus "-20" oder "20"; 0 heisst "nichts angegeben". */
+static size_t number_arg(const char *text)
+{
+    size_t value = 0;
+
+    if (!text)
+        return 0;
+    if (*text == '-')
+        text++;
+    while (*text >= '0' && *text <= '9')
+        value = value * 10 + (size_t)(*text++ - '0');
+    return *text ? 0 : value;
+}
+
+static void cmd_head_tail(struct term_state *st, const char *a1,
+                          const char *a2, bool tail)
+{
+    const char *who = tail ? "ende" : "kopf";
+    size_t count = number_arg(a1);
+    const char *path = count ? a2 : a1;
+    size_t length = 0;
+
+    if (!count)
+        count = 10;
+
+    const char *text = read_file(st, path, who, &length);
+
+    if (!text)
+        return;
+
+    size_t total = count_lines(text, length);
+    size_t first = tail && total > count ? total - count : 0;
+    size_t last = tail ? total : MIN(count, total);
+    char line[TERM_COLS];
+
+    for (size_t i = first; i < last; i++)
+        if (line_at(text, length, i, line, sizeof(line)))
+            term_line(st, C_NORMAL, line);
+
+    term_printf(st, C_HIGHLIGHT, "  %u von %u Zeilen",
+                (unsigned)(last - first), (unsigned)total);
+}
+
+static void cmd_count(struct term_state *st, const char *path)
+{
+    size_t length = 0;
+    const char *text = read_file(st, path, "zaehle", &length);
+
+    if (!text)
+        return;
+
+    size_t words = 0;
+    bool inside = false;
+
+    for (size_t i = 0; i < length; i++) {
+        bool space = text[i] == ' ' || text[i] == '\t' || text[i] == '\n' ||
+                     text[i] == '\r';
+
+        if (!space && !inside)
+            words++;
+        inside = !space;
+    }
+
+    term_printf(st, C_NORMAL, "%u Zeilen, %u Woerter, %u Zeichen  %s",
+                (unsigned)count_lines(text, length), (unsigned)words,
+                (unsigned)length, path);
+}
+
+static void cmd_sort(struct term_state *st, const char *path)
+{
+    size_t length = 0;
+    const char *text = read_file(st, path, "sortiere", &length);
+
+    if (!text)
+        return;
+
+    size_t total = count_lines(text, length);
+
+    if (total > 200) {
+        term_line(st, C_ERROR, "sortiere: hoechstens 200 Zeilen");
+        return;
+    }
+
+    /* Die Zeilen werden einmal herauskopiert und dann nur noch die
+     * Zeiger getauscht - so wandert kein Text hin und her. */
+    char (*lines)[TERM_COLS] = kmalloc(total * TERM_COLS);
+
+    if (!lines) {
+        term_line(st, C_ERROR, "sortiere: kein Speicher");
+        return;
+    }
+
+    for (size_t i = 0; i < total; i++)
+        if (!line_at(text, length, i, lines[i], TERM_COLS))
+            lines[i][0] = '\0';
+
+    for (size_t i = 1; i < total; i++) {
+        char key[TERM_COLS];
+        size_t k = i;
+
+        strlcpy(key, lines[i], sizeof(key));
+        while (k > 0 && strcasecmp(lines[k - 1], key) > 0) {
+            memcpy(lines[k], lines[k - 1], TERM_COLS);
+            k--;
+        }
+        memcpy(lines[k], key, TERM_COLS);
+    }
+
+    for (size_t i = 0; i < total; i++)
+        term_line(st, C_NORMAL, lines[i]);
+    term_printf(st, C_HIGHLIGHT, "  %u Zeilen", (unsigned)total);
+    kfree(lines);
+}
+
+static void cmd_diff(struct term_state *st, const char *a, const char *b)
+{
+    size_t la = 0, lb = 0;
+    const char *ta = read_file(st, a, "vergleiche", &la);
+
+    if (!ta)
+        return;
+
+    /* Der erste Inhalt muss herauskopiert werden: Das zweite fs_load
+     * kann den Zeiger des ersten ungueltig machen. */
+    char *copy = kmalloc(la + 1);
+
+    if (!copy) {
+        term_line(st, C_ERROR, "vergleiche: kein Speicher");
+        return;
+    }
+    memcpy(copy, ta, la);
+    copy[la] = '\0';
+
+    const char *tb = read_file(st, b, "vergleiche", &lb);
+
+    if (!tb) {
+        kfree(copy);
+        return;
+    }
+
+    size_t na = count_lines(copy, la);
+    size_t nb = count_lines(tb, lb);
+    char linea[TERM_COLS], lineb[TERM_COLS];
+    size_t shown = 0;
+
+    for (size_t i = 0; i < MAX(na, nb); i++) {
+        bool ga = line_at(copy, la, i, linea, sizeof(linea));
+        bool gb = line_at(tb, lb, i, lineb, sizeof(lineb));
+
+        if (ga && gb && strcmp(linea, lineb) == 0)
+            continue;
+
+        term_printf(st, C_ERROR, "Zeile %u:", (unsigned)(i + 1));
+        term_printf(st, C_NORMAL, "  < %s", ga ? linea : "(fehlt)");
+        term_printf(st, C_NORMAL, "  > %s", gb ? lineb : "(fehlt)");
+
+        if (++shown >= 10) {
+            term_line(st, C_HIGHLIGHT, "  ... weitere Unterschiede");
+            break;
+        }
+    }
+
+    if (!shown)
+        term_line(st, C_NORMAL, "Die Dateien sind gleich.");
+    kfree(copy);
+}
+
+static void cmd_hex(struct term_state *st, const char *path, const char *count)
+{
+    size_t length = 0;
+    const char *text = read_file(st, path, "hex", &length);
+
+    if (!text)
+        return;
+
+    size_t want = number_arg(count);
+
+    if (!want)
+        want = 256;
+    if (want > length)
+        want = length;
+
+    for (size_t offset = 0; offset < want; offset += 16) {
+        char line[TERM_COLS];
+        size_t used = 0;
+        size_t take = MIN((size_t)16, want - offset);
+
+        ksnprintf(line, sizeof(line), "%08x  ", (unsigned)offset);
+        used = strlen(line);
+
+        for (size_t i = 0; i < 16; i++) {
+            if (i < take)
+                ksnprintf(line + used, sizeof(line) - used, "%02x ",
+                          (unsigned char)text[offset + i]);
+            else
+                ksnprintf(line + used, sizeof(line) - used, "   ");
+            used += strlen(line + used);
+            if (i == 7) {
+                ksnprintf(line + used, sizeof(line) - used, " ");
+                used += 1;
+            }
+        }
+
+        ksnprintf(line + used, sizeof(line) - used, " |");
+        used += 2;
+
+        for (size_t i = 0; i < take && used + 2 < sizeof(line); i++) {
+            unsigned char c = (unsigned char)text[offset + i];
+
+            line[used++] = (c >= 32 && c < 127) ? (char)c : '.';
+        }
+        line[used++] = '|';
+        line[used] = '\0';
+        term_line(st, C_NORMAL, line);
+    }
+
+    term_printf(st, C_HIGHLIGHT, "  %u von %u Bytes", (unsigned)want,
+                (unsigned)length);
+}
+
+/* --- Suchen, Baum, Groesse, Auskunft -------------------------------- */
+
+/* Ein Zaehler, den die rekursiven Laeufe unten mitfuehren - so hoeren
+ * sie auf, bevor sie die Konsole vollschreiben. */
+struct walk_limit {
+    size_t found;
+    size_t max;
+};
+
+static void grep_file(struct term_state *st, struct fs_node *file,
+                      const char *needle, struct walk_limit *limit)
+{
+    if (limit->found >= limit->max || !fs_is_text(file) || !fs_load(file) ||
+        !file->data)
+        return;
+
+    const char *text = (const char *)file->data;
+    size_t length = file->size;
+    size_t total = count_lines(text, length);
+    char line[TERM_COLS];
+    char path[FS_PATH_MAX];
+
+    fs_path(file, path, sizeof(path));
+
+    size_t needle_len = strlen(needle);
+
+    for (size_t i = 0; i < total && limit->found < limit->max; i++) {
+        if (!line_at(text, length, i, line, sizeof(line)))
+            break;
+
+        bool hit = false;
+
+        for (const char *p = line; *p && !hit; p++)
+            if (strncasecmp(p, needle, needle_len) == 0)
+                hit = true;
+        if (!hit)
+            continue;
+
+        term_printf(st, C_NORMAL, "%s:%u: %s", path, (unsigned)(i + 1), line);
+        limit->found++;
+    }
+}
+
+static void grep_walk(struct term_state *st, struct fs_node *node,
+                      const char *needle, struct walk_limit *limit)
+{
+    if (limit->found >= limit->max)
+        return;
+
+    if (node->type == FS_FILE) {
+        grep_file(st, node, needle, limit);
+        return;
+    }
+
+    struct fs_node *entries[128];
+    size_t n = fs_list(node, entries, ARRAY_LEN(entries));
+
+    for (size_t i = 0; i < n && limit->found < limit->max; i++)
+        grep_walk(st, entries[i], needle, limit);
+}
+
+static void cmd_grep(struct term_state *st, const char *needle,
+                     const char *where)
+{
+    if (!needle) {
+        term_line(st, C_ERROR, "suche <text> [pfad]");
+        return;
+    }
+
+    struct fs_node *start = where ? fs_lookup(st->cwd, where) : st->cwd;
+
+    if (!start) {
+        term_printf(st, C_ERROR, "suche: \"%s\" nicht gefunden", where);
+        return;
+    }
+
+    struct walk_limit limit = { 0, 100 };
+
+    grep_walk(st, start, needle, &limit);
+
+    if (!limit.found)
+        term_printf(st, C_NORMAL, "\"%s\" kommt darin nicht vor.", needle);
+    else
+        term_printf(st, C_HIGHLIGHT, "  %u Fundstellen%s",
+                    (unsigned)limit.found,
+                    limit.found >= limit.max ? " (abgebrochen)" : "");
+}
+
+static void find_walk(struct term_state *st, struct fs_node *node,
+                      const char *pattern, struct walk_limit *limit)
+{
+    if (limit->found >= limit->max)
+        return;
+
+    if (sh_match(pattern, node->name)) {
+        char path[FS_PATH_MAX];
+        char size[24];
+
+        fs_path(node, path, sizeof(path));
+        if (node->type == FS_DIR)
+            strlcpy(size, "<ORDNER>", sizeof(size));
+        else
+            fs_format_size(size, sizeof(size), node->size);
+
+        term_printf(st, node->type == FS_DIR ? C_HIGHLIGHT : C_NORMAL,
+                    "  %-52s %10s", path, size);
+        limit->found++;
+    }
+
+    if (node->type != FS_DIR)
+        return;
+
+    struct fs_node *entries[128];
+    size_t n = fs_list(node, entries, ARRAY_LEN(entries));
+
+    for (size_t i = 0; i < n && limit->found < limit->max; i++)
+        find_walk(st, entries[i], pattern, limit);
+}
+
+static void cmd_find(struct term_state *st, const char *a1, const char *a2)
+{
+    /* Mit einem Argument ist es das Muster, mit zweien Pfad und
+     * Muster - so herum, wie man es hinschreibt. */
+    const char *where = a2 ? a1 : NULL;
+    const char *pattern = a2 ? a2 : a1;
+
+    if (!pattern) {
+        term_line(st, C_ERROR, "finde [pfad] <muster>");
+        term_line(st, C_NORMAL, "  z.B.  finde / *.txt");
+        return;
+    }
+
+    struct fs_node *start = where ? fs_lookup(st->cwd, where) : st->cwd;
+
+    if (!start) {
+        term_printf(st, C_ERROR, "finde: \"%s\" nicht gefunden", where);
+        return;
+    }
+
+    struct walk_limit limit = { 0, 200 };
+
+    find_walk(st, start, pattern, &limit);
+
+    if (!limit.found)
+        term_printf(st, C_NORMAL, "Nichts passt auf \"%s\".", pattern);
+    else
+        term_printf(st, C_HIGHLIGHT, "  %u gefunden%s", (unsigned)limit.found,
+                    limit.found >= limit.max ? " (abgebrochen)" : "");
+}
+
+static void tree_walk(struct term_state *st, struct fs_node *dir,
+                      int depth, int max_depth, const char *prefix,
+                      struct walk_limit *limit)
+{
+    if (depth >= max_depth || limit->found >= limit->max)
+        return;
+
+    struct fs_node *entries[128];
+    size_t n = fs_list(dir, entries, ARRAY_LEN(entries));
+
+    for (size_t i = 0; i < n && limit->found < limit->max; i++) {
+        struct fs_node *e = entries[i];
+        bool last = i + 1 == n;
+        char line[TERM_COLS];
+        char next[TERM_COLS];
+
+        ksnprintf(line, sizeof(line), "%s%s%s%s", prefix,
+                  last ? "\\-- " : "|-- ", e->name,
+                  e->type == FS_DIR ? "/" : "");
+        term_line(st, e->type == FS_DIR ? C_HIGHLIGHT : C_NORMAL, line);
+        limit->found++;
+
+        if (e->type != FS_DIR)
+            continue;
+
+        ksnprintf(next, sizeof(next), "%s%s", prefix, last ? "    " : "|   ");
+        tree_walk(st, e, depth + 1, max_depth, next, limit);
+    }
+}
+
+static void cmd_tree(struct term_state *st, const char *where,
+                     const char *depth_text)
+{
+    struct fs_node *dir = where ? fs_lookup(st->cwd, where) : st->cwd;
+
+    if (!dir || dir->type != FS_DIR) {
+        term_printf(st, C_ERROR, "baum: \"%s\" ist kein Ordner",
+                    where ? where : ".");
+        return;
+    }
+
+    size_t depth = number_arg(depth_text);
+    char path[FS_PATH_MAX];
+
+    fs_path(dir, path, sizeof(path));
+    term_line(st, C_HIGHLIGHT, path);
+
+    struct walk_limit limit = { 0, 300 };
+
+    tree_walk(st, dir, 0, depth ? (int)depth : 3, "", &limit);
+    term_printf(st, C_HIGHLIGHT, "  %u Eintraege%s", (unsigned)limit.found,
+                limit.found >= limit.max ? " (abgebrochen)" : "");
+}
+
+static void cmd_du(struct term_state *st, const char *where)
+{
+    struct fs_node *dir = where ? fs_lookup(st->cwd, where) : st->cwd;
+
+    if (!dir) {
+        term_printf(st, C_ERROR, "groesse: \"%s\" nicht gefunden", where);
+        return;
+    }
+
+    char size[24];
+
+    if (dir->type != FS_DIR) {
+        fs_format_size(size, sizeof(size), dir->size);
+        term_printf(st, C_NORMAL, "%10s  %s", size, dir->name);
+        return;
+    }
+
+    struct fs_node *entries[128];
+    size_t n = fs_list(dir, entries, ARRAY_LEN(entries));
+
+    /* Die groessten zuerst - danach sucht, wer nach Platz sucht. */
+    for (size_t i = 1; i < n; i++) {
+        struct fs_node *key = entries[i];
+        size_t bytes = fs_total_size(key);
+        size_t k = i;
+
+        while (k > 0 && fs_total_size(entries[k - 1]) < bytes) {
+            entries[k] = entries[k - 1];
+            k--;
+        }
+        entries[k] = key;
+    }
+
+    for (size_t i = 0; i < n; i++) {
+        fs_format_size(size, sizeof(size), fs_total_size(entries[i]));
+        term_printf(st, entries[i]->type == FS_DIR ? C_HIGHLIGHT : C_NORMAL,
+                    "%10s  %s%s", size, entries[i]->name,
+                    entries[i]->type == FS_DIR ? "/" : "");
+    }
+
+    fs_format_size(size, sizeof(size), fs_total_size(dir));
+    term_printf(st, C_HIGHLIGHT, "%10s  insgesamt in %s", size, dir->name);
+}
+
+static void cmd_stat(struct term_state *st, const char *path)
+{
+    struct fs_node *n = path ? fs_lookup(st->cwd, path) : NULL;
+
+    if (!n) {
+        term_printf(st, C_ERROR, "info: \"%s\" nicht gefunden",
+                    path ? path : "");
+        return;
+    }
+
+    char full[FS_PATH_MAX];
+    char size[24];
+    char mode[11];
+
+    fs_path(n, full, sizeof(full));
+    fs_format_size(size, sizeof(size), fs_total_size(n));
+    perm_mode_text(n->mode, n->type, mode);
+
+    term_printf(st, C_HIGHLIGHT, "%s", full);
+    term_printf(st, C_NORMAL, "  Art       : %s%s",
+                n->type == FS_DIR ? "Ordner" : "Datei",
+                n->readonly ? ", nur lesbar" : "");
+    term_printf(st, C_NORMAL, "  Groesse   : %s%s", size,
+                n->type == FS_DIR ? " mit allem darin" : "");
+    if (n->type == FS_DIR)
+        term_printf(st, C_NORMAL, "  Eintraege : %u",
+                    (unsigned)fs_child_count(n));
+    term_printf(st, C_NORMAL, "  Rechte    : %s (%04o)", mode,
+                (unsigned)n->mode);
+    term_printf(st, C_NORMAL, "  Gehoert   : %s:%s", user_name_of(n->uid),
+                group_name_of(n->gid));
+    term_printf(st, C_NORMAL, "  Geaendert : %02u.%02u.%04u %02u:%02u",
+                n->mtime_day, n->mtime_month, n->mtime_year,
+                n->mtime_hour, n->mtime_min);
+    term_printf(st, C_NORMAL, "  Liegt     : %s",
+                n->backend == FS_BACKEND_FAT ? "auf der Festplatte"
+                                             : "im Arbeitsspeicher");
+}
+
+static void cmd_checksum(struct term_state *st, const char *path)
+{
+    size_t length = 0;
+    const char *text = read_file(st, path, "pruefsumme", &length);
+
+    if (!text)
+        return;
+
+    uint8_t digest[SHA256_SIZE];
+
+    sha256(text, length, digest);
+
+    char hex[SHA256_SIZE * 2 + 1];
+    static const char digits[] = "0123456789abcdef";
+
+    for (size_t i = 0; i < SHA256_SIZE; i++) {
+        hex[i * 2 + 0] = digits[digest[i] >> 4];
+        hex[i * 2 + 1] = digits[digest[i] & 0x0F];
+    }
+    hex[SHA256_SIZE * 2] = '\0';
+
+    term_printf(st, C_NORMAL, "%s", hex);
+    term_printf(st, C_HIGHLIGHT, "  SHA-256 ueber %u Bytes von %s",
+                (unsigned)length, path);
+}
+
+static void cmd_which(struct term_state *st, const char *name)
+{
+    if (!name) {
+        term_line(st, C_ERROR, "wo <name>");
+        return;
+    }
+
+    /* Erst die eingebauten Befehle - sie gehen jedem Programm vor. */
+    const struct sh_command *cmd = sh_command_find(name);
+
+    if (cmd) {
+        term_printf(st, C_HIGHLIGHT, "%s ist ein eingebauter Befehl: %s",
+                    cmd->name, cmd->what);
+        if (cmd->alias)
+            term_printf(st, C_NORMAL, "  Auch als \"%s\"", cmd->alias);
+        return;
+    }
+
+    char full[FS_PATH_MAX];
+
+    if (strchr(name, '/'))
+        strlcpy(full, name, sizeof(full));
+    else if (strchr(name, '.'))
+        ksnprintf(full, sizeof(full), "/Programme/%s", name);
+    else
+        ksnprintf(full, sizeof(full), "/Programme/%s.elf", name);
+
+    struct fs_node *node = fs_lookup(st->cwd, full);
+
+    if (!node) {
+        term_printf(st, C_ERROR, "\"%s\" ist weder Befehl noch Programm",
+                    name);
+        return;
+    }
+
+    char size[24];
+
+    fs_format_size(size, sizeof(size), node->size);
+    term_printf(st, C_NORMAL, "%s  (%s)", full, size);
+}
+
+static void cmd_kill(struct term_state *st, const char *text)
+{
+    size_t pid = number_arg(text);
+
+    if (!pid) {
+        term_line(st, C_ERROR, "beende <nummer>");
+        return;
+    }
+
+    for (size_t i = 0; i < process_count(); i++) {
+        struct process *p = process_at(i);
+
+        if (!p || p->pid != (uint32_t)pid)
+            continue;
+        if (p->finished) {
+            term_printf(st, C_ERROR, "%s laeuft schon nicht mehr.", p->name);
+            return;
+        }
+
+        /* Ein fremdes Programm abzuschiessen ist Sache des Verwalters. */
+        if (p->uid != session_uid() && !session_is_admin()) {
+            term_printf(st, C_ERROR,
+                        "%s gehoert %s - das darf nur ein Verwalter beenden.",
+                        p->name, user_name_of(p->uid));
+            return;
+        }
+
+        char name[32];
+
+        strlcpy(name, p->name, sizeof(name));
+        audit(AUDIT_PROCESS, true, "%s (%u) ueber die Konsole beendet", name,
+              (unsigned)pid);
+        process_kill(p);
+        if (st->running && st->running->pid == (uint32_t)pid)
+            st->running = NULL;
+        term_printf(st, C_NORMAL, "%s beendet.", name);
+        return;
+    }
+
+    term_printf(st, C_ERROR, "Es laeuft kein Programm mit der Nummer %u",
+                (unsigned)pid);
+}
+
+static void cmd_calendar(struct term_state *st, const char *a1, const char *a2)
+{
+    struct datetime now;
+
+    rtc_read(&now);
+
+    size_t month = number_arg(a1);
+    size_t year = number_arg(a2);
+
+    /* Ein einzelnes grosses Argument ist ein Jahr und kein Monat. */
+    if (month > 12 && !year) {
+        year = month;
+        month = now.month;
+    }
+    if (!month)
+        month = now.month;
+    if (!year)
+        year = now.year;
+
+    if (month < 1 || month > 12 || year < 1970 || year > 2999) {
+        term_line(st, C_ERROR, "kalender [monat] [jahr]");
+        return;
+    }
+
+    char text[512];
+
+    sh_calendar((uint16_t)year, (uint8_t)month,
+                (year == now.year && month == now.month) ? now.day : 0,
+                text, sizeof(text));
+
+    char line[TERM_COLS];
+    size_t length = strlen(text);
+
+    for (size_t i = 0; i < count_lines(text, length); i++)
+        if (line_at(text, length, i, line, sizeof(line)))
+            term_line(st, i < 2 ? C_HIGHLIGHT : C_NORMAL, line);
+}
+
+static void cmd_expr(struct term_state *st, const char *text)
+{
+    int64_t value = 0;
+    char error[80];
+
+    if (!text || !text[0]) {
+        term_line(st, C_ERROR, "rechne <ausdruck>");
+        term_line(st, C_NORMAL, "  z.B.  rechne (3 + 4) * 1024");
+        return;
+    }
+
+    if (!sh_eval(text, &value, error, sizeof(error))) {
+        term_printf(st, C_ERROR, "rechne: %s", error);
+        return;
+    }
+
+    term_printf(st, C_NORMAL, "%s = %ld", text, (long)value);
+}
+
+/* --- Hilfe --------------------------------------------------------- */
+
+static void cmd_help(struct term_state *st, const char *group)
+{
+    if (group && group[0]) {
+        const struct sh_command *one = sh_command_find(group);
+
+        /* "hilfe ls" ist so naheliegend, dass es dasselbe tun soll wie
+         * "man ls" - niemand soll erst lernen, welches Wort er braucht. */
+        if (one) {
+            term_printf(st, C_HIGHLIGHT, "%s - %s", one->usage, one->what);
+            if (one->alias)
+                term_printf(st, C_NORMAL, "  Auch als \"%s\".", one->alias);
+            if (one->detail) {
+                char line[TERM_COLS];
+                size_t length = strlen(one->detail);
+
+                for (size_t i = 0; i < count_lines(one->detail, length); i++)
+                    if (line_at(one->detail, length, i, line, sizeof(line)))
+                        term_printf(st, C_NORMAL, "  %s", line);
+            }
+            return;
+        }
+    }
+
+    size_t shown = 0;
+
+    for (size_t g = 0; g < sh_group_count(); g++) {
+        const char *name = sh_group_at(g);
+
+        if (group && group[0] && strcasecmp(group, name) != 0)
+            continue;
+
+        term_printf(st, C_HIGHLIGHT, "%s:", name);
+
+        for (size_t i = 0; i < sh_command_count(); i++) {
+            const struct sh_command *c = sh_command_at(i);
+
+            if (strcmp(c->group, name) != 0)
+                continue;
+            term_printf(st, C_NORMAL, "  %-42s %s", c->usage, c->what);
+            shown++;
+        }
+    }
+
+    if (!shown) {
+        term_printf(st, C_ERROR, "\"%s\" ist weder Befehl noch Bereich.",
+                    group);
+        term_line(st, C_NORMAL,
+                  "Bereiche: Dateien, Text, Programme, System, Netz, "
+                  "Sicherheit");
+        return;
+    }
+
+    if (!group || !group[0])
+        term_line(st, C_NORMAL,
+                  "\"hilfe <bereich>\" zeigt nur einen Teil, "
+                  "\"man <befehl>\" alles zu einem Befehl.");
 }
 
 /* --- Paketfilter und Pruefspur ------------------------------------- */
@@ -1689,7 +2632,7 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     if (!strcasecmp(cmd, "hilfe") || !strcasecmp(cmd, "help") ||
         !strcmp(cmd, "?")) {
-        cmd_help(st);
+        cmd_help(st, a1);
 
     } else if (!strcasecmp(cmd, "ls") || !strcasecmp(cmd, "dir")) {
         bool detail = a1 && !strcmp(a1, "-l");
@@ -1814,6 +2757,95 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "programme")) {
         cmd_ls(st, "/Programme", false);
+
+    } else if (!strcasecmp(cmd, "man")) {
+        const struct sh_command *one = a1 ? sh_command_find(a1) : NULL;
+
+        if (!a1)
+            term_line(st, C_ERROR, "man <befehl>");
+        else if (!one)
+            term_printf(st, C_ERROR, "\"%s\" kennt die Konsole nicht.", a1);
+        else
+            cmd_help(st, one->name);
+
+    } else if (!strcasecmp(cmd, "kopiere") || !strcasecmp(cmd, "cp")) {
+        cmd_copy(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "verschiebe") || !strcasecmp(cmd, "mv")) {
+        cmd_move(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "kopf") || !strcasecmp(cmd, "head")) {
+        cmd_head_tail(st, a1, a2, false);
+
+    } else if (!strcasecmp(cmd, "ende") || !strcasecmp(cmd, "tail")) {
+        cmd_head_tail(st, a1, a2, true);
+
+    } else if (!strcasecmp(cmd, "zaehle") || !strcasecmp(cmd, "wc")) {
+        cmd_count(st, a1);
+
+    } else if (!strcasecmp(cmd, "sortiere") || !strcasecmp(cmd, "sort")) {
+        cmd_sort(st, a1);
+
+    } else if (!strcasecmp(cmd, "vergleiche") || !strcasecmp(cmd, "diff")) {
+        cmd_diff(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "hex")) {
+        cmd_hex(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "suche") || !strcasecmp(cmd, "grep")) {
+        cmd_grep(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "finde") || !strcasecmp(cmd, "find")) {
+        cmd_find(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "baum") || !strcasecmp(cmd, "tree")) {
+        cmd_tree(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "groesse") || !strcasecmp(cmd, "du")) {
+        cmd_du(st, a1);
+
+    } else if (!strcasecmp(cmd, "info") || !strcasecmp(cmd, "stat")) {
+        cmd_stat(st, a1);
+
+    } else if (!strcasecmp(cmd, "pruefsumme") || !strcasecmp(cmd, "sha256")) {
+        cmd_checksum(st, a1);
+
+    } else if (!strcasecmp(cmd, "wo") || !strcasecmp(cmd, "which")) {
+        cmd_which(st, a1);
+
+    } else if (!strcasecmp(cmd, "beende") || !strcasecmp(cmd, "kill")) {
+        cmd_kill(st, a1);
+
+    } else if (!strcasecmp(cmd, "warte") || !strcasecmp(cmd, "sleep")) {
+        size_t ms = number_arg(a1);
+
+        if (!ms) {
+            term_line(st, C_ERROR, "warte <millisekunden>");
+        } else {
+            /* Der Fenster-Thread darf schlafen - die Oberflaeche laeuft
+             * in einem anderen weiter. Ueber zehn Sekunden geht es
+             * trotzdem nicht: So lange soll niemand rateln, ob die
+             * Konsole haengt. */
+            thread_sleep((uint32_t)MIN(ms, (size_t)10000));
+            term_printf(st, C_NORMAL, "%u ms gewartet.", (unsigned)ms);
+        }
+
+    } else if (!strcasecmp(cmd, "kalender") || !strcasecmp(cmd, "cal")) {
+        cmd_calendar(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "rechne") || !strcasecmp(cmd, "expr")) {
+        cmd_expr(st, rest_of(raw, 1));
+
+    } else if (!strcasecmp(cmd, "verlauf") || !strcasecmp(cmd, "history")) {
+        if (!st->history_count) {
+            term_line(st, C_NORMAL, "Noch nichts eingegeben.");
+        } else {
+            for (size_t i = 0; i < st->history_count; i++)
+                term_printf(st, C_NORMAL, "  %2u  %s", (unsigned)(i + 1),
+                            st->history[i]);
+            term_line(st, C_NORMAL,
+                      "  Mit den Pfeiltasten holt man sie zurueck.");
+        }
 
     } else if (!strcasecmp(cmd, "kaefig")) {
         if (!a1) {
@@ -2016,6 +3048,54 @@ static void term_paint(struct window *win, struct canvas *c)
                                    FONT_WIDTH, FONT_HEIGHT), COL_TERM_FG);
 }
 
+/* Merkt sich eine ausgefuehrte Zeile. Leere Zeilen und Wiederholungen
+ * kommen nicht hinein - sie machen den Verlauf nur laenger, ohne ihn
+ * brauchbarer zu machen. */
+static void remember(struct term_state *st, const char *line)
+{
+    if (!line[0])
+        return;
+    if (st->history_count &&
+        strcmp(st->history[st->history_count - 1], line) == 0) {
+        st->history_pos = st->history_count;
+        return;
+    }
+
+    if (st->history_count == TERM_HISTORY) {
+        memmove(st->history[0], st->history[1],
+                sizeof(st->history) - sizeof(st->history[0]));
+        st->history_count--;
+    }
+
+    strlcpy(st->history[st->history_count++], line,
+            sizeof(st->history[0]));
+    st->history_pos = st->history_count;
+}
+
+/* Holt eine aeltere Zeile zurueck. Hinter der juengsten steht wieder
+ * die leere Eingabe - sonst kaeme man aus dem Verlauf nicht heraus. */
+static void recall(struct term_state *st, int direction)
+{
+    if (!st->history_count)
+        return;
+
+    if (direction < 0) {
+        if (!st->history_pos)
+            return;
+        st->history_pos--;
+    } else {
+        if (st->history_pos >= st->history_count)
+            return;
+        st->history_pos++;
+    }
+
+    if (st->history_pos >= st->history_count)
+        st->input[0] = '\0';
+    else
+        strlcpy(st->input, st->history[st->history_pos], sizeof(st->input));
+    st->cursor = (int32_t)strlen(st->input);
+}
+
 static void term_key(struct window *win, const struct gui_event *ev)
 {
     struct term_state *st = win->user;
@@ -2079,6 +3159,7 @@ static void term_key(struct window *win, const struct gui_event *ev)
         strlcpy(line, st->input, sizeof(line));
         st->input[0] = '\0';
         st->cursor = 0;
+        remember(st, line);
         term_execute(win, st, line);
         term_scroll_to_end(win, st);
         break;
@@ -2108,6 +3189,10 @@ static void term_key(struct window *win, const struct gui_event *ev)
         break;
     case KEY_END:
         st->cursor = (int32_t)len;
+        break;
+    case KEY_UP:
+    case KEY_DOWN:
+        recall(st, ev->key == KEY_UP ? -1 : 1);
         break;
     case KEY_PAGEUP:
         st->scroll = MAX(st->scroll - term_visible_lines(win), 0);

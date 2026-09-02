@@ -251,11 +251,35 @@ er inzwischen fehlt. Endgültig wird es erst beim zweiten Löschen oder beim
 Leeren. Der Korb liegt im Arbeitsspeicher: Was darin liegt, ist nach einem
 Neustart weg.
 
-**Konsole:** `hilfe` zeigt alle Befehle. Neben `ls`, `cd`, `cat`, `mkdir`,
-`touch`, `schreib`, `rm` und `edit` gibt es:
+**Konsole:** `hilfe` zeigt alle Befehle nach Gebiet geordnet, `hilfe <befehl>`
+und `man <befehl>` erklären einen einzelnen. Die Pfeiltasten holen die letzten
+zwanzig Zeilen zurück. Fast jeder Befehl hat neben dem deutschen Namen den
+gewohnten englischen als Zweitnamen (`kopiere`/`cp`, `suche`/`grep`). Neben
+`ls`, `cd`, `cat`, `mkdir`, `touch`, `schreib`, `rm` und `edit` gibt es:
 
 | Befehl | Wirkung |
 | --- | --- |
+| `kopiere <von> <nach>` / `cp` | Datei oder ganzen Ordner kopieren |
+| `verschiebe <von> <nach>` / `mv` | verschieben oder umbenennen |
+| `kopf [-n] <datei>` / `head` | die ersten Zeilen zeigen |
+| `ende [-n] <datei>` / `tail` | die letzten Zeilen zeigen |
+| `zaehle <datei>` / `wc` | Zeilen, Wörter und Zeichen zählen |
+| `sortiere [-r] <datei>` / `sort` | Zeilen sortiert ausgeben |
+| `vergleiche <a> <b>` / `diff` | zwei Dateien Zeile für Zeile vergleichen |
+| `hex <datei> [anzahl]` | Bytes als Hexdump mit Klartextspalte |
+| `suche <text> [pfad]` / `grep` | Dateien nach Text durchsuchen |
+| `finde [pfad] <muster>` / `find` | Dateien nach Namensmuster suchen (`*`, `?`) |
+| `baum [pfad]` / `tree` | Ordner als Baum zeichnen |
+| `groesse [pfad]` / `du` | Platzverbrauch, nach Größe geordnet |
+| `info <pfad>` / `stat` | Art, Größe, Rechte, Eigentümer, Änderungszeit |
+| `pruefsumme <datei>` / `sha256` | SHA-256 über den Dateiinhalt |
+| `wo <name>` / `which` | zeigt, ob ein Name eingebaut ist oder als Programm vorliegt |
+| `beende <nummer>` / `kill` | einen Prozess beenden (fremde nur als Verwalter) |
+| `warte <ms>` / `sleep` | eine Weile nichts tun |
+| `kalender [monat] [jahr]` / `cal` | Monatskalender, der heutige Tag in Klammern |
+| `rechne <ausdruck>` / `expr` | rechnen mit `+ - * / %` und Klammern |
+| `verlauf` / `history` | die zuletzt eingegebenen Zeilen |
+| `man <befehl>` | ausführliche Erklärung eines Befehls |
 | `starte <programm>` | ein Ring-3-Programm ausführen |
 | `programme` | die eingebauten Programme auflisten |
 | `threads` | laufende Threads mit Zustand und Rechenzeit |
@@ -320,6 +344,7 @@ also so, wie es ein Betriebssystem tut.
 | **Systemmonitor** | Programme, Threads und Maschine in drei Ansichten; Rechenzeitanteile werden jede Sekunde gemessen, Speicher je Programm gezählt, fremde Programme beendet nur ein Verwalter |
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
 | **IPC** | Röhren zwischen Eltern und Kind (Ringpuffer im Kern, werden beim Abspalten vererbt) und geteilter Speicher (derselbe Seitenrahmen in mehreren Adressräumen, `PTE_SHARED` hält ihn aus Kopie-beim-Schreiben und Abräumen heraus) |
+| **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
 | **Rollen** | Sechs Fähigkeiten (Konten, Netz, Platte, Protokoll, Strom, Einstellungen) statt „Verwalter ja/nein"; eine Rolle ist ein Name für eine Menge davon |
 | **Käfig** | Pro Programm ein Profil: erlaubte Syscall-Gruppen, ein Wurzelpfad im Dateibaum, eine Speichergrenze und was bei einem Verstoß geschieht. Lässt sich nur enger machen – auch vom Programm selbst, per `sys_sandbox()` |
@@ -640,6 +665,31 @@ verweigerte Rechte, Änderungen an Konten und am Paketfilter. Nicht
 aufgeschrieben wird der Alltag – eine Prüfspur, in der jeder
 Dateizugriff steht, liest niemand mehr.
 
+### Eine Tabelle, zwei Hilfen
+
+Die Konsole kennt an die sechzig Befehle. Was sie tun, steht genau
+einmal im Quelltext: in einer Tabelle, die zu jedem Befehl den Namen,
+den englischen Zweitnamen, sein Gebiet, die Aufrufform, eine Zeile
+Erklärung und wahlweise einen längeren Text führt. `hilfe` geht sie
+nach Gebieten durch, `man` sucht einen Eintrag heraus. Zwei Hilfen aus
+einer Quelle – dann kann keine der beiden veralten, während die andere
+stimmt. Eine Prüfung im Testlauf geht die Tabelle durch und besteht
+darauf, dass jeder Eintrag vollständig ist, sein Gebiet wirklich
+existiert, die Aufrufform mit dem Namen anfängt und kein Name und kein
+Zweitname zweimal vorkommt.
+
+Die deutschen Namen sind gemeint, die englischen sind der Frieden mit
+den Fingern: Wer zwanzig Jahre `grep` getippt hat, tippt `grep`, und
+`suche` steht daneben für alle anderen. Beide gehen an dieselbe Stelle.
+
+Zwei Kleinigkeiten stecken tiefer, als sie aussehen. Das Namensmuster
+in `finde` läuft **ohne Rekursion** – ein `*` merkt sich seine Stelle
+und den Text dahinter und setzt beim Scheitern eine Stelle weiter auf;
+der Kernstapel ist klein, und `***a***b` soll ihn nicht sprengen.
+Und `rechne` ist ein richtiger Zerteiler mit Summe, Produkt und Faktor,
+kein Ablaufen von links nach rechts: `2 + 3 * 4` sind 14, nicht 20.
+Geteilt durch null gibt eine Meldung und keinen Ausnahmefehler.
+
 ### Wie die Teile zusammenspielen
 
 Der Dateibaum kennt zwei Sorten von Knoten. Alles unterhalb von
@@ -723,7 +773,8 @@ kernel/
                       Benutzerverwaltung, Systemmonitor, Protokoll, Aufgaben,
                       Dokumentbaum, HTML-Leser, CSS, Umbruch, Editor,
                       Programmieren, Tabelle, Schreiben, Vortrag,
-                      Konsole, Systeminformation, Dialoge
+                      Konsole samt Werkzeugkasten, Systeminformation,
+                      Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate und Beispielbilder
 third_party/lucide/   Symbolvorlagen (ISC) samt Lizenz
