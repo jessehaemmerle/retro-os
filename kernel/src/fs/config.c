@@ -1,6 +1,7 @@
 /* config.c - Einstellungen lesen und schreiben. */
 
 #include "config.h"
+#include "font.h"
 #include "gfx.h"
 #include "keymap.h"
 #include "kstring.h"
@@ -49,6 +50,7 @@ void config_defaults(void)
     current.timezone = 60;                 /* Mitteleuropa */
     strlcpy(current.hostname, "retroos", sizeof(current.hostname));
     current.background = 0;
+    strlcpy(current.font, font_name(0), sizeof(current.font));
 }
 
 /* ------------------------------------------------------------------ */
@@ -100,6 +102,8 @@ static void apply_pair(const char *key, const char *value)
 
         if (n >= 0 && (size_t)n < ARRAY_LEN(backgrounds))
             current.background = (uint32_t)n;
+    } else if (strcasecmp(key, "schrift") == 0) {
+        strlcpy(current.font, value, sizeof(current.font));
     }
     /* Unbekannte Schluessel werden stillschweigend uebergangen - eine
      * neuere Fassung darf mehr hineinschreiben. */
@@ -172,12 +176,14 @@ bool config_save(void)
               "uhr = %s\n"
               "zeitzone = %d\n"
               "rechnername = %s\n"
-              "hintergrund = %u\n",
+              "hintergrund = %u\n"
+              "schrift = %s\n",
               current.keymap,
               current.clock == CLOCK_UTC ? "utc" : "lokal",
               (int)current.timezone,
               current.hostname,
-              (unsigned)current.background);
+              (unsigned)current.background,
+              current.font);
 
     struct fs_node *file = fs_lookup(NULL, CONFIG_PATH);
 
@@ -193,4 +199,9 @@ void config_apply(void)
 {
     keymap_select(current.keymap);
     strlcpy(g_netif.hostname, current.hostname, sizeof(g_netif.hostname));
+
+    /* Steht ein unbekannter Name in der Datei, bleibt die eingebaute
+     * Schrift stehen - lieber etwas Lesbares als gar nichts. */
+    if (!font_select_by_name(current.font))
+        strlcpy(current.font, font_name(font_current()), sizeof(current.font));
 }

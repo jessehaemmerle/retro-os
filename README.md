@@ -230,6 +230,7 @@ Neustart weg.
 | `starte server [port] [wurzel]` | Webserver – die Ablage vom Wirtsrechner aus durchsehen |
 | `prozesse` | laufende Programme mit Verwandtschaft und geteiltem Speicher |
 | `papierkorb [zurueck <n>\|leeren]` | Geloeschtes ansehen, zurueckholen, endgueltig entfernen |
+| `schrift [name]` | Schriftarten mit Lizenz auflisten oder sofort umschalten |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
 
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
@@ -265,6 +266,7 @@ also so, wie es ein Betriebssystem tut.
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
+| **Schriften** | Zehn freie Monospace-Schriften in der 8×16-Zelle – DejaVu, Liberation, JetBrains, IBM Plex, Fira, Source Code Pro, Inconsolata, Ubuntu, Unifont und VT323; umschaltbar im laufenden Betrieb |
 | **Symbole** | Lucide (ISC) in 16 und 32 Punkt, aus den SVG-Vorlagen erzeugt und mit dunkler Umrandung versehen, damit sie auf hellem wie dunklem Grund lesen |
 | **Papierkorb** | Gelöschtes wandert nach `/Papierkorb` und merkt sich, wo es herkam; Wiederherstellen, endgültiges Löschen, Leeren |
 | **Downloads** | Was der Browser nicht anzeigen kann, legt er unter `Downloads` ab – ebenso alles, was der Knopf in der Leiste holt |
@@ -274,7 +276,7 @@ also so, wie es ein Betriebssystem tut.
 | **Textverarbeitung** | Absatzformate, fett und unterstrichen je Zeichen, Ausrichtung, Umbruch, Speichern und Laden als HTML |
 | **Präsentation** | Folien mit drei Anordnungen, Übersichtsleiste, Vollbild ohne Fensterrahmen, Schrift passt sich der Folie an |
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
-| **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername und Hintergrund in `/Festplatte/retroos.conf` |
+| **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername, Hintergrund und Schriftart in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
 | **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, Papierkorb, Tabelle, Schreiben, Vortrag, Programmieren, elf Ring-3-Programme |
 
@@ -349,6 +351,23 @@ Damit der Controller ein Gerät dahinter überhaupt ansprechen kann,
 braucht er eine Wegbeschreibung – vier Bit je Ebene, bis zu fünf Ebenen
 tief. RetroOS zählt deshalb rekursiv auf: Wird ein Verteiler gefunden,
 werden dessen Anschlüsse auf demselben Weg abgesucht.
+
+### Zehn Schriften in einer Zelle
+
+Jedes Zeichen sitzt in einem festen Kasten von 8×16 Pixeln. Das ist keine
+Bequemlichkeit, sondern die Grundlage der halben Oberfläche: Konsole,
+Editor, Tabelle und Fenster rechnen ihre Spalten und Zeilen aus genau
+diesen beiden Zahlen aus. Eine andere Schrift zu wählen heißt darum nicht,
+das Layout neu zu vermessen, sondern nur, andere Punkte in dieselbe Zelle
+zu setzen – kein Programm muss davon wissen, und der Wechsel kostet eine
+Zuweisung.
+
+Die zehn Vorlagen liegen als woff2 unter `third_party/fonts`, auf Latin-1
+verkleinert und zusammen gut 130 KB groß. `scripts/gen_font.py` rastert
+sie einmal auf dem Entwicklungsrechner; im Kernel steht davon nur noch
+eine Tabelle aus Bytes. Umschalten lässt es sich in den Einstellungen –
+das Fenster zeichnet sich sofort in der neuen Schrift und ist damit seine
+eigene Vorschau – oder in der Konsole mit `schrift`.
 
 ### Wie die Teile zusammenspielen
 
@@ -427,14 +446,16 @@ kernel/
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate und Beispielbilder
 third_party/lucide/   Symbolvorlagen (ISC) samt Lizenz
+third_party/fonts/    Schriftvorlagen (OFL u. a.) samt Lizenzen
 tests/                Testsammlungen für den Entwicklungsrechner
 boot/limine.conf      Bootloader-Eintrag
 scripts/              Bootloader holen, Schrift, Symbole, Zertifikate und
                       Bilder erzeugen
 ```
 
-Erzeugte und eingecheckte Dateien: die Schrift in
-`kernel/src/gui/font_data.c` (`python3 scripts/gen_font.py`), die Symbole
+Erzeugte und eingecheckte Dateien: die Schriften in
+`kernel/src/gui/font_data.c` (`python3 scripts/gen_font.py`, braucht
+`fonttools`, `brotli` und `pillow`), die Symbole
 in `kernel/src/gui/icon_data.c` (`python3 scripts/gen_icons.py`, braucht
 `cairosvg` und `pillow`), die Wurzelzertifikate in
 `data/wurzelzertifikate.der` (`python3 scripts/gen_trust_store.py`) und die
@@ -523,4 +544,7 @@ qemu-system-x86_64 -M q35,i8042=off -m 512M -cdrom retroos.iso -boot d \
 ## Lizenz
 
 MIT – siehe [LICENSE](LICENSE). Der beim Bauen geladene Bootloader Limine
-steht unter der BSD-2-Clause-Lizenz.
+steht unter der BSD-2-Clause-Lizenz. Die Symbolvorlagen stammen von Lucide
+(ISC), die Schriftvorlagen stehen unter der SIL Open Font License 1.1, der
+Ubuntu Font Licence 1.0 beziehungsweise der Bitstream-Vera-Lizenz – die
+vollen Texte liegen unter `third_party/`.

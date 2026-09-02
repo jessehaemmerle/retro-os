@@ -9,12 +9,14 @@ build/
 
 # Extern bezogenes - der Bootloader wird beim Bauen geholt.
 #
-# Die Symbolvorlagen liegen dagegen im Baum: Sie sind klein, stehen
-# unter der ISC-Lizenz, und ohne sie liesse sich icon_data.c nicht neu
-# erzeugen. Deshalb wird hier der Inhalt ausgeschlossen, nicht der
-# Ordner - sonst kaeme die Ausnahme gar nicht mehr zum Zug.
+# Die Symbolvorlagen und die Schriften liegen dagegen im Baum: Sie sind
+# klein, stehen unter freien Lizenzen, und ohne sie liessen sich
+# icon_data.c und font_data.c nicht neu erzeugen. Deshalb wird hier der
+# Inhalt ausgeschlossen, nicht der Ordner - sonst kaeme die Ausnahme gar
+# nicht mehr zum Zug.
 third_party/*
 !third_party/lucide/
+!third_party/fonts/
 
 # Editor / OS
 .vscode/

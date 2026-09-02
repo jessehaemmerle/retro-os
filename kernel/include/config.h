@@ -13,6 +13,7 @@
  *     zeitzone = 60
  *     rechnername = retroos
  *     hintergrund = 2
+ *     schrift = DejaVu Sans Mono
  *
  * Textform, weil man sie dann mit dem Editor des Systems selbst
  * reparieren kann - und von einem anderen Rechner aus ebenso.
@@ -37,6 +38,7 @@ struct config {
     int32_t         timezone;        /* Minuten gegenueber UTC      */
     char            hostname[32];
     uint32_t        background;      /* Nummer des Hintergrunds     */
+    char            font[24];        /* Name der Bildschirmschrift  */
 };
 
 /* Die aktuellen Werte. Aendern und danach config_save() rufen. */
@@ -53,7 +55,7 @@ bool config_load(void);
 bool config_save(void);
 
 /* Uebertraegt die Werte dorthin, wo sie wirken: Tastaturbelegung,
- * Rechnername, Hintergrund. */
+ * Rechnername, Hintergrund, Schriftart. */
 void config_apply(void);
 
 /* Die waehlbaren Hintergruende. */

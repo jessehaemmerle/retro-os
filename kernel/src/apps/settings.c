@@ -1,6 +1,6 @@
 /* settings.c - das Einstellungsfenster.
  *
- * Fuenf Dinge lassen sich hier aendern; alle landen in derselben
+ * Sechs Dinge lassen sich hier aendern; alle landen in derselben
  * Textdatei auf der Festplatte. Ohne Festplatte gilt jede Aenderung
  * nur bis zum Ausschalten - das sagt das Fenster dann auch.
  */
@@ -26,6 +26,7 @@ enum row_id {
     ROW_CLOCK,
     ROW_TIMEZONE,
     ROW_BACKGROUND,
+    ROW_FONT,
     ROW_HOSTNAME,
     ROW_COUNT
 };
@@ -96,6 +97,9 @@ static void row_value(int row, char *out, size_t size)
     case ROW_BACKGROUND:
         strlcpy(out, background_name(c->background), size);
         break;
+    case ROW_FONT:
+        strlcpy(out, font_name(font_current()), size);
+        break;
     case ROW_HOSTNAME:
         strlcpy(out, c->hostname, size);
         break;
@@ -112,6 +116,7 @@ static const char *row_label(int row)
     case ROW_CLOCK:      return "Batterieuhr";
     case ROW_TIMEZONE:   return "Zeitzone";
     case ROW_BACKGROUND: return "Hintergrund";
+    case ROW_FONT:       return "Schrift";
     case ROW_HOSTNAME:   return "Rechnername";
     default:             return "";
     }
@@ -149,6 +154,17 @@ static void row_step(int row, int delta)
         c->background = (uint32_t)((c->background + count +
                                     (size_t)(delta > 0 ? 1 : count - 1)) %
                                    count);
+        break;
+    }
+    case ROW_FONT: {
+        size_t count = font_count();
+        size_t next = (font_current() + count +
+                       (size_t)(delta > 0 ? 1 : count - 1)) % count;
+
+        /* Wirkt sofort: das Fenster zeichnet sich gleich in der neuen
+         * Schrift, die Auswahl ist damit ihre eigene Vorschau. */
+        font_select(next);
+        strlcpy(c->font, font_name(next), sizeof(c->font));
         break;
     }
     default:
@@ -195,6 +211,12 @@ static void settings_paint(struct window *win, struct canvas *c)
         gfx_fill(&local, box, COL_FIELD);
         gfx_bevel_thin(&local, box, false);
         gfx_text(&local, box.x + 6, box.y + 5, value, COL_TEXT);
+
+        /* Bei der Schrift steht die Lizenz daneben - sie gehoert zur
+         * Schrift und soll nicht erst im Quelltext auffindbar sein. */
+        if (row == ROW_FONT)
+            gfx_text(&local, box.x + box.w + 34, box.y + 5,
+                     font_license(font_current()), COL_TEXT_DIM);
     }
 
     widget_button(&local, save_rect(win), "Speichern",
@@ -327,7 +349,7 @@ void app_settings(void)
         strlcpy(ui->status, "Ohne Festplatte bleibt nichts gespeichert.",
                 sizeof(ui->status));
 
-    struct window *win = gui_create_window("Einstellungen", 0, 0, 520, 290,
+    struct window *win = gui_create_window("Einstellungen", 0, 0, 560, 322,
                                            WF_CENTER, ICON_SETTINGS);
     if (!win) {
         kfree(ui);

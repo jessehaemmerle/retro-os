@@ -11,6 +11,7 @@
 #include "block.h"
 #include "net.h"
 #include "clipboard.h"
+#include "config.h"
 #include "nic.h"
 #include "cpu.h"
 #include "setup.h"
@@ -138,6 +139,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  edit <datei>     Datei im Editor oeffnen");
     term_line(st, C_NORMAL, "  echo <text>      Text ausgeben");
     term_line(st, C_NORMAL, "  speicher         Speicherbelegung");
+    term_line(st, C_NORMAL, "  schrift [name]   Schriftarten zeigen oder waehlen");
     term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
     term_line(st, C_NORMAL, "  starte <programm> [text]  Programm in Ring 3 starten");
     term_line(st, C_NORMAL, "  programme        mitgelieferte Programme zeigen");
@@ -842,6 +844,49 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
                 "raeumt auf", (unsigned)count, total);
 }
 
+/* Gibt die Zeile ab dem n-ten Wort zurueck - fuer Argumente, in denen
+ * Leerzeichen stehen duerfen. */
+static const char *rest_of(const char *raw, int skip)
+{
+    const char *p = raw;
+
+    for (int i = 0; i < skip && *p; i++) {
+        while (*p == ' ')
+            p++;
+        while (*p && *p != ' ')
+            p++;
+    }
+    while (*p == ' ')
+        p++;
+    return p;
+}
+
+/* Ohne Argument nur die Liste, mit Argument gleich umschalten. Der
+ * Name darf Leerzeichen haben ("Ubuntu Mono"), darum kommt hier die
+ * ganze restliche Zeile an und nicht nur das erste Wort. */
+static void cmd_font(struct term_state *st, const char *name)
+{
+    if (name && name[0]) {
+        if (!font_select_by_name(name)) {
+            term_printf(st, C_ERROR, "Unbekannte Schrift: %s", name);
+            return;
+        }
+        strlcpy(config_current()->font, font_name(font_current()),
+                sizeof(config_current()->font));
+        term_printf(st, C_NORMAL, "Schrift: %s", font_name(font_current()));
+        term_line(st, C_NORMAL,
+                  "Dauerhaft wird das erst mit Speichern in den Einstellungen.");
+        gui_invalidate();
+        return;
+    }
+
+    term_line(st, C_HIGHLIGHT, "Schriftarten:");
+    for (size_t i = 0; i < font_count(); i++)
+        term_printf(st, C_NORMAL, "  %c %-18s %s",
+                    i == font_current() ? '*' : ' ',
+                    font_name(i), font_license(i));
+}
+
 static void cmd_threads(struct term_state *st)
 {
     term_printf(st, C_HIGHLIGHT, "%-4s %-16s %-10s %-6s %-8s %s",
@@ -1017,6 +1062,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "programme")) {
         cmd_ls(st, "/Programme");
+
+    } else if (!strcasecmp(cmd, "schrift")) {
+        cmd_font(st, rest_of(raw, 1));
 
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);
