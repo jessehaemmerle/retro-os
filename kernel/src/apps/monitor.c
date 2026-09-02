@@ -15,6 +15,7 @@
 #include "apps.h"
 
 #include "arch.h"
+#include "audit.h"
 #include "cpu.h"
 #include "font.h"
 #include "kstring.h"
@@ -239,8 +240,9 @@ static void paint_programs(struct canvas *c, struct window *win,
                            struct monitor_ui *ui)
 {
     static const char *const head[] = { "Nummer", "Programm", "Benutzer",
-                                        "Zustand", "Speicher", "Rechenzeit" };
-    const int32_t x[] = { 12, 78, 262, 372, 470, 580 };
+                                        "Kaefig", "Zustand", "Speicher",
+                                        "Zeit" };
+    const int32_t x[] = { 12, 68, 220, 320, 400, 500, 606 };
 
     columns(c, win, TAB_H + 2, head, x, ARRAY_LEN(head));
 
@@ -273,18 +275,29 @@ static void paint_programs(struct canvas *c, struct window *win,
         gfx_text_clipped(c, x[1], r.y + 2, p->name, fg, x[2] - x[1] - 8);
         gfx_text_clipped(c, x[2], r.y + 2, user_name_of(p->uid), fg,
                          x[3] - x[2] - 8);
-        gfx_text(c, x[3], r.y + 2,
+
+        /* Ein eingesperrtes Programm faellt auf, auch ohne dass man die
+         * Zeile lesen muss - deshalb das Schloss davor. */
+        if (p->box.active) {
+            icon_draw(c, x[3], r.y + 2, ICON_LOCK, 1);
+            gfx_text_clipped(c, x[3] + 18, r.y + 2, p->box.profile, fg,
+                             x[4] - x[3] - 24);
+        } else {
+            gfx_text(c, x[3], r.y + 2, "-", COL_TEXT_DIM);
+        }
+
+        gfx_text(c, x[4], r.y + 2,
                  p->finished ? "beendet"
                              : (p->thread ? state_name(p->thread->state)
                                           : "?"), fg);
 
         fs_format_size(text, sizeof(text),
                        (size_t)p->space.mapped_pages * PAGE_SIZE);
-        gfx_text(c, x[4], r.y + 2, text, fg);
+        gfx_text(c, x[5], r.y + 2, text, fg);
 
         share_text(p->thread ? share_of(ui, p->thread->id) : -1, text,
                    sizeof(text));
-        gfx_text(c, x[5], r.y + 2, text, fg);
+        gfx_text(c, x[6], r.y + 2, text, fg);
     }
     gfx_reset_clip(c);
 }
@@ -412,6 +425,12 @@ static void paint_system(struct canvas *c, struct window *win,
               "%u Meldungen im Protokoll, davon %u Warnungen und %u Fehler",
               (unsigned)log_count(), (unsigned)log_count_level(LOG_WARN),
               (unsigned)log_count_level(LOG_ERROR));
+    gfx_text(c, 16, y, text, COL_TEXT);
+    y += 18;
+
+    ksnprintf(text, sizeof(text),
+              "%u Eintraege in der Pruefspur, davon %u abgewiesen",
+              (unsigned)audit_count(), (unsigned)audit_count_failed());
     gfx_text(c, 16, y, text, COL_TEXT);
 }
 

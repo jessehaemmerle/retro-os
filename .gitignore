@@ -35,3 +35,4 @@ tests/rechte-test
 tests/aufgaben-test
 tests/protokoll-test
 tests/netzfilter-test
+tests/kaefig-test

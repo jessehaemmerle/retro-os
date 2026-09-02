@@ -40,7 +40,8 @@ void   *memcpy(void *dst, const void *src, size_t n);
 
 void    print(const char *text);
 void    println(const char *text);
-/* Unterstuetzt %s %d %u %x %c %% und die Breite ("%5d"). */
+/* Unterstuetzt %s %d %u %x %c %%, die Breite ("%5d") und das Praefix
+ * "l" fuer 64-Bit-Werte ("%ld"). Ohne das Praefix sind es 32 Bit. */
 void    printf(const char *format, ...);
 
 void   *malloc(size_t size);

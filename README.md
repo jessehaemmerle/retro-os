@@ -278,6 +278,7 @@ Neustart weg.
 | `sperren` | Bildschirm sperren |
 | `firewall [an\|aus\|standard\|regel\|weg\|leeren\|speichern]` | Paketfilter zeigen und regeln |
 | `pruefspur [alle\|abgewiesen\|speichern]` | Sicherheitsereignisse ansehen |
+| `kaefig [<profil> <programm> [text]]` | Profile zeigen oder ein Programm eingesperrt starten |
 | `protokoll [alle\|warnung\|fehler\|speichern\|leeren]` | Systemprotokoll ansehen, sichern, leeren |
 | `aufgaben [neu <text>\|fertig <n>\|weg <n>\|wichtig <n> <stufe>\|termin <n> <datum>]` | Aufgabenliste führen |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
@@ -321,6 +322,7 @@ also so, wie es ein Betriebssystem tut.
 | **IPC** | Röhren zwischen Eltern und Kind (Ringpuffer im Kern, werden beim Abspalten vererbt) und geteilter Speicher (derselbe Seitenrahmen in mehreren Adressräumen, `PTE_SHARED` hält ihn aus Kopie-beim-Schreiben und Abräumen heraus) |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
 | **Rollen** | Sechs Fähigkeiten (Konten, Netz, Platte, Protokoll, Strom, Einstellungen) statt „Verwalter ja/nein"; eine Rolle ist ein Name für eine Menge davon |
+| **Käfig** | Pro Programm ein Profil: erlaubte Syscall-Gruppen, ein Wurzelpfad im Dateibaum, eine Speichergrenze und was bei einem Verstoß geschieht. Lässt sich nur enger machen – auch vom Programm selbst, per `sys_sandbox()` |
 | **Prüfspur** | Wer hat was woran versucht und mit welchem Ausgang – Anmeldungen, abgewiesene Zugriffe, gebrauchte Rechte, Konten- und Filteränderungen; wird fortgeschrieben, nicht ersetzt, und lässt sich nicht leeren |
 | **Benutzer** | Mehrere Konten mit Nummer, Gruppe, Heimatverzeichnis und Verwalterrecht; das Passwort liegt als 4096-fach wiederholter HMAC-SHA256 über einem eigenen Salz in `/Festplatte/benutzer.conf` |
 | **Rechte** | Eigentümer, Gruppe und neun Bits je Eintrag, dazu das Klebebit; geprüft beim Nachschlagen, Aufzählen, Lesen, Schreiben, Anlegen, Umbenennen und Löschen |
@@ -533,6 +535,57 @@ Abspalten heraus und aus dem Abräumen des Adressraums; wer den Bereich
 im Kind will, blendet ihn dort ausdrücklich ein. `starte roehre` zeigt
 beides nebeneinander.
 
+### Der Käfig um ein Programm
+
+Rechte sagen, was ein Benutzer darf. Ein Käfig sagt, was ein einzelnes
+**Programm** darf – und das ist etwas anderes. Ein Bildbetrachter läuft
+unter meinem Namen und darf damit alles, was ich darf; er braucht davon
+aber nichts außer der einen Datei, die ich ihm hinhalte. Genau diese
+Lücke schließt der Käfig: Er nimmt einem Programm Fähigkeiten weg, die
+sein Benutzer sehr wohl hätte.
+
+Vier Dinge werden beschränkt. **Systemaufrufe** in Gruppen – einzelne
+Nummern wären genauer und in der Bedienung unbrauchbar, niemand stellt
+dreißig Schalter richtig ein. Ein **Wurzelpfad**, unter dem alles liegen
+muss. Eine **Speicherobergrenze**, denn „kein Netz, keine Dateien" wäre
+sonst immer noch genug, um den Rechner zuzuschütten. Und das
+**Abspalten**, weil sonst jedes Kind ein neuer Anlauf wäre.
+
+Wer über die Wurzel hinausgreift, bekommt „nicht gefunden" und nicht
+„verboten": Die bloße Auskunft, dass eine Datei existiert, ist schon
+eine Auskunft. Die Grenze ist eine Textrechnung und keine Wanderung
+durch den Dateibaum – eine Grenze, die vom Zustand des Baums abhängt,
+wäre in dem Augenblick falsch, in dem jemand einen Ordner umbenennt.
+Sie legt Pfade dabei richtig zusammen: `..` geht wirklich eine Ebene
+zurück, und `/Benutzer/annalise` liegt nicht unter `/Benutzer/anna`.
+
+| Profil | darf | Wurzel | Speicher | Verstoß |
+| --- | --- | --- | --- | --- |
+| `offen` | alles | – | – | – |
+| `netz` | lesen, Netz, Fenster, Röhren | – | 16 MB | Fehler |
+| `heim` | lesen, schreiben, Fenster, Abspalten, Röhren | das eigene Heim | 16 MB | Fehler |
+| `streng` | rechnen, ausgeben, Röhren | – | 4 MB | Programm endet |
+
+Der Käfig lässt sich **nur enger machen, nie weiter** – weder von außen
+noch vom Programm selbst. Das ist die Eigenschaft, an der alles hängt:
+Könnte ein eingesperrtes Programm `offen` wählen, wäre die ganze
+Einrichtung eine Bitte. Deshalb darf ein Programm sich getrost selbst
+einsperren, sobald es alles beisammen hat, was es braucht – genau der
+Zug, den seccomp in Linux möglich macht: Der Webserver etwa braucht,
+sobald er lauscht, weder Dateien anzulegen noch sich zu vermehren, und
+wer ihn danach übernimmt, bekommt weniger.
+
+Vererbt wird er beim Abspalten; ein Kind kommt nicht dadurch frei, dass
+es ein Kind ist. Geprüft wird an genau einer Stelle, ganz vorn in
+`syscall_dispatch` – jede Prüfung weiter unten könnte man vergessen,
+diese nicht, weil kein Aufruf an ihr vorbeikommt. Jeder Verstoß steht in
+der Prüfspur, und der Systemmonitor zeigt neben jedem Programm, in
+welchem Käfig es sitzt.
+
+`starte kaefig netz` führt es vor: dasselbe Programm probiert vor und
+nach dem Einsperren dieselben Dinge und zeigt, was der Käfig davon
+übrig lässt.
+
 ### Was durchs Netz darf
 
 Bisher nahm RetroOS jedes Paket an, das an seine Adresse ging. Für einen
@@ -630,6 +683,7 @@ cd tests && make
 | **Aufgaben** | 96 Prüfungen: Anlegen und Entfernen, Reihenfolge, Termine samt Schaltjahren, Datei hin und zurück, von Hand geschriebene Listen |
 | **Systemprotokoll** | 50 Prüfungen: Ring samt Überlauf, Dringlichkeiten, Zerlegung der `kprintf`-Zeilen, Sichern |
 | **Rechte und Benutzer** | 155 Prüfungen: Rechtebits samt Reihenfolge, Klebebit, Textform hin und zurück, Rollen und Fähigkeiten, Passwort-Prüfwerte, `benutzer.conf` schreiben und lesen, beschädigte Dateien |
+| **Käfig** | 78 Prüfungen: alle vier Profile, die Einbahnstraße (nur enger, nie weiter), die Pfadgrenze samt `..` und Namen, die mit der Wurzel anfangen, Zuordnung der Systemaufrufe |
 | **Paketfilter** | 67 Prüfungen: jede Achse einer Regel einzeln, Reihenfolge und Ausnahmen, Textform, Datei hin und zurück |
 
 Die Testbilder erzeugt `make testbilder` neu (benötigt Pillow).
@@ -646,7 +700,8 @@ kernel/
                       ACPI, Systemaufrufe, Kerne und ihr Start
     mm/               Seitenverwaltung, Adressräume und Heap
     sched/            Threads und präemptiver Scheduler auf allen Kernen
-    proc/             ELF64-Lader, Prozesse in Ring 3, Fenster für Programme
+    proc/             ELF64-Lader, Prozesse in Ring 3, Käfig, Röhren,
+                      geteilter Speicher, Fenster für Programme
     drivers/          Framebuffer, PS/2, Tastatur, Maus, RTC, UART, PCI,
                       NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID,
                       USB-Speicher, virtio-net, igb, e1000e, e1000,

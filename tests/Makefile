@@ -36,6 +36,9 @@ SKRIPT := js_test.c shim.c \
 TABELLE := tabellen_test.c shim.c \
            ../kernel/src/apps/sheet.c
 
+KAEFIG := kaefig_test.c shim.c \
+          ../kernel/src/proc/sandbox.c
+
 NETZFILTER := netzfilter_test.c shim.c \
               ../kernel/src/net/firewall.c
 
@@ -69,9 +72,9 @@ BAUM := dom_test.c shim.c \
         ../kernel/src/js/jsmain.c
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
-        protokoll netzfilter testbilder clean
+        protokoll netzfilter kaefig testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
-     netzfilter
+     netzfilter kaefig
 
 krypto: krypto-test
 	@./krypto-test
@@ -93,6 +96,12 @@ baum: baum-test
 
 baum-test: $(BAUM)
 	@$(CC) $(CFLAGS) -I../kernel/src/js $(BAUM) -o $@
+
+kaefig: kaefig-test
+	@./kaefig-test
+
+kaefig-test: $(KAEFIG)
+	@$(CC) $(CFLAGS) $(KAEFIG) -o $@
 
 netzfilter: netzfilter-test
 	@./netzfilter-test

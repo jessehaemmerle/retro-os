@@ -141,4 +141,16 @@ int sys_shm_open(const char *name, long groesse, int anlegen);
 void *sys_shm_map(int nummer);
 int sys_shm_unlink(const char *name);
 
+/* --- Kaefig ---
+ *
+ * sys_sandbox nimmt dem laufenden Programm Faehigkeiten weg. Der Zug
+ * geht nur in eine Richtung: Ein engeres Profil wird angenommen, ein
+ * weiteres abgelehnt. Gedacht ist er fuer den Augenblick, in dem ein
+ * Programm alles beisammen hat, was es braucht - der Webserver etwa,
+ * sobald er lauscht: Danach braucht er weder Dateien anzulegen noch
+ * sich zu vermehren, und wer ihn dann uebernimmt, bekommt weniger.
+ *
+ * Profile: offen, netz, heim, streng. */
+int sys_sandbox(const char *profil);
+
 #endif /* RETROUI_H */

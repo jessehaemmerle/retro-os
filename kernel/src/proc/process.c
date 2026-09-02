@@ -296,8 +296,9 @@ static void process_entry(void *argument)
     enter_user_mode(entry, stack);
 }
 
-struct process *process_start(const char *path, const char *args,
-                              char *error, size_t error_size)
+struct process *process_start_caged(const char *path, const char *args,
+                                    const char *profile, char *error,
+                                    size_t error_size)
 {
     struct fs_node *file = fs_lookup(fs_root(), path);
 
@@ -366,13 +367,32 @@ struct process *process_start(const char *path, const char *args,
         return NULL;
     }
 
-    log_info("prozess", "%s gestartet, Nummer %u, Benutzer %u",
-             proc->name, (unsigned)proc->pid, (unsigned)proc->uid);
+    if (profile && profile[0]) {
+        struct user *me = user_by_uid(proc->uid);
+
+        if (!sandbox_apply(&proc->box, profile, me ? me->home : NULL)) {
+            ksnprintf(error, error_size, "Das Profil \"%s\" gibt es nicht.",
+                      profile);
+            process_kill(proc);
+            return NULL;
+        }
+    }
+
+    log_info("prozess", "%s gestartet, Nummer %u, Benutzer %u%s%s",
+             proc->name, (unsigned)proc->pid, (unsigned)proc->uid,
+             proc->box.active ? ", Kaefig " : "",
+             proc->box.active ? proc->box.profile : "");
     audit(AUDIT_PROCESS, true, "%s gestartet (Nummer %u)", proc->name,
           (unsigned)proc->pid);
 
     thread_start(proc->thread);
     return proc;
+}
+
+struct process *process_start(const char *path, const char *args,
+                              char *error, size_t error_size)
+{
+    return process_start_caged(path, args, NULL, error, error_size);
 }
 
 /* Fenster und Verbindungen gehoeren dem Programm; endet es, muessen
@@ -550,6 +570,7 @@ struct process *process_fork(struct process *parent,
     child->leader     = console_of(parent);
     child->uid        = parent->uid;
     child->gid        = parent->gid;
+    child->box        = parent->box;
 
     /* Verbindungen benutzen beide weiter - erst wenn der letzte sie
      * schliesst, geht die Verbindung zu. */

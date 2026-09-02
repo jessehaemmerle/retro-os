@@ -57,4 +57,7 @@ DEFCALL sys_shm_open,   27
 DEFCALL sys_shm_map,    28
 DEFCALL sys_shm_unlink, 29
 
+/* Kaefig */
+DEFCALL sys_sandbox,    30
+
 .section .note.GNU-stack,"",@progbits

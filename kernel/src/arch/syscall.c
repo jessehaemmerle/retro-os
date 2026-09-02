@@ -15,8 +15,12 @@
 #include "process.h"
 #include "thread.h"
 #include "vfs.h"
+#include "audit.h"
 #include "gui.h"
 #include "ipc.h"
+#include "log.h"
+#include "sandbox.h"
+#include "user.h"
 #include "net.h"
 #include "uiapi.h"
 #include "vmm.h"
@@ -253,6 +257,22 @@ static int64_t do_open(struct process *proc, uint64_t path_ptr, uint64_t mode)
     if (!user_string(proc, path, path_ptr, sizeof(path)))
         return SYS_ERR_INVAL;
 
+    /* Ausserhalb der Kaefigwurzel gibt es die Datei nicht. "Nicht
+     * gefunden" und nicht "verboten": Die blosse Auskunft, dass eine
+     * Datei existiert, ist schon eine Auskunft. */
+    if (!sandbox_path_ok(&proc->box, path)) {
+        proc->box.denials++;
+        audit(AUDIT_DENIED, false, "%s: %s ausserhalb des Kaefigs",
+              proc->name, path);
+        return SYS_ERR_NOENT;
+    }
+    if (mode == 1 && !sandbox_allows(&proc->box, SB_FILE_WRITE)) {
+        proc->box.denials++;
+        audit(AUDIT_DENIED, false, "%s: anlegen von %s im Kaefig %s",
+              proc->name, path, proc->box.profile);
+        return SYS_ERR_DENIED;
+    }
+
     struct fs_node *node = fs_lookup(fs_root(), path);
 
     /* Modus 1 legt die Datei bei Bedarf an. */
@@ -381,8 +401,16 @@ static int64_t do_write(struct process *proc, int64_t fd, uint64_t buffer,
             return SYS_ERR_INVAL;
 
         if (fd == 1 || fd == 2) {
+            if (!sandbox_allows(&proc->box, SB_STDIO))
+                return SYS_ERR_DENIED;
             process_append_output(proc, chunk, part);
         } else if (fd >= 3 && fd < PROCESS_FILES_MAX && proc->files[fd]) {
+            if (!sandbox_allows(&proc->box, SB_FILE_WRITE)) {
+                proc->box.denials++;
+                audit(AUDIT_DENIED, false, "%s: schreiben im Kaefig %s",
+                      proc->name, proc->box.profile);
+                return SYS_ERR_DENIED;
+            }
             if (!fs_append(proc->files[fd], chunk, part))
                 return SYS_ERR_INVAL;
         } else {
@@ -400,6 +428,12 @@ static int64_t do_readdir(struct process *proc, uint64_t path_ptr,
 
     if (!user_string(proc, path, path_ptr, sizeof(path)))
         return SYS_ERR_INVAL;
+
+    /* Auch das Auflisten hoert an der Kaefigwurzel auf - sonst waere
+     * der Weg um sie herum, die Namen zu erfragen statt sie zu
+     * oeffnen. */
+    if (!sandbox_path_ok(&proc->box, path))
+        return SYS_ERR_NOENT;
 
     struct fs_node *dir = fs_lookup(fs_root(), path);
     if (!dir || dir->type != FS_DIR)
@@ -613,6 +647,29 @@ static int64_t do_disconnect(struct process *proc, int32_t handle)
     return 0;
 }
 
+/* Der Kaefig hat genau einen Pruefpunkt, und er liegt vor allem
+ * anderen. Jede Pruefung weiter unten koennte man vergessen; diese
+ * hier nicht, weil kein Aufruf an ihr vorbeikommt. */
+static bool caged(struct process *proc, uint64_t number)
+{
+    uint32_t group = sandbox_group_of(number);
+
+    if (sandbox_allows(&proc->box, group))
+        return false;
+
+    proc->box.denials++;
+    audit(AUDIT_DENIED, false, "%s: %s im Kaefig %s", proc->name,
+          sandbox_group_name(group), proc->box.profile);
+
+    if (proc->box.penalty == SB_KILL) {
+        log_warn("kaefig", "%s (%u) wollte %s - beendet", proc->name,
+                 (unsigned)proc->pid, sandbox_group_name(group));
+        process_exit(proc, -1);
+        thread_exit();
+    }
+    return true;
+}
+
 void syscall_dispatch(struct syscall_frame *frame)
 {
     struct process *proc = process_current();
@@ -623,6 +680,12 @@ void syscall_dispatch(struct syscall_frame *frame)
     }
 
     uint64_t number = frame->rax;
+
+    if (caged(proc, number)) {
+        frame->rax = (uint64_t)SYS_ERR_DENIED;
+        return;
+    }
+
     uint64_t a1 = frame->rdi, a2 = frame->rsi, a3 = frame->rdx;
     uint64_t a4 = frame->r10;
     int64_t result = SYS_ERR_NOSYS;
@@ -670,6 +733,22 @@ void syscall_dispatch(struct syscall_frame *frame)
     case SYS_SBRK: {
         uint64_t old = proc->space.heap_break;
         int64_t delta = (int64_t)a1;
+
+        /* Die Obergrenze des Kaefigs. Ohne sie waere "kein Netz, keine
+         * Dateien" immer noch genug, um den Rechner mit Speicher
+         * zuzuschuetten. */
+        if (delta > 0 && proc->box.active && proc->box.max_pages) {
+            uint64_t limit = USER_HEAP_BASE +
+                             (uint64_t)proc->box.max_pages * PAGE_SIZE;
+
+            if (old + (uint64_t)delta > limit) {
+                proc->box.denials++;
+                audit(AUDIT_DENIED, false, "%s: mehr als %u Seiten Speicher",
+                      proc->name, (unsigned)proc->box.max_pages);
+                result = SYS_ERR_NOMEM;
+                break;
+            }
+        }
 
         if (delta > 0) {
             if (!vmm_alloc_range(&proc->space, old, (size_t)delta,
@@ -825,6 +904,30 @@ void syscall_dispatch(struct syscall_frame *frame)
             result = SYS_ERR_INVAL;
         else
             result = shm_unlink(name) ? 0 : SYS_ERR_NOENT;
+        break;
+    }
+
+    case SYS_SANDBOX: {
+        char profile[SB_NAME_MAX + 1];
+        struct user *me = user_by_uid(proc->uid);
+
+        if (!user_string(proc, profile, a1, sizeof(profile))) {
+            result = SYS_ERR_INVAL;
+            break;
+        }
+
+        /* Ein Programm darf sich selbst einsperren, aber nie befreien -
+         * sandbox_apply laesst nur engere Profile zu. */
+        if (!sandbox_apply(&proc->box, profile, me ? me->home : NULL)) {
+            result = SYS_ERR_DENIED;
+            break;
+        }
+
+        log_info("kaefig", "%s (%u) sperrt sich selbst in \"%s\"",
+                 proc->name, (unsigned)proc->pid, proc->box.profile);
+        audit(AUDIT_PRIVILEGE, true, "%s im Kaefig %s", proc->name,
+              proc->box.profile);
+        result = 0;
         break;
     }
 

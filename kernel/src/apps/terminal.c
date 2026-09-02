@@ -17,6 +17,7 @@
 #include "firewall.h"
 #include "log.h"
 #include "perm.h"
+#include "sandbox.h"
 #include "tasks.h"
 #include "user.h"
 #include "nic.h"
@@ -159,6 +160,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  pruefspur [...]  Sicherheitsereignisse ansehen");
     term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
     term_line(st, C_NORMAL, "  starte <programm> [text]  Programm in Ring 3 starten");
+    term_line(st, C_NORMAL, "  kaefig [profil <programm>]  Programm eingesperrt starten");
     term_line(st, C_NORMAL, "  programme        mitgelieferte Programme zeigen");
     term_line(st, C_NORMAL, "  laufzeit         Zeit seit dem Start");
     term_line(st, C_NORMAL, "  datum            Datum und Uhrzeit");
@@ -665,7 +667,8 @@ static void cmd_ping(struct term_state *st, const char *target)
 
 /* Startet ein Programm; die Ausgabe holt der Takt danach ab. */
 static void cmd_start_program(struct window *win, struct term_state *st,
-                              const char *path, const char *raw)
+                              const char *path, const char *raw,
+                              const char *profile, int skip_words)
 {
     char error[128];
     char full[FS_PATH_MAX];
@@ -689,7 +692,7 @@ static void cmd_start_program(struct window *win, struct term_state *st,
 
     /* Alles hinter dem Programmnamen wird uebergeben. */
     const char *args = raw;
-    for (int skip = 0; skip < 2 && *args; skip++) {
+    for (int skip = 0; skip < skip_words && *args; skip++) {
         while (*args == ' ')
             args++;
         while (*args && *args != ' ')
@@ -698,7 +701,8 @@ static void cmd_start_program(struct window *win, struct term_state *st,
     while (*args == ' ')
         args++;
 
-    struct process *proc = process_start(full, args, error, sizeof(error));
+    struct process *proc = process_start_caged(full, args, profile, error,
+                                               sizeof(error));
 
     if (!proc) {
         term_printf(st, C_ERROR, "starte: %s", error);
@@ -707,8 +711,18 @@ static void cmd_start_program(struct window *win, struct term_state *st,
 
     st->running = proc;
     st->partial_len = 0;
-    term_printf(st, C_HIGHLIGHT, "[%s laeuft als Nummer %u]", proc->name,
-                (unsigned)proc->pid);
+
+    if (proc->box.active) {
+        char darf[96];
+
+        sandbox_text(&proc->box, darf, sizeof(darf));
+        term_printf(st, C_HIGHLIGHT,
+                    "[%s laeuft als Nummer %u im Kaefig \"%s\": %s]",
+                    proc->name, (unsigned)proc->pid, proc->box.profile, darf);
+    } else {
+        term_printf(st, C_HIGHLIGHT, "[%s laeuft als Nummer %u]", proc->name,
+                    (unsigned)proc->pid);
+    }
 }
 
 /* Holt die Ausgabe des laufenden Programms ab und macht Zeilen daraus. */
@@ -1796,10 +1810,32 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         cmd_memory(st);
 
     } else if (!strcasecmp(cmd, "starte") || !strcasecmp(cmd, "run")) {
-        cmd_start_program(win, st, a1, raw);
+        cmd_start_program(win, st, a1, raw, NULL, 2);
 
     } else if (!strcasecmp(cmd, "programme")) {
         cmd_ls(st, "/Programme", false);
+
+    } else if (!strcasecmp(cmd, "kaefig")) {
+        if (!a1) {
+            term_line(st, C_HIGHLIGHT, "Kaefigprofile:");
+            for (size_t i = 0; i < sandbox_profile_count(); i++) {
+                struct sandbox probe;
+                char darf[96];
+
+                memset(&probe, 0, sizeof(probe));
+                sandbox_apply(&probe, sandbox_profile_name(i), "/Heim");
+                sandbox_text(&probe, darf, sizeof(darf));
+                term_printf(st, C_NORMAL, "  %-8s %s%s",
+                            sandbox_profile_name(i), darf,
+                            probe.penalty == SB_KILL
+                                ? " (Verstoss beendet das Programm)" : "");
+            }
+            term_line(st, C_NORMAL, "  kaefig <profil> <programm> [text]");
+        } else if (!a2) {
+            term_line(st, C_ERROR, "kaefig <profil> <programm> [text]");
+        } else {
+            cmd_start_program(win, st, a2, raw, a1, 3);
+        }
 
     } else if (!strcasecmp(cmd, "firewall")) {
         cmd_firewall(st, argc, argv);

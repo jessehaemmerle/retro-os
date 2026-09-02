@@ -21,6 +21,7 @@
 #include "retro.h"
 #include "vmm.h"
 #include "vfs.h"
+#include "sandbox.h"
 #include "syscall.h"
 
 #define PROCESS_MAX       16
@@ -45,6 +46,11 @@ struct process {
      * Dateibaum richten sich danach - ein Programm kann also nicht mehr
      * als der Mensch, der es aufgerufen hat. */
     uint32_t uid, gid;
+
+    /* Was dieses Programm darf - unabhaengig davon, was sein Benutzer
+     * duerfte. Wird beim Abspalten mitgegeben; ein Kind kommt nicht
+     * dadurch frei, dass es ein Kind ist. */
+    struct sandbox box;
 
     struct address_space space;
     struct thread       *thread;
@@ -97,6 +103,12 @@ void process_init(void);
  * oder kein gueltiges Programm enthaelt. */
 struct process *process_start(const char *path, const char *args,
                               char *error, size_t error_size);
+/* Wie process_start, sperrt das Programm aber gleich in einen Kaefig.
+ * Ein unbekanntes Profil scheitert - lieber gar nicht starten als
+ * ungeschuetzt. */
+struct process *process_start_caged(const char *path, const char *args,
+                                    const char *profile, char *error,
+                                    size_t error_size);
 
 struct process *process_current(void);
 void process_kill(struct process *proc);

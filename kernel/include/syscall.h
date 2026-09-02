@@ -49,6 +49,9 @@ enum {
     SYS_SHM_MAP   = 28,  /* (nummer) -> Adresse im eigenen Adressraum    */
     SYS_SHM_UNLINK = 29, /* (name) -> 0                                  */
 
+    /* --- Kaefig --- */
+    SYS_SANDBOX   = 30,  /* (profil) -> 0; geht nur enger, nie weiter    */
+
     SYS_COUNT
 };
 
@@ -97,6 +100,7 @@ struct user_event {
 #define SYS_ERR_NOMEM    (-4)
 #define SYS_ERR_NOSYS    (-5)
 #define SYS_ERR_NOCHILD  (-6)
+#define SYS_ERR_DENIED   (-7)   /* der Kaefig laesst es nicht zu */
 
 /* Registerabbild, das der Einsprung in Assembler auf dem Stapel ablegt. */
 struct syscall_frame {

@@ -109,6 +109,17 @@ void printf(const char *format, ...)
         while (*p >= '0' && *p <= '9')
             width = width * 10 + (*p++ - '0');
 
+        /* "l" vor der Art heisst: der Wert ist 64 Bit breit. Ohne das
+         * las %d bisher acht Bytes, wo der Aufrufer vier uebergeben
+         * hatte - eine negative Zahl kam dann als riesige positive
+         * heraus. */
+        int wide = 0;
+
+        while (*p == 'l' || *p == 'z') {
+            wide = 1;
+            p++;
+        }
+
         char number[24];
         const char *text = number;
         int negative = 0;
@@ -120,7 +131,7 @@ void printf(const char *format, ...)
                 text = "(null)";
             break;
         case 'd': {
-            long value = va_arg(ap, long);
+            long value = wide ? va_arg(ap, long) : va_arg(ap, int);
 
             if (value < 0) {
                 negative = 1;
@@ -130,10 +141,12 @@ void printf(const char *format, ...)
             break;
         }
         case 'u':
-            put_number(number, va_arg(ap, unsigned long), 10, 0);
+            put_number(number, wide ? va_arg(ap, unsigned long)
+                                    : va_arg(ap, unsigned), 10, 0);
             break;
         case 'x':
-            put_number(number, va_arg(ap, unsigned long), 16, 0);
+            put_number(number, wide ? va_arg(ap, unsigned long)
+                                    : va_arg(ap, unsigned), 16, 0);
             break;
         case 'c':
             number[0] = (char)va_arg(ap, int);
