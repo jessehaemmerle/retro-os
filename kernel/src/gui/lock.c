@@ -18,6 +18,7 @@
 #include "gui.h"
 #include "icons.h"
 #include "kstring.h"
+#include "audit.h"
 #include "log.h"
 #include "net.h"
 #include "perm.h"
@@ -226,6 +227,8 @@ static void attempt(void)
      * erzaehlen hat. */
     log_warn("anmeldung", "Fehlversuch fuer \"%s\"",
              name_text[0] ? name_text : "(ohne Namen)");
+    audit(AUDIT_LOGIN, false, "%s",
+          name_text[0] ? name_text : "(ohne Namen)");
 
     pass_text[0] = '\0';
     focus = F_PASS;
@@ -257,7 +260,7 @@ static void paint_row(struct canvas *c, struct rect r, struct user *u,
     uint32_t fg = selected ? COL_SELECT_TEXT : COL_TEXT;
 
     icon_draw(c, r.x + 6, r.y + (r.h - 16) / 2,
-              u->admin ? ICON_SHIELD : ICON_USER, 1);
+              user_is_admin(u) ? ICON_SHIELD : ICON_USER, 1);
     gfx_text_bold(c, r.x + 30, r.y + 4, u->name, fg);
     gfx_text(c, r.x + 30, r.y + 18, u->full,
              selected ? COL_SELECT_TEXT : COL_TEXT_DIM);

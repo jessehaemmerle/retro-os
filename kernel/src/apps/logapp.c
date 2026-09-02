@@ -181,7 +181,7 @@ static void log_paint(struct window *win, struct canvas *c)
 
         widget_button(&local, r, label,
                       i < F_COUNT ? ui->filter == i : ui->hover == i,
-                      i != B_CLEAR || session_is_admin());
+                      i != B_CLEAR || (session_caps() & CAP_LOG) != 0);
     }
 
     /* --- Liste --- */
@@ -343,10 +343,11 @@ static void log_event(struct window *win, const struct gui_event *ev)
             ui->follow = true;
         } else if (i == B_SAVE) {
             do_save(win, ui);
-        } else if (session_is_admin()) {
+        } else if (session_can(CAP_LOG)) {
             log_clear();
         } else {
-            strlcpy(ui->status, "Leeren darf nur ein Verwalter.",
+            strlcpy(ui->status,
+                    "Leeren darf nur, wer das Recht am Protokoll hat.",
                     sizeof(ui->status));
         }
 

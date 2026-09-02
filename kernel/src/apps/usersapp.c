@@ -71,7 +71,7 @@ static struct rect button_rect(struct window *win, int index)
 {
     int32_t w = gui_client_width(win) - SIDE_X - 12;
 
-    return rect_make(SIDE_X, 92 + index * 34, w, 28);
+    return rect_make(SIDE_X, 108 + index * 32, w, 28);
 }
 
 static struct rect save_rect(struct window *win)
@@ -87,7 +87,7 @@ static const char *button_label(struct users_ui *ui, int id)
     switch (id) {
     case BTN_NEW:      return "Neuer Benutzer";
     case BTN_PASSWORD: return "Passwort aendern";
-    case BTN_ADMIN:    return u && u->admin ? "Verwalterrecht nehmen"
+    case BTN_ADMIN:    return u && user_is_admin(u) ? "Verwalterrecht nehmen"
                                             : "Zum Verwalter machen";
     case BTN_LOCK:     return u && u->locked ? "Anmeldung freigeben"
                                              : "Anmeldung sperren";
@@ -135,7 +135,7 @@ static void paint_details(struct canvas *c, struct window *win,
 
     char line[96];
 
-    icon_draw(c, SIDE_X, 12, u->admin ? ICON_SHIELD : ICON_USER, 2);
+    icon_draw(c, SIDE_X, 12, user_is_admin(u) ? ICON_SHIELD : ICON_USER, 2);
     gfx_text_bold(c, SIDE_X + 40, 14, u->name, COL_TEXT);
     gfx_text(c, SIDE_X + 40, 30, u->full, COL_TEXT_DIM);
 
@@ -144,7 +144,15 @@ static void paint_details(struct canvas *c, struct window *win,
               u->nopass ? ", ohne Passwort" : "",
               u->locked ? ", gesperrt" : "");
     gfx_text(c, SIDE_X, 52, line, COL_TEXT_DIM);
-    gfx_text_clipped(c, SIDE_X, 68, u->home, COL_TEXT_DIM,
+
+    char rechte[64];
+
+    caps_text(u->caps, rechte, sizeof(rechte));
+    ksnprintf(line, sizeof(line), "Rolle %s - darf %s",
+              u->role[0] ? u->role : caps_role(u->caps), rechte);
+    gfx_text_clipped(c, SIDE_X, 68, line, COL_TEXT_DIM,
+                     gui_client_width(win) - SIDE_X - 12);
+    gfx_text_clipped(c, SIDE_X, 84, u->home, COL_TEXT_DIM,
                      gui_client_width(win) - SIDE_X - 12);
 }
 
@@ -178,7 +186,7 @@ static void users_paint(struct window *win, struct canvas *c)
         uint32_t fg = sel ? COL_SELECT_TEXT : COL_TEXT;
 
         icon_draw(&local, r.x + 6, r.y + (r.h - 16) / 2,
-                  u->locked ? ICON_LOCK : (u->admin ? ICON_SHIELD : ICON_USER), 1);
+                  u->locked ? ICON_LOCK : (user_is_admin(u) ? ICON_SHIELD : ICON_USER), 1);
         gfx_text_bold(&local, r.x + 30, r.y + 4, u->name, fg);
 
         char note[80];
@@ -243,7 +251,7 @@ static void do_save(struct users_ui *ui)
     for (size_t i = 0; i < user_count(); i++) {
         struct user *u = user_at(i);
 
-        if ((u->admin || u->uid == UID_ROOT) && u->nopass && !u->locked) {
+        if (user_is_admin(u) && u->nopass && !u->locked) {
             char text[96];
 
             ksnprintf(text, sizeof(text),
@@ -369,13 +377,14 @@ static void press(struct users_ui *ui, int id)
         break;
     }
     case BTN_ADMIN:
-        u->admin = !u->admin;
-        if (u->admin)
+        user_set_role(u, user_is_admin(u) ? "benutzer" : "verwalter");
+        if (user_is_admin(u))
             group_add_member(group_by_gid(GID_ROOT), u->uid);
         else
             group_remove_member(group_by_gid(GID_ROOT), u->uid);
         ui->changed = true;
-        say(ui, u->admin ? "Ist jetzt Verwalter." : "Ist kein Verwalter mehr.");
+        say(ui, user_is_admin(u) ? "Ist jetzt Verwalter."
+                                 : "Ist kein Verwalter mehr.");
         break;
     case BTN_LOCK:
         u->locked = !u->locked;

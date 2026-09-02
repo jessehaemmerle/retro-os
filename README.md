@@ -276,6 +276,8 @@ Neustart weg.
 | `rechte <datei> [modus]` | Rechte zeigen oder setzen (`750` oder `rwxr-x---`) |
 | `besitzer <datei> [name[:gruppe]]` | Eigentümer zeigen oder setzen |
 | `sperren` | Bildschirm sperren |
+| `firewall [an\|aus\|standard\|regel\|weg\|leeren\|speichern]` | Paketfilter zeigen und regeln |
+| `pruefspur [alle\|abgewiesen\|speichern]` | Sicherheitsereignisse ansehen |
 | `protokoll [alle\|warnung\|fehler\|speichern\|leeren]` | Systemprotokoll ansehen, sichern, leeren |
 | `aufgaben [neu <text>\|fertig <n>\|weg <n>\|wichtig <n> <stufe>\|termin <n> <datum>]` | Aufgabenliste führen |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
@@ -316,6 +318,10 @@ also so, wie es ein Betriebssystem tut.
 | **Protokoll** | Ring über die letzten 512 Meldungen mit Zeit, Dringlichkeit und Herkunft; alles, was `kprintf` schreibt, landet zeilenweise darin – der ganze Startvorgang ist danach im Fenster nachlesbar |
 | **Systemmonitor** | Programme, Threads und Maschine in drei Ansichten; Rechenzeitanteile werden jede Sekunde gemessen, Speicher je Programm gezählt, fremde Programme beendet nur ein Verwalter |
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
+| **IPC** | Röhren zwischen Eltern und Kind (Ringpuffer im Kern, werden beim Abspalten vererbt) und geteilter Speicher (derselbe Seitenrahmen in mehreren Adressräumen, `PTE_SHARED` hält ihn aus Kopie-beim-Schreiben und Abräumen heraus) |
+| **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
+| **Rollen** | Sechs Fähigkeiten (Konten, Netz, Platte, Protokoll, Strom, Einstellungen) statt „Verwalter ja/nein"; eine Rolle ist ein Name für eine Menge davon |
+| **Prüfspur** | Wer hat was woran versucht und mit welchem Ausgang – Anmeldungen, abgewiesene Zugriffe, gebrauchte Rechte, Konten- und Filteränderungen; wird fortgeschrieben, nicht ersetzt, und lässt sich nicht leeren |
 | **Benutzer** | Mehrere Konten mit Nummer, Gruppe, Heimatverzeichnis und Verwalterrecht; das Passwort liegt als 4096-fach wiederholter HMAC-SHA256 über einem eigenen Salz in `/Festplatte/benutzer.conf` |
 | **Rechte** | Eigentümer, Gruppe und neun Bits je Eintrag, dazu das Klebebit; geprüft beim Nachschlagen, Aufzählen, Lesen, Schreiben, Anlegen, Umbenennen und Löschen |
 | **Anmeldung** | Anmeldebildschirm beim Start, Sperren, Abmelden und Benutzerwechsel; nach drei Fehlversuchen eine Zwangspause |
@@ -497,6 +503,90 @@ jedem gehört, der die Scheibe einlegt, wäre Theater. Sobald unter
 **Benutzer** das erste Konto angelegt und gespeichert ist, fragt der
 nächste Start nach Name und Passwort.
 
+### Wie zwei Programme miteinander reden
+
+Bis vor kurzem gab es dafür nur das Netz: Zwei Programme auf demselben
+Rechner brauchten einen Dreiwegehandschlag, um sich ein Wort zu sagen.
+Jetzt gibt es zwei direkte Wege, und sie sind absichtlich verschieden.
+
+Eine **Röhre** ist ein Strom von Bytes mit einem Schreiber und einem
+Leser. `sys_pipe()` liefert zwei gewöhnliche Dateinummern; `sys_read`
+und `sys_write` können damit umgehen, und ein abgespaltenes Kind erbt
+sie. Sie kostet einen Ringpuffer im Kern und kopiert zweimal – dafür
+muss sich niemand um Sperren kümmern, und das Ende der Röhre sagt dem
+Leser von selbst, dass Schluss ist: Erst wenn der letzte Schreiber
+verschwunden ist, meldet das Lesen null zurück. Genau deshalb schließt
+der Elternteil in `roehre.c` sein eigenes Schreibende, bevor er liest.
+
+**Geteilter Speicher** ist derselbe Seitenrahmen in zwei Adressräumen.
+Er kopiert gar nicht und ist damit die schnellste Art, große Mengen
+weiterzureichen – dafür müssen sich beide Seiten selbst einigen, wer
+wann hineinschreibt. Jeder Bereich hat seinen festen Platz im
+Adressraum, also ist die Adresse in beiden Programmen dieselbe und
+Zeiger darin lassen sich sogar weiterreichen.
+
+Der Haken dabei ist die Kopie beim Schreiben: Ein abgespaltenes Kind
+bekäme sonst geteilte Seiten, die beim ersten Schreiben still zu
+privaten würden – zwei getrennte Bereiche, und niemand hätte es
+gemerkt. Darum tragen sie `PTE_SHARED`. Das Bit hält sie aus dem
+Abspalten heraus und aus dem Abräumen des Adressraums; wer den Bereich
+im Kind will, blendet ihn dort ausdrücklich ein. `starte roehre` zeigt
+beides nebeneinander.
+
+### Was durchs Netz darf
+
+Bisher nahm RetroOS jedes Paket an, das an seine Adresse ging. Für einen
+Rechner am Netz ist das zu wenig: Wer einen Webserver betreibt, will
+Port 8080 offen haben und sonst nichts.
+
+Der Filter ist eine Liste von Regeln je Richtung. Geprüft wird von oben
+nach unten, die erste passende entscheidet, sonst gilt die
+Grundeinstellung. Das ist das Modell von nftables und der
+Windows-Firewall, und es ist deshalb so verbreitet, weil man eine
+Regelliste von oben lesen und dabei laut mitsprechen kann.
+
+Eine Regel trifft auf die **Gegenstelle** zu, nicht auf „Quelle" und
+„Ziel": Bei einem eingehenden Paket ist das der Absender, bei einem
+ausgehenden der Empfänger. Das spart die Hälfte der Felder und die immer
+wiederkehrende Frage, welche Seite gerade gemeint ist. Genauso ist der
+Port immer der eigene.
+
+Der Filter sitzt an genau zwei Stellen – in `ip_receive()`, bevor das
+Paket an ICMP, UDP oder TCP geht, und in `ip_send_via()`, bevor es die
+Karte erreicht. Alles darüber muss nichts davon wissen. Weggeworfene
+Pakete werden gezählt, aber nur jedes hundertste kommt ins Protokoll:
+Ein Scan würde den Ring sonst in Sekunden leerlaufen lassen.
+
+### Rollen statt eines einzigen Schalters
+
+„Verwalter ja/nein" war zu grob. Wer den Paketfilter pflegen soll,
+braucht keinen Zugriff auf die Passwörter, und wer die Platte
+formatiert, muss nicht das Protokoll leeren dürfen. Darum hängt an jedem
+Benutzer eine Menge von **Fähigkeiten** – Konten, Netz, Platte,
+Protokoll, Strom, Einstellungen –, und eine **Rolle** ist nichts weiter
+als ein Name für eine solche Menge. Wer alle hat, ist Verwalter; das
+alte Kennzeichen ist damit nicht verschwunden, sondern zum Sonderfall
+geworden.
+
+Vier Rollen genügen für einen Rechner dieser Größe: `verwalter`,
+`netzwerk`, `wartung` und `benutzer`. Wer eine fünfte braucht, setzt die
+Fähigkeiten einzeln – dann heißt die Rolle `eigen`, und das ist
+ehrlicher als ein Name, der nichts bedeutet.
+
+Die **Prüfspur** ist das Gegenstück zum Protokoll. Das Protokoll sagt,
+was das System getan hat; die Prüfspur sagt, wer es veranlasst hat und
+ob er durfte. Das sind zwei verschiedene Fragen, und deshalb sind es
+zwei verschiedene Listen: Ein Protokoll darf man leeren, wenn es
+unübersichtlich wird – eine Prüfspur darf das gerade nicht, sonst wäre
+sie wertlos. Auf der Platte wird sie fortgeschrieben, nicht ersetzt, und
+lesen darf sie nur, wer die Fähigkeit am Protokoll hat.
+
+Aufgeschrieben wird, was für die Sicherheit zählt: Anmeldungen und
+Fehlversuche, abgewiesene Schreib- und Löschzugriffe, gebrauchte und
+verweigerte Rechte, Änderungen an Konten und am Paketfilter. Nicht
+aufgeschrieben wird der Alltag – eine Prüfspur, in der jeder
+Dateizugriff steht, liest niemand mehr.
+
 ### Wie die Teile zusammenspielen
 
 Der Dateibaum kennt zwei Sorten von Knoten. Alles unterhalb von
@@ -539,7 +629,8 @@ cd tests && make
 | **Dokumentbaum** | 83 Prüfungen zu Zerteiler, Kaskade, Umbruch, Skripten am Baum und Zeitgebern |
 | **Aufgaben** | 96 Prüfungen: Anlegen und Entfernen, Reihenfolge, Termine samt Schaltjahren, Datei hin und zurück, von Hand geschriebene Listen |
 | **Systemprotokoll** | 50 Prüfungen: Ring samt Überlauf, Dringlichkeiten, Zerlegung der `kprintf`-Zeilen, Sichern |
-| **Rechte und Benutzer** | 117 Prüfungen: Rechtebits samt Reihenfolge, Klebebit, Textform hin und zurück, Passwort-Prüfwerte, `benutzer.conf` schreiben und lesen, beschädigte Dateien |
+| **Rechte und Benutzer** | 155 Prüfungen: Rechtebits samt Reihenfolge, Klebebit, Textform hin und zurück, Rollen und Fähigkeiten, Passwort-Prüfwerte, `benutzer.conf` schreiben und lesen, beschädigte Dateien |
+| **Paketfilter** | 67 Prüfungen: jede Achse einer Regel einzeln, Reihenfolge und Ausnahmen, Textform, Datei hin und zurück |
 
 Die Testbilder erzeugt `make testbilder` neu (benötigt Pillow).
 
@@ -564,11 +655,11 @@ kernel/
                       Installation auf Festplatte, Papierkorb,
                       Benutzer und Rechte
     net/              Kartenauswahl, Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS,
-                      TCP, TLS, HTTP
+                      TCP, TLS, HTTP, Paketfilter
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
     gfx/              DEFLATE, PNG, JPEG, GIF, BMP, Skalieren und Zeichnen
-    lib/              Zeichenketten, Ausgabe, Systemprotokoll,
+    lib/              Zeichenketten, Ausgabe, Systemprotokoll, Prüfspur,
                       128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop,
                       Anmeldebildschirm, Bedienelemente

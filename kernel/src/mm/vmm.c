@@ -144,7 +144,7 @@ static void free_level(uint64_t table_phys, int level)
 
         if (level > 1)
             free_level(entry & PTE_ADDR_MASK, level - 1);
-        else
+        else if (!(entry & PTE_SHARED))
             pmm_free_page(entry & PTE_ADDR_MASK);
     }
 
@@ -201,6 +201,13 @@ static bool fork_level(uint64_t dst_phys, uint64_t src_phys, int level)
             continue;
 
         if (level == 1) {
+            /* Ein geteilter Bereich wird nicht verdoppelt. Wer ihn im
+             * Kind haben will, blendet ihn dort ausdruecklich ein -
+             * sonst waere er nach dem ersten Schreiben zwei getrennte
+             * Bereiche, und niemand haette es gemerkt. */
+            if (entry & PTE_SHARED)
+                continue;
+
             if (entry & PTE_WRITE) {
                 entry = (entry & ~PTE_WRITE) | PTE_COW;
                 src[i] = entry;

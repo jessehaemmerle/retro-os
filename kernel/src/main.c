@@ -30,6 +30,8 @@
 #include "vfs.h"
 #include "trash.h"
 #include "lock.h"
+#include "firewall.h"
+#include "ipc.h"
 #include "perm.h"
 #include "user.h"
 
@@ -115,6 +117,7 @@ NORETURN void kmain(void)
     thread_init();
     syscall_init();
     process_init();
+    ipc_init();
 
     /* Und jetzt auch auf mehreren Kernen. */
     uint32_t cores = smp_start();
@@ -128,7 +131,15 @@ NORETURN void kmain(void)
 
     /* Netzwerk (bringt seinen eigenen Thread mit) */
     trust_store_init();
+    fw_init();
     net_init();
+
+    /* Die Regeln erst nach dem Netz laden: Vorher gaebe es nichts, was
+     * sie filtern koennten, und die Meldung stuende im Protokoll an der
+     * falschen Stelle. */
+    if (fw_load())
+        kprintf("Paketfilter : %u Regeln, %s\n", (unsigned)fw_count(),
+                fw_enabled() ? "eingeschaltet" : "ausgeschaltet");
 
     gui_init();
 

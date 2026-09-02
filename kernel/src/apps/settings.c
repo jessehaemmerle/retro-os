@@ -236,8 +236,9 @@ static void settings_save(struct window *win)
 
     /* Die Datei gilt fuer den ganzen Rechner - Tastatur, Zeitzone,
      * Rechnername. Wer sie aendern darf, entscheidet fuer alle mit. */
-    if (!session_is_admin()) {
-        strlcpy(ui->status, "Dauerhaft speichern darf nur ein Verwalter.",
+    if (!session_can(CAP_CONFIG)) {
+        strlcpy(ui->status, "Dauerhaft speichern darf nur, wer das Recht "
+                            "an den Einstellungen hat.",
                 sizeof(ui->status));
         gui_invalidate();
         return;

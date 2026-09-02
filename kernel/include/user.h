@@ -41,6 +41,25 @@
  * von Passwortlisten sehr wohl. */
 #define USER_ROUNDS      4096
 
+/* --- Faehigkeiten und Rollen ----------------------------------------
+ *
+ * "Verwalter ja/nein" ist zu grob. Wer den Paketfilter pflegen soll,
+ * braucht keinen Zugriff auf die Passwoerter, und wer die Platte
+ * formatiert, muss nicht das Protokoll leeren duerfen. Darum haengt an
+ * jedem Benutzer eine Menge von Faehigkeiten, und eine Rolle ist nichts
+ * weiter als ein Name fuer eine solche Menge - das ist RBAC in seiner
+ * schlichtesten brauchbaren Form.
+ *
+ * Wer alle Faehigkeiten hat, ist Verwalter; das alte Kennzeichen ist
+ * damit nicht verschwunden, sondern nur zum Sonderfall geworden. */
+#define CAP_USERS    (1u << 0)   /* Konten anlegen, sperren, Passwoerter */
+#define CAP_NET      (1u << 1)   /* Netz und Paketfilter                 */
+#define CAP_DISK     (1u << 2)   /* Formatieren, Einhaengen, Installieren */
+#define CAP_LOG      (1u << 3)   /* Protokoll leeren, Pruefspur lesen     */
+#define CAP_POWER    (1u << 4)   /* Neu starten und abschalten            */
+#define CAP_CONFIG   (1u << 5)   /* Systemweite Einstellungen             */
+#define CAP_ALL      0x3Fu
+
 #define UID_ROOT         0u
 #define GID_ROOT         0u
 #define GID_USERS        100u
@@ -53,7 +72,8 @@ struct user {
     char     name[USER_NAME_MAX + 1];
     char     full[USER_FULL_MAX + 1];
     char     home[FS_PATH_MAX];
-    bool     admin;              /* darf verwalten wie root      */
+    uint32_t caps;               /* was er darf - siehe CAP_*    */
+    char     role[USER_NAME_MAX + 1];
     bool     locked;             /* Anmeldung gesperrt           */
     bool     nopass;             /* kein Passwort gesetzt        */
     uint32_t rounds;
@@ -86,6 +106,16 @@ struct user  *user_by_name(const char *name);
 struct user  *user_by_uid(uint32_t uid);
 const char   *user_name_of(uint32_t uid);
 
+/* Die vorgegebenen Rollen. Eine unbekannte Rolle gilt als "benutzer". */
+size_t      role_count(void);
+const char *role_name(size_t index);
+uint32_t    role_caps(const char *name);
+/* Der Name zur Menge - "verwalter", "netzwerk", ... oder "eigen". */
+const char *caps_role(uint32_t caps);
+/* "Konten, Netz, Protokoll" fuer die Anzeige. */
+void        caps_text(uint32_t caps, char *out, size_t size);
+bool        cap_parse(const char *text, uint32_t *out);
+
 size_t        group_count(void);
 struct group *group_at(size_t index);
 struct group *group_by_name(const char *name);
@@ -102,6 +132,12 @@ bool          user_in_group(uint32_t uid, uint32_t gid);
 struct user *user_create(const char *name, const char *full,
                          const char *password, bool admin,
                          char *error, size_t error_size);
+/* Setzt Rolle und damit Faehigkeiten. Unbekannte Namen scheitern. */
+bool user_set_role(struct user *u, const char *role);
+static inline bool user_is_admin(const struct user *u)
+{
+    return u && (u->uid == UID_ROOT || (u->caps & CAP_ALL) == CAP_ALL);
+}
 /* Entfernt einen Benutzer. Der letzte Verwalter bleibt stehen - sonst
  * kaeme niemand mehr an die Verwaltung heran. */
 bool user_delete(struct user *u, char *error, size_t error_size);
@@ -130,5 +166,9 @@ struct user *session_user(void);        /* NULL = niemand angemeldet */
 uint32_t session_uid(void);
 uint32_t session_gid(void);
 bool     session_is_admin(void);
+/* Darf der Handelnde das? Ein Ring-3-Programm nie mehr als sein
+ * Benutzer, und ein Fehlschlag steht in der Pruefspur. */
+bool     session_can(uint32_t cap);
+uint32_t session_caps(void);
 
 #endif /* USER_H */

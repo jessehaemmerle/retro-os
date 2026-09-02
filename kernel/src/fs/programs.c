@@ -27,6 +27,7 @@ PROGRAM(uhr);
 PROGRAM(abrufen);
 PROGRAM(server);
 PROGRAM(gabeln);
+PROGRAM(roehre);
 
 #define ENTRY(name, beschreibung)                                \
     { #name ".elf", _binary_##name##_elf_start,                  \
@@ -49,6 +50,7 @@ static const struct {
     ENTRY(abrufen,   "holt eine Seite aus dem Netz"),
     ENTRY(server,    "liefert die Ablage im Netz aus"),
     ENTRY(gabeln,    "spaltet sich ab und zaehlt getrennt weiter"),
+    ENTRY(roehre,    "Roehre und geteilter Speicher zwischen Eltern und Kind"),
 };
 
 /* ksnprintf meldet, wieviel gepasst haette - nicht, wieviel es

@@ -15,6 +15,7 @@
 #include "block.h"
 #include "kstring.h"
 #include "mm.h"
+#include "audit.h"
 #include "perm.h"
 #include "rtc.h"
 #include "user.h"
@@ -261,8 +262,10 @@ bool fs_remove(struct fs_node *node)
         return false;
     if (node == disk_mount_point)
         return false;
-    if (!perm_may_unlink(node->parent, node))
+    if (!perm_may_unlink(node->parent, node)) {
+        audit(AUDIT_DENIED, false, "loeschen von %s", node->name);
         return false;
+    }
 
     if (node->backend == FS_BACKEND_FAT && !fat_remove_recursive(node))
         return false;
@@ -358,8 +361,12 @@ bool fs_write(struct fs_node *file, const void *data, size_t size)
 {
     if (!file || file->type != FS_FILE || file->readonly)
         return false;
-    if (!perm_may(file, P_W))
+    if (!perm_may(file, P_W)) {
+        /* Nur abgewiesene Schreibversuche kommen in die Spur. Jeder
+         * erlaubte waere Rauschen - davon gibt es tausende. */
+        audit(AUDIT_DENIED, false, "schreiben auf %s", file->name);
         return false;
+    }
 
     if (file->backend == FS_BACKEND_FAT) {
         uint32_t cluster = file->fat_cluster;

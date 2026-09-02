@@ -7,6 +7,7 @@
  */
 
 #include "user.h"
+#include "audit.h"
 #include "crypto.h"
 #include "kstring.h"
 #include "log.h"
@@ -125,6 +126,122 @@ static bool name_ok(const char *name)
             return false;
     }
     return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Faehigkeiten und Rollen                                             */
+/* ------------------------------------------------------------------ */
+
+/* Vier Rollen genuegen fuer einen Rechner dieser Groesse. Wer eine
+ * fuenfte braucht, setzt die Faehigkeiten einzeln - dann heisst die
+ * Rolle "eigen", und das ist ehrlicher als ein Name, der nichts
+ * bedeutet. */
+static const struct {
+    const char *name;
+    uint32_t    caps;
+} roles[] = {
+    { "verwalter", CAP_ALL },
+    { "netzwerk",  CAP_NET },
+    { "wartung",   CAP_DISK | CAP_LOG | CAP_CONFIG },
+    { "benutzer",  0 },
+};
+
+static const struct {
+    const char *name;
+    uint32_t    bit;
+} capability_names[] = {
+    { "konten",       CAP_USERS  },
+    { "netz",         CAP_NET    },
+    { "platte",       CAP_DISK   },
+    { "protokoll",    CAP_LOG    },
+    { "strom",        CAP_POWER  },
+    { "einstellungen", CAP_CONFIG },
+};
+
+size_t role_count(void) { return ARRAY_LEN(roles); }
+
+const char *role_name(size_t index)
+{
+    return index < ARRAY_LEN(roles) ? roles[index].name : "";
+}
+
+uint32_t role_caps(const char *name)
+{
+    for (size_t i = 0; i < ARRAY_LEN(roles); i++)
+        if (strcasecmp(roles[i].name, name) == 0)
+            return roles[i].caps;
+    return 0;
+}
+
+const char *caps_role(uint32_t caps)
+{
+    for (size_t i = 0; i < ARRAY_LEN(roles); i++)
+        if (roles[i].caps == caps)
+            return roles[i].name;
+    return "eigen";
+}
+
+void caps_text(uint32_t caps, char *out, size_t size)
+{
+    size_t used = 0;
+
+    if (!out || !size)
+        return;
+    out[0] = '\0';
+
+    if ((caps & CAP_ALL) == CAP_ALL) {
+        strlcpy(out, "alles", size);
+        return;
+    }
+    if (!caps) {
+        strlcpy(out, "nichts", size);
+        return;
+    }
+
+    for (size_t i = 0; i < ARRAY_LEN(capability_names); i++) {
+        if (!(caps & capability_names[i].bit))
+            continue;
+        ksnprintf(out + used, size - used, "%s%s", used ? ", " : "",
+                  capability_names[i].name);
+        used += strlen(out + used);
+    }
+}
+
+bool cap_parse(const char *text, uint32_t *out)
+{
+    if (!text || !out)
+        return false;
+    if (strcasecmp(text, "alles") == 0) { *out = CAP_ALL; return true; }
+    if (strcasecmp(text, "nichts") == 0) { *out = 0; return true; }
+
+    for (size_t i = 0; i < ARRAY_LEN(capability_names); i++) {
+        if (strcasecmp(capability_names[i].name, text) != 0)
+            continue;
+        *out = capability_names[i].bit;
+        return true;
+    }
+    return false;
+}
+
+bool user_set_role(struct user *u, const char *role)
+{
+    if (!u || !role)
+        return false;
+
+    for (size_t i = 0; i < ARRAY_LEN(roles); i++) {
+        if (strcasecmp(roles[i].name, role) != 0)
+            continue;
+        u->caps = roles[i].caps;
+        strlcpy(u->role, roles[i].name, sizeof(u->role));
+
+        /* Wer wem welche Rechte gibt, ist die interessanteste Zeile,
+         * die eine Pruefspur enthalten kann. */
+        audit(AUDIT_ACCOUNT, true, "%s bekommt die Rolle %s", u->name,
+              u->role);
+        log_info("benutzer", "%s hat jetzt die Rolle %s", u->name, u->role);
+        return true;
+    }
+    return false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -313,6 +430,8 @@ bool user_set_password(struct user *u, const char *password)
         log_warn("benutzer", "%s hat jetzt kein Passwort", u->name);
     else
         log_info("benutzer", "Passwort von %s gesetzt", u->name);
+    audit(AUDIT_ACCOUNT, true, "Passwort von %s %s", u->name,
+          u->nopass ? "geloescht" : "gesetzt");
     return true;
 }
 
@@ -378,7 +497,8 @@ struct user *user_create(const char *name, const char *full,
         u->used  = true;
         u->uid   = next_uid();
         u->gid   = GID_USERS;
-        u->admin = admin;
+        u->caps  = admin ? CAP_ALL : 0;
+        strlcpy(u->role, admin ? "verwalter" : "benutzer", sizeof(u->role));
         strlcpy(u->name, name, sizeof(u->name));
         strlcpy(u->full, full && full[0] ? full : name, sizeof(u->full));
         default_home(name, u->home, sizeof(u->home));
@@ -390,6 +510,8 @@ struct user *user_create(const char *name, const char *full,
 
         log_info("benutzer", "%s angelegt, Nummer %u%s", u->name,
                  (unsigned)u->uid, admin ? ", Verwalter" : "");
+        audit(AUDIT_ACCOUNT, true, "%s angelegt%s", u->name,
+              admin ? " (Verwalter)" : "");
         return u;
     }
 
@@ -405,7 +527,7 @@ static size_t admins_besides(const struct user *skip)
     for (size_t i = 0; i < USER_MAX; i++) {
         if (!users[i].used || &users[i] == skip)
             continue;
-        if ((users[i].admin || users[i].uid == UID_ROOT) && !users[i].locked)
+        if (user_is_admin(&users[i]) && !users[i].locked)
             n++;
     }
     return n;
@@ -426,7 +548,7 @@ bool user_delete(struct user *u, char *error, size_t error_size)
                                 "entfernen.");
         return false;
     }
-    if ((u->admin || u->uid == UID_ROOT) && admins_besides(u) == 0) {
+    if (user_is_admin(u) && admins_besides(u) == 0) {
         fail(error, error_size, "Es muss ein Verwalter uebrig bleiben.");
         return false;
     }
@@ -436,6 +558,7 @@ bool user_delete(struct user *u, char *error, size_t error_size)
             group_remove_member(&groups[i], u->uid);
 
     log_warn("benutzer", "%s entfernt", u->name);
+    audit(AUDIT_ACCOUNT, true, "%s entfernt", u->name);
     memset(u, 0, sizeof(*u));
     return true;
 }
@@ -532,7 +655,8 @@ void user_init(void)
     root->used  = true;
     root->uid   = UID_ROOT;
     root->gid   = GID_ROOT;
-    root->admin = true;
+    root->caps = CAP_ALL;
+    strlcpy(root->role, "verwalter", sizeof(root->role));
     strlcpy(root->name, "root", sizeof(root->name));
     strlcpy(root->full, "Verwalter", sizeof(root->full));
     strlcpy(root->home, "/", sizeof(root->home));
@@ -609,9 +733,9 @@ static void read_group(char *value)
 
 static void read_user(char *value)
 {
-    char *f[9];
+    char *f[10];
 
-    split(value, f, 9);
+    split(value, f, 10);
     if (!name_ok(f[0]))
         return;
 
@@ -637,7 +761,7 @@ static void read_user(char *value)
         default_home(u->name, u->home, sizeof(u->home));
 
     for (const char *p = f[5]; *p; p++) {
-        if (*p == 'v') u->admin = true;
+        if (*p == 'v') u->caps = CAP_ALL;
         if (*p == 'g') u->locked = true;
         if (*p == 'o') u->nopass = true;
     }
@@ -656,6 +780,13 @@ static void read_user(char *value)
         memset(u->hash, 0, sizeof(u->hash));
         u->nopass = false;
     }
+
+    /* Das zehnte Feld gibt es erst seit den Rollen. Aeltere Dateien
+     * haben es nicht - dann entscheidet weiter das "v" aus den
+     * Merkmalen, und niemand muss seine Datei anfassen. */
+    if (f[9][0] && user_set_role(u, f[9]))
+        return;
+    strlcpy(u->role, caps_role(u->caps), sizeof(u->role));
 }
 
 bool user_load(void)
@@ -761,9 +892,10 @@ bool user_save(void)
         "#\n"
         "# gruppe   = <name>:<gid>:<mitglied>,<mitglied>\n"
         "# benutzer = <name>:<uid>:<gid>:<voller Name>:<heim>:<merkmale>:"
-        "<runden>:<salz>:<pruefwert>\n"
+        "<runden>:<salz>:<pruefwert>:<rolle>\n"
         "#\n"
         "# Merkmale: v = Verwalter, g = Anmeldung gesperrt, o = ohne Passwort.\n"
+        "# Rollen  : verwalter, netzwerk, wartung, benutzer.\n"
         "# Das Passwort selbst steht hier nicht - nur ein Wert, aus dem es\n"
         "# sich nicht zurueckrechnen laesst.\n\n");
 
@@ -786,12 +918,13 @@ bool user_save(void)
 
         to_hex(users[i].salt, USER_SALT_SIZE, salt);
         to_hex(users[i].hash, USER_HASH_SIZE, hash);
-        ADD("benutzer = %s:%u:%u:%s:%s:%s%s%s:%u:%s:%s\n",
+        ADD("benutzer = %s:%u:%u:%s:%s:%s%s%s:%u:%s:%s:%s\n",
             users[i].name, (unsigned)users[i].uid, (unsigned)users[i].gid,
             users[i].full, users[i].home,
-            users[i].admin ? "v" : "", users[i].locked ? "g" : "",
+            user_is_admin(&users[i]) ? "v" : "", users[i].locked ? "g" : "",
             users[i].nopass ? "o" : "",
-            (unsigned)users[i].rounds, salt, hash);
+            (unsigned)users[i].rounds, salt, hash,
+            users[i].role[0] ? users[i].role : caps_role(users[i].caps));
     }
     #undef ADD
 
@@ -833,14 +966,18 @@ void session_login(struct user *u)
     if (u) {
         user_ensure_home(u);
         log_info("sitzung", "%s angemeldet (Nummer %u%s)", u->name,
-                 (unsigned)u->uid, u->admin ? ", Verwalter" : "");
+                 (unsigned)u->uid, user_is_admin(u) ? ", Verwalter" : "");
+        audit(AUDIT_LOGIN, true, "%s (Rolle %s)", u->name,
+              u->role[0] ? u->role : caps_role(u->caps));
     }
 }
 
 void session_logout(void)
 {
-    if (logged_in)
+    if (logged_in) {
         log_info("sitzung", "%s abgemeldet", logged_in->name);
+        audit(AUDIT_LOGOUT, true, "%s", logged_in->name);
+    }
     logged_in = NULL;
 }
 
@@ -875,5 +1012,33 @@ bool session_is_admin(void)
 
     struct user *u = user_by_uid(uid);
 
-    return u && u->admin;
+    return user_is_admin(u);
+}
+
+uint32_t session_caps(void)
+{
+    uint32_t uid = session_uid();
+
+    if (uid == UID_ROOT)
+        return CAP_ALL;
+
+    struct user *u = user_by_uid(uid);
+
+    return u ? u->caps : 0;
+}
+
+bool session_can(uint32_t cap)
+{
+    bool ok = (session_caps() & cap) == cap;
+
+    /* Gebrauchte und verweigerte Rechte stehen beide in der Spur - die
+     * verweigerten, weil sie auffallen sollen, die gebrauchten, weil
+     * man hinterher wissen will, wer wann Verwalter war. */
+    if (session_uid() != UID_ROOT) {
+        char text[64];
+
+        caps_text(cap, text, sizeof(text));
+        audit(AUDIT_PRIVILEGE, ok, "%s", text);
+    }
+    return ok;
 }

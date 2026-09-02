@@ -43,6 +43,12 @@ enum {
     SYS_FORK      = 24,  /* () -> 0 beim Kind, Nummer beim Elternteil */
     SYS_WAIT      = 25,  /* (pid, &code, wartezeit) -> Nummer         */
 
+    /* --- Verstaendigung zwischen Programmen --- */
+    SYS_PIPE      = 26,  /* (&paar[2]) -> 0; paar[0] liest, [1] schreibt */
+    SYS_SHM_OPEN  = 27,  /* (name, groesse, anlegen) -> Nummer           */
+    SYS_SHM_MAP   = 28,  /* (nummer) -> Adresse im eigenen Adressraum    */
+    SYS_SHM_UNLINK = 29, /* (name) -> 0                                  */
+
     SYS_COUNT
 };
 

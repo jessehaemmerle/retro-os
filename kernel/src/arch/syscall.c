@@ -16,6 +16,7 @@
 #include "thread.h"
 #include "vfs.h"
 #include "gui.h"
+#include "ipc.h"
 #include "net.h"
 #include "uiapi.h"
 #include "vmm.h"
@@ -162,10 +163,87 @@ static bool user_string(struct process *proc, char *dst, uint64_t src,
 static int alloc_fd(struct process *proc)
 {
     for (int i = 3; i < PROCESS_FILES_MAX; i++) {
-        if (!proc->files[i])
+        if (!proc->files[i] && !proc->pipes[i])
             return i;
     }
     return -1;
+}
+
+/* --- Roehren und geteilter Speicher -------------------------------- */
+
+static int64_t do_pipe(struct process *proc, uint64_t out_ptr)
+{
+    int read_fd = alloc_fd(proc);
+
+    if (read_fd < 0)
+        return SYS_ERR_BADFD;
+
+    /* Den Platz gleich belegen, sonst gaebe alloc_fd zweimal dieselbe
+     * Nummer zurueck. */
+    proc->pipes[read_fd] = (struct pipe *)1;
+
+    int write_fd = alloc_fd(proc);
+
+    proc->pipes[read_fd] = NULL;
+    if (write_fd < 0)
+        return SYS_ERR_BADFD;
+
+    struct pipe *p = pipe_create();
+
+    if (!p)
+        return SYS_ERR_NOMEM;
+
+    int32_t pair[2] = { read_fd, write_fd };
+
+    if (!user_write(proc, out_ptr, pair, sizeof(pair))) {
+        pipe_close(p, false);
+        pipe_close(p, true);
+        return SYS_ERR_INVAL;
+    }
+
+    proc->pipes[read_fd]       = p;
+    proc->pipe_writer[read_fd] = false;
+    proc->pipes[write_fd]       = p;
+    proc->pipe_writer[write_fd] = true;
+    return 0;
+}
+
+static int64_t do_shm_open(struct process *proc, uint64_t name_ptr,
+                           uint64_t bytes, uint64_t create)
+{
+    char name[SHM_NAME_MAX + 1];
+
+    if (!user_string(proc, name, name_ptr, sizeof(name)))
+        return SYS_ERR_INVAL;
+
+    int id = shm_open(name, (size_t)bytes, create != 0);
+
+    return id < 0 ? SYS_ERR_NOENT : id;
+}
+
+static int64_t do_shm_map(struct process *proc, int id)
+{
+    /* Zweimal einblenden liefert dieselbe Adresse und zaehlt nur
+     * einmal - sonst muesste das Programm mitzaehlen. */
+    for (int i = 0; i < PROCESS_SHM_MAX; i++)
+        if (proc->shm[i] == id + 1)
+            return (int64_t)(SHM_BASE + (uint64_t)id * SHM_STRIDE);
+
+    int slot = -1;
+
+    for (int i = 0; i < PROCESS_SHM_MAX && slot < 0; i++)
+        if (!proc->shm[i])
+            slot = i;
+    if (slot < 0)
+        return SYS_ERR_NOMEM;
+
+    uint64_t base = shm_attach(&proc->space, id);
+
+    if (!base)
+        return SYS_ERR_NOMEM;
+
+    proc->shm[slot] = id + 1;
+    return (int64_t)base;
 }
 
 static int64_t do_open(struct process *proc, uint64_t path_ptr, uint64_t mode)
@@ -203,6 +281,23 @@ static int64_t do_read(struct process *proc, int64_t fd, uint64_t buffer,
 {
     char chunk[COPY_CHUNK];
 
+    /* Eine Roehre am Lesende: Es wird gewartet, bis etwas kommt oder
+     * der Schreiber verschwindet - ein Leser, der sofort mit "nichts
+     * da" zurueckkaeme, muesste selbst kreisen. */
+    if (fd >= 3 && fd < PROCESS_FILES_MAX && proc->pipes[fd]) {
+        if (proc->pipe_writer[fd])
+            return SYS_ERR_BADFD;
+
+        size_t take = MIN(length, sizeof(chunk));
+        int64_t n = pipe_read(proc->pipes[fd], chunk, take, 5000);
+
+        if (n <= 0)
+            return n < 0 ? 0 : 0;   /* Ende und Zeitablauf: beides 0 */
+        if (!user_write(proc, buffer, chunk, (size_t)n))
+            return SYS_ERR_INVAL;
+        return n;
+    }
+
     if (fd == 0) {
         size_t take = MIN(length, sizeof(chunk));
         size_t n = process_take_input(proc, chunk, take);
@@ -239,11 +334,45 @@ static int64_t do_read(struct process *proc, int64_t fd, uint64_t buffer,
     return (int64_t)done;
 }
 
+static int64_t do_write_pipe(struct process *proc, int64_t fd, uint64_t buffer,
+                             uint64_t length)
+{
+    char chunk[COPY_CHUNK];
+    size_t take = MIN(length, sizeof(chunk));
+
+    if (!proc->pipe_writer[fd])
+        return SYS_ERR_BADFD;
+    if (!user_read(proc, chunk, buffer, take))
+        return SYS_ERR_INVAL;
+
+    /* Ist die Roehre voll, wird gewartet statt abgeschnitten - sonst
+     * muesste jedes Programm den Rest selbst nachreichen. */
+    size_t done = 0;
+    uint64_t deadline = timer_ms() + 5000;
+
+    while (done < take) {
+        int64_t n = pipe_write(proc->pipes[fd], chunk + done, take - done);
+
+        if (n < 0)
+            return done ? (int64_t)done : SYS_ERR_BADFD;
+        done += (size_t)n;
+        if (done < take) {
+            if (timer_ms() >= deadline)
+                break;
+            thread_sleep(2);
+        }
+    }
+    return (int64_t)done;
+}
+
 static int64_t do_write(struct process *proc, int64_t fd, uint64_t buffer,
                         uint64_t length)
 {
     char chunk[COPY_CHUNK];
     size_t done = 0;
+
+    if (fd >= 3 && fd < PROCESS_FILES_MAX && proc->pipes[fd])
+        return do_write_pipe(proc, fd, buffer, length);
 
     while (done < length) {
         size_t part = MIN(length - done, sizeof(chunk));
@@ -517,7 +646,11 @@ void syscall_dispatch(struct syscall_frame *frame)
         break;
 
     case SYS_CLOSE:
-        if (a1 >= 3 && a1 < PROCESS_FILES_MAX && proc->files[a1]) {
+        if (a1 >= 3 && a1 < PROCESS_FILES_MAX && proc->pipes[a1]) {
+            pipe_close(proc->pipes[a1], proc->pipe_writer[a1]);
+            proc->pipes[a1] = NULL;
+            result = 0;
+        } else if (a1 >= 3 && a1 < PROCESS_FILES_MAX && proc->files[a1]) {
             proc->files[a1] = NULL;
             result = 0;
         } else {
@@ -669,6 +802,29 @@ void syscall_dispatch(struct syscall_frame *frame)
             break;
         }
         result = found;
+        break;
+    }
+
+    /* --- Verstaendigung zwischen Programmen --- */
+    case SYS_PIPE:
+        result = do_pipe(proc, a1);
+        break;
+
+    case SYS_SHM_OPEN:
+        result = do_shm_open(proc, a1, a2, a3);
+        break;
+
+    case SYS_SHM_MAP:
+        result = do_shm_map(proc, (int)a1);
+        break;
+
+    case SYS_SHM_UNLINK: {
+        char name[SHM_NAME_MAX + 1];
+
+        if (!user_string(proc, name, a1, sizeof(name)))
+            result = SYS_ERR_INVAL;
+        else
+            result = shm_unlink(name) ? 0 : SYS_ERR_NOENT;
         break;
     }
 

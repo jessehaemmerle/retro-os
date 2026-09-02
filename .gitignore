@@ -34,3 +34,4 @@ tests/schreiben-test
 tests/rechte-test
 tests/aufgaben-test
 tests/protokoll-test
+tests/netzfilter-test

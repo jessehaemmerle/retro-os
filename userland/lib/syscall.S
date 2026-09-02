@@ -51,4 +51,10 @@ DEFCALL sys_net_accept, 23
 DEFCALL sys_fork,    24
 DEFCALL sys_wait,    25
 
+/* Verstaendigung zwischen Programmen */
+DEFCALL sys_pipe,       26
+DEFCALL sys_shm_open,   27
+DEFCALL sys_shm_map,    28
+DEFCALL sys_shm_unlink, 29
+
 .section .note.GNU-stack,"",@progbits

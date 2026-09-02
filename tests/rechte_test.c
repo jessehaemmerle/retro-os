@@ -82,6 +82,14 @@ void log_write(int level, const char *source, const char *fmt, ...)
     UNUSED(fmt);
 }
 
+/* Die Pruefspur wird in einer eigenen Sammlung geprueft. */
+void audit(int kind, bool ok, const char *fmt, ...)
+{
+    UNUSED(kind);
+    UNUSED(ok);
+    UNUSED(fmt);
+}
+
 /* Ring-3-Prozesse gibt es hier keine. */
 uint32_t process_uid(struct process *proc) { UNUSED(proc); return UID_ROOT; }
 uint32_t process_gid(struct process *proc) { UNUSED(proc); return GID_ROOT; }
@@ -367,7 +375,7 @@ static void test_passwort(void)
     struct user *root = user_by_uid(UID_ROOT);
 
     pruefe("root ist da",             root != NULL);
-    pruefe("root ist Verwalter",      root && root->admin);
+    pruefe("root ist Verwalter",      root && user_is_admin(root));
     pruefe("root hat kein Passwort",  root && root->nopass);
     pruefe("Leer kommt herein",       user_check_password(root, ""));
     pruefe("Alles andere nicht",      !user_check_password(root, "x"));
@@ -379,7 +387,7 @@ static void test_passwort(void)
     pruefe("Anlegen geht",            u != NULL);
     pruefe("Nummer ab 1000",          u && u->uid >= 1000);
     pruefe("Gruppe benutzer",         u && u->gid == GID_USERS);
-    pruefe("Kein Verwalter",          u && !u->admin);
+    pruefe("Kein Verwalter",          u && !user_is_admin(u));
     pruefe("Passwort stimmt",         user_check_password(u, "geheim"));
     pruefe("Falsches nicht",          !user_check_password(u, "Geheim"));
     pruefe("Leeres auch nicht",       !user_check_password(u, ""));
@@ -487,6 +495,78 @@ static void test_loeschen(void)
            user_delete(b, fehlertext, sizeof(fehlertext)));
 }
 
+static void test_rollen(void)
+{
+    printf("Rollen und Faehigkeiten\n");
+
+    user_init();
+
+    char text[96];
+    struct user *u = user_create("jesse", "Jesse", "geheim", false,
+                                 text, sizeof(text));
+
+    pruefe("Ein neuer darf zunaechst nichts", u && u->caps == 0);
+    pruefe("Und ist kein Verwalter",          u && !user_is_admin(u));
+    pruefe_text("Seine Rolle heisst so", "benutzer", u->role);
+
+    pruefe("root darf alles",
+           user_by_uid(UID_ROOT)->caps == CAP_ALL);
+    pruefe("Und ist Verwalter", user_is_admin(user_by_uid(UID_ROOT)));
+
+    /* Eine Rolle ist ein Name fuer eine Menge - mehr nicht. */
+    pruefe("Rolle netzwerk", user_set_role(u, "netzwerk"));
+    pruefe("Sie gibt genau das Netz",  u->caps == CAP_NET);
+    pruefe("Und nicht die Konten",     !(u->caps & CAP_USERS));
+    pruefe("Verwalter ist er nicht",   !user_is_admin(u));
+
+    pruefe("Rolle wartung", user_set_role(u, "wartung"));
+    pruefe("Platte, Protokoll, Einstellungen",
+           u->caps == (CAP_DISK | CAP_LOG | CAP_CONFIG));
+
+    pruefe("Rolle verwalter", user_set_role(u, "verwalter"));
+    pruefe("Alles",           u->caps == CAP_ALL);
+    pruefe("Und damit Verwalter", user_is_admin(u));
+
+    pruefe("Eine Rolle, die es nicht gibt", !user_set_role(u, "chef"));
+    pruefe("Und die alte bleibt stehen",    u->caps == CAP_ALL);
+
+    /* Name zur Menge und zurueck. */
+    pruefe_text("Alles heisst verwalter", "verwalter", caps_role(CAP_ALL));
+    pruefe_text("Nur Netz heisst netzwerk", "netzwerk", caps_role(CAP_NET));
+    pruefe_text("Nichts heisst benutzer",   "benutzer", caps_role(0));
+    pruefe_text("Eine eigene Mischung",     "eigen",
+                caps_role(CAP_NET | CAP_USERS));
+
+    caps_text(CAP_ALL, text, sizeof(text));
+    pruefe_text("Alles im Klartext", "alles", text);
+    caps_text(0, text, sizeof(text));
+    pruefe_text("Nichts im Klartext", "nichts", text);
+    caps_text(CAP_NET | CAP_LOG, text, sizeof(text));
+    pruefe_text("Zwei davon", "netz, protokoll", text);
+
+    uint32_t cap = 0;
+
+    pruefe("netz gelesen",     cap_parse("netz", &cap) && cap == CAP_NET);
+    pruefe("konten gelesen",   cap_parse("konten", &cap) && cap == CAP_USERS);
+    pruefe("alles gelesen",    cap_parse("alles", &cap) && cap == CAP_ALL);
+    pruefe("Unsinn nicht",     !cap_parse("zauberei", &cap));
+
+    /* Der Handelnde bekommt seine Faehigkeiten aus der Anmeldung. */
+    user_set_role(u, "netzwerk");
+    als("jesse");
+    pruefe("Angemeldet gilt seine Menge", session_caps() == CAP_NET);
+    pruefe("Er darf ans Netz",            session_can(CAP_NET));
+    pruefe("Aber nicht an die Konten",    !session_can(CAP_USERS));
+    pruefe("Und ist kein Verwalter",      !session_is_admin());
+
+    als("root");
+    pruefe("root darf alles",     session_can(CAP_ALL));
+    pruefe("Und gilt als Verwalter", session_is_admin());
+
+    als(NULL);
+    pruefe("Ohne Anmeldung gilt root", session_caps() == CAP_ALL);
+}
+
 static void test_datei(void)
 {
     printf("benutzer.conf schreiben und lesen\n");
@@ -534,7 +614,7 @@ static void test_datei(void)
     pruefe("Das Passwort passt noch", user_check_password(w, "geheim"));
     pruefe("Ein falsches nicht",      !user_check_password(w, "Geheim"));
 
-    pruefe("chef ist Verwalter",   d && d->admin);
+    pruefe("chef ist Verwalter",   d && user_is_admin(d));
     pruefe("Mit derselben Nummer", d && d->uid == cid_vorher);
     pruefe("Und in der Gruppe",    d && user_in_group(d->uid, GID_ROOT));
 
@@ -548,6 +628,17 @@ static void test_datei(void)
     pruefe("Nochmal lesen", user_load());
     pruefe("Gesperrt bleibt gesperrt",
            user_by_name("chef") && user_by_name("chef")->locked);
+
+    /* Auch die Rolle ueberlebt den Weg durch die Datei. */
+    user_set_role(user_by_name("jesse"), "netzwerk");
+    pruefe("Mit Rolle schreiben", user_save());
+    user_init();
+    pruefe("Und wieder lesen",    user_load());
+    pruefe("Die Rolle steht noch da",
+           user_by_name("jesse") &&
+           strcmp(user_by_name("jesse")->role, "netzwerk") == 0);
+    pruefe("Und ihre Faehigkeiten",
+           user_by_name("jesse")->caps == CAP_NET);
 
     /* Ohne Platte laesst sich nichts sichern - und das sagt es auch. */
     platte_da = false;
@@ -609,6 +700,7 @@ int main(void)
     test_system();
     test_passwort();
     test_gruppen();
+    test_rollen();
     test_loeschen();
     test_datei();
     test_kaputte_datei();

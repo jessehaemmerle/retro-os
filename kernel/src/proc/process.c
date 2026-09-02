@@ -17,6 +17,8 @@
 #include "uiapi.h"
 #include "thread.h"
 #include "spinlock.h"
+#include "audit.h"
+#include "ipc.h"
 #include "user.h"
 
 void enter_user_mode(uint64_t entry, uint64_t stack) NORETURN;
@@ -366,6 +368,8 @@ struct process *process_start(const char *path, const char *args,
 
     log_info("prozess", "%s gestartet, Nummer %u, Benutzer %u",
              proc->name, (unsigned)proc->pid, (unsigned)proc->uid);
+    audit(AUDIT_PROCESS, true, "%s gestartet (Nummer %u)", proc->name,
+          (unsigned)proc->pid);
 
     thread_start(proc->thread);
     return proc;
@@ -383,6 +387,25 @@ static void release_resources(struct process *proc)
             tcp_close(proc->sockets[i]);
             proc->sockets[i] = NULL;
         }
+    }
+
+    /* Die Roehren zuerst: Ein Leser am anderen Ende soll sofort
+     * erfahren, dass hier niemand mehr schreibt, und nicht erst nach
+     * seinem Zeitablauf. */
+    for (int i = 0; i < PROCESS_FILES_MAX; i++) {
+        if (!proc->pipes[i])
+            continue;
+        pipe_close(proc->pipes[i], proc->pipe_writer[i]);
+        proc->pipes[i] = NULL;
+    }
+
+    for (int i = 0; i < PROCESS_SHM_MAX; i++) {
+        if (!proc->shm[i])
+            continue;
+        /* Die Nummer liegt um eins erhoeht, damit 0 "kein Bereich"
+         * heissen kann - Bereich 0 gibt es naemlich auch. */
+        shm_detach(&proc->space, proc->shm[i] - 1);
+        proc->shm[i] = 0;
     }
 }
 
@@ -509,6 +532,18 @@ struct process *process_fork(struct process *parent,
     memcpy(child->args, parent->args, sizeof(child->args));
     memcpy(child->files, parent->files, sizeof(child->files));
     memcpy(child->file_pos, parent->file_pos, sizeof(child->file_pos));
+
+    /* Die Roehren erbt das Kind mit - genau dafuer sind sie da. Jedes
+     * geerbte Ende zaehlt mit, sonst faende die Roehre zu frueh ihr
+     * Ende. Geteilte Bereiche erbt es nicht: vmm_fork legt die
+     * Kopie-beim-Schreiben ueber alles, und das ist das Gegenteil von
+     * geteilt. Wer sie im Kind will, blendet sie dort neu ein. */
+    for (int i = 0; i < PROCESS_FILES_MAX; i++) {
+        child->pipes[i] = parent->pipes[i];
+        child->pipe_writer[i] = parent->pipe_writer[i];
+        if (child->pipes[i])
+            pipe_share(child->pipes[i], child->pipe_writer[i]);
+    }
 
     child->parent     = parent;
     child->parent_pid = parent->pid;

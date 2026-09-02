@@ -19,6 +19,12 @@
  * zwei Adressraeumen gehoert und beim ersten Schreibzugriff verdoppelt
  * werden muss. */
 #define PTE_COW       (1ULL << 9)
+/* Diese Seite gehoert nicht dem Adressraum, sondern einem geteilten
+ * Bereich (siehe ipc.h). Sie wird beim Abspalten nicht mitgegeben und
+ * beim Abraeumen nicht freigegeben - sonst waere sie beim ersten
+ * Schreiben doch wieder privat oder beim Beenden des einen Programms
+ * unter dem anderen weg. */
+#define PTE_SHARED    (1ULL << 10)
 #define PTE_NX        (1ULL << 63)
 
 #define PTE_ADDR_MASK 0x000FFFFFFFFFF000ULL

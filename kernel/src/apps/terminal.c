@@ -13,6 +13,8 @@
 #include "clipboard.h"
 #include "config.h"
 #include "lock.h"
+#include "audit.h"
+#include "firewall.h"
 #include "log.h"
 #include "perm.h"
 #include "tasks.h"
@@ -153,6 +155,8 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  sperren          Bildschirm sperren");
     term_line(st, C_NORMAL, "  protokoll [...]  Systemprotokoll zeigen, sichern, leeren");
     term_line(st, C_NORMAL, "  aufgaben [...]   Aufgabenliste zeigen und pflegen");
+    term_line(st, C_NORMAL, "  firewall [...]   Paketfilter zeigen und regeln");
+    term_line(st, C_NORMAL, "  pruefspur [...]  Sicherheitsereignisse ansehen");
     term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
     term_line(st, C_NORMAL, "  starte <programm> [text]  Programm in Ring 3 starten");
     term_line(st, C_NORMAL, "  programme        mitgelieferte Programme zeigen");
@@ -872,13 +876,191 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
                 "raeumt auf", (unsigned)count, total);
 }
 
+/* --- Paketfilter und Pruefspur ------------------------------------- */
+
+static void cmd_firewall(struct term_state *st, int argc, char *argv[])
+{
+    const char *what = argc > 1 ? argv[1] : NULL;
+
+    if (!what) {
+        char text[96];
+
+        term_printf(st, C_HIGHLIGHT, "Paketfilter: %s",
+                    fw_enabled() ? "eingeschaltet" : "ausgeschaltet");
+        term_printf(st, C_NORMAL, "  Grundeinstellung eingehend: %s",
+                    fw_action_name(fw_policy(FW_IN)));
+        term_printf(st, C_NORMAL, "  Grundeinstellung ausgehend: %s",
+                    fw_action_name(fw_policy(FW_OUT)));
+
+        size_t shown = 0;
+
+        for (size_t i = 0; i < FW_RULES_MAX; i++) {
+            const struct fw_rule *r = fw_at(i);
+
+            if (!r)
+                continue;
+            fw_rule_text(r, text, sizeof(text));
+            term_printf(st, C_NORMAL, "  %2u  %s  (%u Treffer)",
+                        (unsigned)i, text, (unsigned)r->hits);
+            shown++;
+        }
+        if (!shown)
+            term_line(st, C_NORMAL, "  Keine Regeln - es gilt die "
+                                    "Grundeinstellung.");
+
+        term_printf(st, C_NORMAL,
+                    "  Durchgelassen: %u ein, %u aus; verworfen: %u ein, %u aus",
+                    (unsigned)fw_passed(FW_IN), (unsigned)fw_passed(FW_OUT),
+                    (unsigned)fw_dropped(FW_IN), (unsigned)fw_dropped(FW_OUT));
+        term_line(st, C_NORMAL,
+                  "  firewall an|aus | standard <richtung> <tat> | "
+                  "regel <richtung> <tat> <protokoll> <ziel> <ports> | "
+                  "weg <n> | leeren | speichern");
+        return;
+    }
+
+    if (!session_can(CAP_NET)) {
+        term_line(st, C_ERROR, "Dafuer braucht es das Recht am Netz.");
+        return;
+    }
+
+    if (!strcasecmp(what, "an") || !strcasecmp(what, "aus")) {
+        fw_enable(!strcasecmp(what, "an"));
+        term_printf(st, C_NORMAL, "Paketfilter %s.",
+                    fw_enabled() ? "eingeschaltet" : "ausgeschaltet");
+    } else if (!strcasecmp(what, "standard")) {
+        enum fw_action action;
+
+        if (argc < 4 || !fw_parse_action(argv[3], &action)) {
+            term_line(st, C_ERROR,
+                      "firewall standard eingehend|ausgehend "
+                      "erlauben|verwerfen|ablehnen");
+            return;
+        }
+        enum fw_dir dir = !strcasecmp(argv[2], "ausgehend") ? FW_OUT : FW_IN;
+
+        fw_set_policy(dir, action);
+        term_printf(st, C_NORMAL, "Grundeinstellung %s: %s", argv[2],
+                    fw_action_name(action));
+    } else if (!strcasecmp(what, "regel")) {
+        enum fw_action action;
+        uint8_t   proto, prefix;
+        ip_addr_t addr;
+        uint16_t  lo, hi;
+
+        if (argc < 7 || !fw_parse_action(argv[3], &action) ||
+            !fw_parse_proto(argv[4], &proto) ||
+            !fw_parse_target(argv[5], &addr, &prefix) ||
+            !fw_parse_ports(argv[6], &lo, &hi)) {
+            term_line(st, C_ERROR,
+                      "firewall regel <eingehend|ausgehend> "
+                      "<erlauben|verwerfen|ablehnen> <alle|tcp|udp|icmp> "
+                      "<alle|adresse[/bits]> <alle|port[-port]>");
+            return;
+        }
+
+        enum fw_dir dir = !strcasecmp(argv[2], "ausgehend") ? FW_OUT : FW_IN;
+        int index = fw_add(dir, action, proto, addr, prefix, lo, hi,
+                           argc > 7 ? argv[7] : NULL);
+
+        if (index < 0) {
+            term_line(st, C_ERROR, "Es ist kein Platz fuer weitere Regeln.");
+            return;
+        }
+        term_printf(st, C_NORMAL, "Regel %d angelegt.", index);
+    } else if (!strcasecmp(what, "weg")) {
+        size_t index = 0;
+
+        for (const char *p = argc > 2 ? argv[2] : ""; *p >= '0' && *p <= '9'; p++)
+            index = index * 10 + (size_t)(*p - '0');
+        if (!fw_remove(index)) {
+            term_line(st, C_ERROR, "Diese Regel gibt es nicht.");
+            return;
+        }
+        term_printf(st, C_NORMAL, "Regel %u entfernt.", (unsigned)index);
+    } else if (!strcasecmp(what, "leeren")) {
+        fw_clear();
+        term_line(st, C_NORMAL, "Alle Regeln entfernt.");
+    } else if (!strcasecmp(what, "speichern")) {
+        bool ok = fw_save();
+
+        term_line(st, ok ? C_NORMAL : C_ERROR,
+                  ok ? "Gespeichert in " FW_PATH
+                     : "Ohne Festplatte laesst sich nichts sichern.");
+        return;
+    } else {
+        term_printf(st, C_ERROR, "Unbekannt: %s", what);
+        return;
+    }
+
+    if (fs_disk_mounted() && fw_save())
+        term_line(st, C_NORMAL, "Gespeichert in " FW_PATH);
+}
+
+static void cmd_audit(struct term_state *st, const char *what)
+{
+    if (!audit_readable()) {
+        term_line(st, C_ERROR,
+                  "Die Pruefspur lesen darf nur, wer das Recht am "
+                  "Protokoll hat.");
+        return;
+    }
+
+    bool only_failed = what && !strcasecmp(what, "abgewiesen");
+
+    if (what && !strcasecmp(what, "speichern")) {
+        bool ok = audit_save();
+
+        term_line(st, ok ? C_NORMAL : C_ERROR,
+                  ok ? "Fortgeschrieben in " AUDIT_PATH
+                     : "Ohne Festplatte laesst sich nichts sichern.");
+        return;
+    }
+
+    size_t count = audit_count();
+    size_t first = 0;
+
+    /* Ohne Angabe die letzten zwanzig - alles andere passt nicht in
+     * ein Konsolenfenster. */
+    if (!what && count > 20)
+        first = count - 20;
+
+    struct audit_entry e;
+    size_t shown = 0;
+
+    term_line(st, C_HIGHLIGHT,
+              "Zeit        Art        Ausgang     Benutzer   Gegenstand");
+
+    for (size_t i = first; i < count; i++) {
+        if (!audit_get(i, &e))
+            break;
+        if (only_failed && e.ok)
+            continue;
+        term_printf(st, e.ok ? C_NORMAL : C_ERROR,
+                    "%5u.%03u  %-10s %-11s %-10s %s",
+                    (unsigned)(e.ms / 1000), (unsigned)(e.ms % 1000),
+                    audit_kind_name(e.kind),
+                    e.ok ? "erlaubt" : "abgewiesen",
+                    user_name_of(e.uid), e.object);
+        shown++;
+    }
+
+    term_printf(st, C_HIGHLIGHT,
+                "%u von %u Eintraegen, davon %u abgewiesen%s",
+                (unsigned)shown, (unsigned)count,
+                (unsigned)audit_count_failed(),
+                audit_lost() ? " (aeltere sind aus dem Ring gefallen)" : "");
+    term_line(st, C_NORMAL, "  pruefspur [alle|abgewiesen|speichern]");
+}
+
 /* --- Protokoll und Aufgaben ---------------------------------------- */
 
 static void cmd_log(struct term_state *st, const char *what)
 {
     if (what && !strcasecmp(what, "leeren")) {
-        if (!session_is_admin()) {
-            term_line(st, C_ERROR, "Leeren darf nur ein Verwalter.");
+        if (!session_can(CAP_LOG)) {
+            term_line(st, C_ERROR,
+                      "Leeren darf nur, wer das Recht am Protokoll hat.");
             return;
         }
         log_clear();
@@ -1138,8 +1320,12 @@ static void cmd_who(struct term_state *st)
     term_printf(st, C_HIGHLIGHT, "%s (%s)", u->name, u->full);
     term_printf(st, C_NORMAL, "  Nummer    : %u", (unsigned)u->uid);
     term_printf(st, C_NORMAL, "  Heim      : %s", u->home);
-    term_printf(st, C_NORMAL, "  Rechte    : %s",
-                u->admin ? "Verwalter" : "gewoehnlicher Benutzer");
+    char rechte[80];
+
+    caps_text(u->caps, rechte, sizeof(rechte));
+    term_printf(st, C_NORMAL, "  Rolle     : %s",
+                u->role[0] ? u->role : caps_role(u->caps));
+    term_printf(st, C_NORMAL, "  Darf      : %s", rechte);
 
     char line[128];
     size_t used = 0;
@@ -1187,17 +1373,18 @@ static void cmd_users(struct term_state *st, const char *what,
                         u->name, (unsigned)u->uid, group_name_of(u->gid),
                         u->home,
                         u->locked ? "gesperrt"
-                                  : (u->admin ? "Verwalter"
+                                  : (user_is_admin(u) ? "Verwalter"
                                               : (u->nopass ? "ohne Passwort"
                                                            : "")));
         }
         term_line(st, C_NORMAL,
-                  "  benutzer neu|loeschen|passwort|verwalter <name> [wert]");
+                  "  benutzer neu|loeschen|passwort|rolle|verwalter "
+                  "<name> [wert]");
         return;
     }
 
-    if (!session_is_admin()) {
-        term_line(st, C_ERROR, "Dafuer braucht es Verwalterrechte.");
+    if (!session_can(CAP_USERS)) {
+        term_line(st, C_ERROR, "Dafuer braucht es das Recht an den Konten.");
         return;
     }
     if (!name || !name[0]) {
@@ -1235,6 +1422,36 @@ static void cmd_users(struct term_state *st, const char *what,
         }
         user_set_password(u, extra);
         term_printf(st, C_NORMAL, "Passwort von %s gesetzt.", u->name);
+    } else if (!strcasecmp(what, "rolle")) {
+        struct user *u = user_by_name(name);
+
+        if (!u) {
+            term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", name);
+            return;
+        }
+        if (!extra || !user_set_role(u, extra)) {
+            char liste[96];
+            size_t used = 0;
+
+            liste[0] = '\0';
+            for (size_t i = 0; i < role_count(); i++) {
+                ksnprintf(liste + used, sizeof(liste) - used, "%s%s",
+                          used ? ", " : "", role_name(i));
+                used += strlen(liste + used);
+            }
+            term_printf(st, C_ERROR, "Bekannte Rollen: %s", liste);
+            return;
+        }
+        if (user_is_admin(u))
+            group_add_member(group_by_gid(GID_ROOT), u->uid);
+        else
+            group_remove_member(group_by_gid(GID_ROOT), u->uid);
+
+        char rechte[80];
+
+        caps_text(u->caps, rechte, sizeof(rechte));
+        term_printf(st, C_NORMAL, "%s hat jetzt die Rolle %s und darf %s.",
+                    u->name, u->role, rechte);
     } else if (!strcasecmp(what, "verwalter")) {
         struct user *u = user_by_name(name);
 
@@ -1242,13 +1459,13 @@ static void cmd_users(struct term_state *st, const char *what,
             term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", name);
             return;
         }
-        u->admin = !u->admin;
-        if (u->admin)
+        user_set_role(u, user_is_admin(u) ? "benutzer" : "verwalter");
+        if (user_is_admin(u))
             group_add_member(group_by_gid(GID_ROOT), u->uid);
         else
             group_remove_member(group_by_gid(GID_ROOT), u->uid);
         term_printf(st, C_NORMAL, "%s ist %s Verwalter.", u->name,
-                    u->admin ? "jetzt" : "nicht mehr");
+                    user_is_admin(u) ? "jetzt" : "nicht mehr");
     } else {
         term_printf(st, C_ERROR, "Unbekannt: %s", what);
         return;
@@ -1583,6 +1800,12 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "programme")) {
         cmd_ls(st, "/Programme", false);
+
+    } else if (!strcasecmp(cmd, "firewall")) {
+        cmd_firewall(st, argc, argv);
+
+    } else if (!strcasecmp(cmd, "pruefspur")) {
+        cmd_audit(st, a1);
 
     } else if (!strcasecmp(cmd, "protokoll")) {
         cmd_log(st, a1);

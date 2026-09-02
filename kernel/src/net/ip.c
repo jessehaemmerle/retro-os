@@ -1,6 +1,7 @@
 /* ip.c - IPv4: Kopfdaten, Pruefsumme, Verteilung an die Transportschicht. */
 
 #include "net.h"
+#include "firewall.h"
 #include "kstring.h"
 
 struct ip_header {
@@ -45,6 +46,19 @@ bool ip_send_via(const struct mac_addr *next_hop, ip_addr_t dst,
     uint8_t packet[ETH_MTU];
 
     if (sizeof(struct ip_header) + length > ETH_MTU)
+        return false;
+
+    /* Dieselbe Pruefung in die andere Richtung. Der eigene Port steht
+     * bei TCP und UDP vorn im Kopf. */
+    const uint8_t *head = payload;
+    uint16_t local_port = 0, peer_port = 0;
+
+    if ((protocol == IP_PROTO_TCP || protocol == IP_PROTO_UDP) && length >= 4) {
+        local_port = (uint16_t)((head[0] << 8) | head[1]);
+        peer_port  = (uint16_t)((head[2] << 8) | head[3]);
+    }
+
+    if (!fw_check(FW_OUT, dst, protocol, local_port, peer_port))
         return false;
 
     struct ip_header *header = (struct ip_header *)packet;
@@ -104,6 +118,20 @@ void ip_receive(const uint8_t *data, uint16_t length)
 
     const uint8_t *payload = data + header_length;
     uint16_t payload_length = (uint16_t)(total - header_length);
+
+    /* Der Paketfilter sitzt hier: hinter der Pruefung, ob das Paket
+     * ueberhaupt uns gilt, und vor jedem Protokoll darueber. So muss
+     * keines von ihnen etwas davon wissen. */
+    uint16_t local_port = 0, peer_port = 0;
+
+    if ((header->protocol == IP_PROTO_TCP ||
+         header->protocol == IP_PROTO_UDP) && payload_length >= 4) {
+        peer_port  = (uint16_t)((payload[0] << 8) | payload[1]);
+        local_port = (uint16_t)((payload[2] << 8) | payload[3]);
+    }
+
+    if (!fw_check(FW_IN, header->src, header->protocol, local_port, peer_port))
+        return;
 
     switch (header->protocol) {
     case IP_PROTO_ICMP:

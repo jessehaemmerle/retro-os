@@ -123,4 +123,22 @@ int sys_wait(int pid, int *code, int timeout_ms);
 
 static inline int fork_process(void)  { return sys_fork(); }
 
+/* --- Verstaendigung zwischen Programmen ---
+ *
+ * sys_pipe legt eine Roehre an und traegt zwei Nummern ein: paar[0]
+ * liest, paar[1] schreibt. Beide sind gewoehnliche Dateinummern -
+ * sys_read und sys_write koennen damit umgehen, und ein abgespaltenes
+ * Kind erbt sie. Wer eine Richtung nicht braucht, schliesst sie: Erst
+ * wenn der letzte Schreiber weg ist, meldet das Lesen das Ende.
+ *
+ * sys_shm_open sucht einen geteilten Bereich unter diesem Namen oder
+ * legt ihn an (anlegen = 1). sys_shm_map blendet ihn ein und liefert
+ * die Adresse - in jedem Programm dieselbe, Zeiger darin lassen sich
+ * also weiterreichen. sys_shm_unlink gibt den Namen wieder frei; der
+ * Inhalt bleibt, bis der Letzte ihn ausgeblendet hat. */
+int sys_pipe(int paar[2]);
+int sys_shm_open(const char *name, long groesse, int anlegen);
+void *sys_shm_map(int nummer);
+int sys_shm_unlink(const char *name);
+
 #endif /* RETROUI_H */

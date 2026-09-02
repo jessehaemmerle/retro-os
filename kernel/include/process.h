@@ -27,11 +27,13 @@
 #define PROCESS_FILES_MAX 8
 #define PROCESS_WINDOWS_MAX 4
 #define PROCESS_SOCKETS_MAX 8
+#define PROCESS_SHM_MAX     4
 #define PROCESS_OUT_SIZE  8192
 #define PROCESS_IN_SIZE   512
 #define PROCESS_ARGS_MAX  128
 
 struct thread;
+struct pipe;
 
 struct process {
     uint32_t pid;
@@ -70,6 +72,17 @@ struct process {
 
     struct fs_node *files[PROCESS_FILES_MAX];
     size_t          file_pos[PROCESS_FILES_MAX];
+
+    /* Eine Nummer ist entweder eine Datei oder ein Ende einer Roehre.
+     * Zwei Felder statt eines Typkennzeichens: So bleibt jeder
+     * bestehende Zugriff auf files[] richtig, und die Roehre ist ein
+     * Zusatz und kein Umbau. */
+    struct pipe    *pipes[PROCESS_FILES_MAX];
+    bool            pipe_writer[PROCESS_FILES_MAX];
+
+    /* Welche geteilten Bereiche dieses Programm eingeblendet hat -
+     * beim Beenden werden sie abgeraeumt. */
+    int             shm[PROCESS_SHM_MAX];
 
     /* Fenster und Verbindungen, die das Programm geoeffnet hat. Beim
      * Beenden raeumt der Kernel sie ab - ein Programm, das abstuerzt,

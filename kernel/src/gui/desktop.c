@@ -298,7 +298,7 @@ static void paint_taskbar(struct canvas *c)
         struct rect ur = user_rect();
 
         gfx_bevel_thin(c, ur, false);
-        icon_draw(c, ur.x + 4, ur.y + 2, me->admin ? ICON_SHIELD : ICON_USER, 1);
+        icon_draw(c, ur.x + 4, ur.y + 2, user_is_admin(me) ? ICON_SHIELD : ICON_USER, 1);
         gfx_text(c, ur.x + 24, ur.y + 4, me->name, COL_TEXT);
     }
 
