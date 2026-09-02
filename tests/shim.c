@@ -19,6 +19,11 @@ void kprintf(const char *fmt, ...)
     va_end(ap);
 }
 
+int kvsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
+{
+    return vsnprintf(buf, size, fmt, ap);
+}
+
 int ksnprintf(char *buf, size_t size, const char *fmt, ...)
 {
     va_list ap;

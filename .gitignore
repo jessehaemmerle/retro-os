@@ -32,3 +32,5 @@ tests/baum-test
 tests/tabellen-test
 tests/schreiben-test
 tests/rechte-test
+tests/aufgaben-test
+tests/protokoll-test

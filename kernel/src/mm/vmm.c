@@ -124,6 +124,7 @@ bool vmm_create(struct address_space *space)
 
     space->pml4_phys = page;
     space->heap_break = USER_HEAP_BASE;
+    space->mapped_pages = 0;
     return true;
 }
 
@@ -239,6 +240,7 @@ bool vmm_fork(struct address_space *child, struct address_space *parent)
     }
 
     child->heap_break = parent->heap_break;
+    child->mapped_pages = parent->mapped_pages;
 
     /* Dem Elternteil wurde gerade das Schreibrecht entzogen. Der
      * Zwischenspeicher der Adressuebersetzung weiss davon nichts -
@@ -319,7 +321,11 @@ bool vmm_map(struct address_space *space, uint64_t virt, uint64_t phys,
                         table_flags);
     if (!pt) { spin_unlock_irq(&vmm_lock, __flags); return false; }
 
-    pt[index_of(virt, 1)] = (phys & PTE_ADDR_MASK) | flags | PTE_PRESENT;
+    uint64_t *entry = &pt[index_of(virt, 1)];
+
+    if (space && !(*entry & PTE_PRESENT))
+        space->mapped_pages++;
+    *entry = (phys & PTE_ADDR_MASK) | flags | PTE_PRESENT;
 
     spin_unlock_irq(&vmm_lock, __flags);
     return true;
@@ -382,8 +388,14 @@ void vmm_unmap(struct address_space *space, uint64_t virt)
         uint64_t *pd = walk((uint64_t)pdpt - g_hhdm_offset, virt, 3, false, 0);
         if (pd) {
             uint64_t *pt = walk((uint64_t)pd - g_hhdm_offset, virt, 2, false, 0);
-            if (pt)
-                pt[index_of(virt, 1)] = 0;
+
+            if (pt) {
+                uint64_t *entry = &pt[index_of(virt, 1)];
+
+                if (space && (*entry & PTE_PRESENT) && space->mapped_pages)
+                    space->mapped_pages--;
+                *entry = 0;
+            }
         }
     }
 

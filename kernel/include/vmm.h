@@ -32,6 +32,14 @@
 struct address_space {
     uint64_t pml4_phys;
     uint64_t heap_break;      /* Ende des Prozess-Heaps */
+
+    /* Wie viele Seiten der unteren Haelfte gerade abgebildet sind. Rein
+     * fuer die Anzeige: Ohne diese Zahl kann der Systemmonitor nicht
+     * sagen, wie viel Speicher ein Programm belegt, und den Baum bei
+     * jedem Bild abzulaufen waere dafuer zu teuer. Nach dem Abspalten
+     * teilen sich Eltern und Kind ihre Seiten - beide zaehlen sie voll,
+     * so wie es "resident" ueberall tut. */
+    uint32_t mapped_pages;
 };
 
 void vmm_init(void);

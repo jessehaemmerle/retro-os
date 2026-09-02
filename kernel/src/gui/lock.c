@@ -18,6 +18,7 @@
 #include "gui.h"
 #include "icons.h"
 #include "kstring.h"
+#include "log.h"
 #include "net.h"
 #include "perm.h"
 #include "rtc.h"
@@ -220,12 +221,20 @@ static void attempt(void)
         return;
     }
 
+    /* Fehlversuche gehoeren ins Protokoll - einzeln sind sie belanglos,
+     * in Serie sind sie das Interessanteste, was der Rechner zu
+     * erzaehlen hat. */
+    log_warn("anmeldung", "Fehlversuch fuer \"%s\"",
+             name_text[0] ? name_text : "(ohne Namen)");
+
     pass_text[0] = '\0';
     focus = F_PASS;
 
     if (++tries >= TRY_LIMIT) {
         tries = 0;
         blocked_until = timer_ms() + TRY_PAUSE_MS;
+        log_warn("anmeldung", "Drei Fehlversuche - %u Sekunden Pause",
+                 (unsigned)(TRY_PAUSE_MS / 1000));
         strlcpy(message, "Zu viele Versuche - bitte kurz warten.",
                 sizeof(message));
     } else {

@@ -7,6 +7,7 @@
 
 #include "retro.h"
 #include "kstring.h"
+#include "log.h"
 #include "serial.h"
 
 #include <stdarg.h>
@@ -25,6 +26,10 @@ static void sink_putc(struct sink *s, char c)
             s->buf[s->used] = c;
     } else {
         serial_putc(c);
+        /* Dieselbe Zeile geht in den Ring - so steht der ganze
+         * Startvorgang spaeter im Protokollfenster, ohne dass eine
+         * einzige bestehende kprintf-Zeile angefasst werden musste. */
+        log_kernel_char(c);
     }
     s->used++;
 }

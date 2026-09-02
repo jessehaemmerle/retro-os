@@ -10,6 +10,7 @@
 #include "process.h"
 #include "arch.h"
 #include "kstring.h"
+#include "log.h"
 #include "mm.h"
 #include "net.h"
 #include "syscall.h"
@@ -363,6 +364,9 @@ struct process *process_start(const char *path, const char *args,
         return NULL;
     }
 
+    log_info("prozess", "%s gestartet, Nummer %u, Benutzer %u",
+             proc->name, (unsigned)proc->pid, (unsigned)proc->uid);
+
     thread_start(proc->thread);
     return proc;
 }
@@ -387,6 +391,12 @@ void process_exit(struct process *proc, int code)
     struct process *parent = proc->parent;
 
     proc->exit_code = code;
+
+    /* Ein Programm, das mit einem Fehler endet, faellt im Protokoll auf -
+     * eines, das sauber fertig wird, steht als blosse Notiz da. */
+    log_write(code ? LOG_WARN : LOG_INFO, "prozess",
+              "%s (%u) beendet, Ausgang %d", proc->name,
+              (unsigned)proc->pid, code);
 
     release_resources(proc);
 

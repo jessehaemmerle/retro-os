@@ -60,6 +60,16 @@ ICONS = [
     ("ICON_SAVE",        "save",             "#8FB8E8"),
     ("ICON_CLOCK",       "clock",            "#7FD4E8"),
 
+    # Systemmonitor, Aufgaben und Protokoll.
+    ("ICON_MONITOR",     "activity",         "#7BE08C"),
+    ("ICON_TASKS",       "list-todo",        "#F2C14E"),
+    ("ICON_LOG",         "scroll-text",      "#BFCBD4"),
+    ("ICON_WARN",        "triangle-alert",   "#F2C14E"),
+    ("ICON_DONE",        "circle-check",     "#7BE08C"),
+    ("ICON_CALENDAR",    "calendar",         "#8FB8E8"),
+    ("ICON_FLAG",        "flag",             "#E08A6A"),
+    ("ICON_STOP",        "circle-x",         "#E06A6A"),
+
     # Benutzer, Gruppen und Rechte.
     ("ICON_USER",        "user",             "#9BD1E8"),
     ("ICON_USERS",       "users",            "#9BD1E8"),

@@ -110,6 +110,13 @@ bool user_check_password(const struct user *u, const char *password);
 /* Legt das Heimatverzeichnis an, falls es fehlt, und setzt die Rechte. */
 bool user_ensure_home(struct user *u);
 
+/* Setzt name in das Heimatverzeichnis des angemeldeten Benutzers. Gibt
+ * es keines - niemand angemeldet, oder root, dem die Wurzel gehoert -,
+ * kommt ersatz zum Zug. Die Funktion gibt es, damit nicht vier
+ * Programme dieselbe Schraegstrich-Rechnung anstellen. */
+void user_home_file(const char *name, const char *ersatz, char *out,
+                    size_t size);
+
 /* --- Sitzung ------------------------------------------------------- */
 
 /* Meldet einen Benutzer an der Oberflaeche an. */

@@ -1,7 +1,7 @@
 # Prueft Kryptografie und Bildleser gegen Vergleichsdaten.
 CC      ?= gcc
 CFLAGS  := -std=gnu11 -O2 -g -Wall -Wextra -Wno-unused-parameter \
-           -I../kernel/include -I. -DTRUST_STORE_EXTERNAL
+           -I../kernel/include -I. -DTRUST_STORE_EXTERNAL -DRETRO_HOSTED
 
 KRYPTO := crypto_test.c shim.c \
           ../kernel/src/crypto/sha2.c \
@@ -36,6 +36,12 @@ SKRIPT := js_test.c shim.c \
 TABELLE := tabellen_test.c shim.c \
            ../kernel/src/apps/sheet.c
 
+PROTOKOLL := protokoll_test.c shim.c \
+             ../kernel/src/lib/log.c
+
+AUFGABEN := aufgaben_test.c shim.c \
+            ../kernel/src/apps/tasks.c
+
 RECHTE := rechte_test.c shim.c \
           ../kernel/src/fs/perm.c \
           ../kernel/src/fs/user.c \
@@ -59,8 +65,9 @@ BAUM := dom_test.c shim.c \
         ../kernel/src/js/jsdom.c \
         ../kernel/src/js/jsmain.c
 
-.PHONY: all krypto bilder skript baum tabelle schreiben rechte testbilder clean
-all: krypto bilder skript baum tabelle schreiben rechte
+.PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
+        protokoll testbilder clean
+all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll
 
 krypto: krypto-test
 	@./krypto-test
@@ -82,6 +89,18 @@ baum: baum-test
 
 baum-test: $(BAUM)
 	@$(CC) $(CFLAGS) -I../kernel/src/js $(BAUM) -o $@
+
+protokoll: protokoll-test
+	@./protokoll-test
+
+protokoll-test: $(PROTOKOLL)
+	@$(CC) $(CFLAGS) $(PROTOKOLL) -o $@
+
+aufgaben: aufgaben-test
+	@./aufgaben-test
+
+aufgaben-test: $(AUFGABEN)
+	@$(CC) $(CFLAGS) $(AUFGABEN) -o $@
 
 rechte: rechte-test
 	@./rechte-test

@@ -73,6 +73,15 @@ static struct thread der_thread;
 
 struct thread *thread_current(void) { return &der_thread; }
 
+/* Das Protokoll wird hier nicht geprueft - die Meldungen laufen ins
+ * Leere, damit der Test nur die Rechte betrifft. */
+void log_write(int level, const char *source, const char *fmt, ...)
+{
+    UNUSED(level);
+    UNUSED(source);
+    UNUSED(fmt);
+}
+
 /* Ring-3-Prozesse gibt es hier keine. */
 uint32_t process_uid(struct process *proc) { UNUSED(proc); return UID_ROOT; }
 uint32_t process_gid(struct process *proc) { UNUSED(proc); return GID_ROOT; }

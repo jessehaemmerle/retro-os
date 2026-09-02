@@ -49,6 +49,16 @@ enum icon_id {
     ICON_SAVE,
     ICON_CLOCK,
 
+    /* Systemmonitor, Aufgaben und Protokoll */
+    ICON_MONITOR,
+    ICON_TASKS,
+    ICON_LOG,
+    ICON_WARN,
+    ICON_DONE,
+    ICON_CALENDAR,
+    ICON_FLAG,
+    ICON_STOP,
+
     /* Benutzer, Gruppen und Rechte */
     ICON_USER,
     ICON_USERS,

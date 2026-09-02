@@ -9,6 +9,7 @@
 #include "user.h"
 #include "crypto.h"
 #include "kstring.h"
+#include "log.h"
 #include "mm.h"
 #include "perm.h"
 #include "process.h"
@@ -307,6 +308,11 @@ bool user_set_password(struct user *u, const char *password)
     u->rounds = USER_ROUNDS;
     u->nopass = !password || !password[0];
     derive(password, u->salt, u->rounds, u->hash);
+
+    if (u->nopass)
+        log_warn("benutzer", "%s hat jetzt kein Passwort", u->name);
+    else
+        log_info("benutzer", "Passwort von %s gesetzt", u->name);
     return true;
 }
 
@@ -381,6 +387,9 @@ struct user *user_create(const char *name, const char *full,
         if (admin)
             group_add_member(group_by_gid(GID_ROOT), u->uid);
         group_add_member(group_by_gid(GID_USERS), u->uid);
+
+        log_info("benutzer", "%s angelegt, Nummer %u%s", u->name,
+                 (unsigned)u->uid, admin ? ", Verwalter" : "");
         return u;
     }
 
@@ -426,6 +435,7 @@ bool user_delete(struct user *u, char *error, size_t error_size)
         if (groups[i].used)
             group_remove_member(&groups[i], u->uid);
 
+    log_warn("benutzer", "%s entfernt", u->name);
     memset(u, 0, sizeof(*u));
     return true;
 }
@@ -482,6 +492,24 @@ bool user_ensure_home(struct user *u)
     if (perm_store_dirty())
         perm_store_save();
     return home != NULL;
+}
+
+void user_home_file(const char *name, const char *ersatz, char *out,
+                    size_t size)
+{
+    struct user *u = logged_in;
+
+    if (!u || !u->home[0] || !fs_lookup(NULL, u->home)) {
+        strlcpy(out, ersatz, size);
+        return;
+    }
+
+    /* Das Heim von root ist die Wurzel - dort stuenden sonst zwei
+     * Schraegstriche hintereinander. */
+    size_t len = strlen(u->home);
+
+    ksnprintf(out, size, "%s%s%s", u->home,
+              len && u->home[len - 1] == '/' ? "" : "/", name);
 }
 
 /* ------------------------------------------------------------------ */
@@ -802,11 +830,19 @@ bool user_save(void)
 void session_login(struct user *u)
 {
     logged_in = u;
-    if (u)
+    if (u) {
         user_ensure_home(u);
+        log_info("sitzung", "%s angemeldet (Nummer %u%s)", u->name,
+                 (unsigned)u->uid, u->admin ? ", Verwalter" : "");
+    }
 }
 
-void session_logout(void) { logged_in = NULL; }
+void session_logout(void)
+{
+    if (logged_in)
+        log_info("sitzung", "%s abgemeldet", logged_in->name);
+    logged_in = NULL;
+}
 
 struct user *session_user(void) { return logged_in; }
 

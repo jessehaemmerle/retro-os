@@ -205,6 +205,33 @@ Browser die Skripte einer Seite abarbeitet; `console.log()` schreibt ins
 untere Feld, ein Fehler erscheint dort rot mit seiner Zeile. Eine
 `.js`-Datei im Dateimanager öffnet sich hier statt im Editor.
 
+**Systemmonitor:** Drei Ansichten hinter drei Reitern. *Programme* zeigt,
+was in Ring 3 läuft – mit Nummer, Benutzer, belegtem Speicher und dem
+Anteil an der Rechenzeit; *Programm beenden* schießt das Ausgewählte ab,
+bei einem fremden Programm allerdings nur als Verwalter. *Threads* zeigt
+dasselbe für den Kern samt Vorrang und dem Prozessorkern, auf dem der
+Thread zuletzt lief. *System* fasst Speicher, Heap, Dateibaum und
+Protokoll zusammen. Die Anteile lassen sich nicht ablesen, nur messen:
+Der Monitor merkt sich die Zähler des Schedulers und rechnet jede Sekunde
+den Zuwachs aus – vor der ersten Messung steht darum ein Strich und keine
+Null.
+
+**Protokoll:** Zeigt den Ring der letzten Meldungen. Die Leiste oben ist
+zugleich Filter und Zähler: Wie viele Warnungen es gibt, sieht man, bevor
+man danach sucht. Die Liste hängt am Ende, solange man sie nicht anfasst;
+wer nach oben scrollt, hält sie an, bis er wieder unten ist. *Speichern*
+legt sie als Textdatei ins Heimatverzeichnis, *Leeren* darf nur ein
+Verwalter.
+
+**Aufgaben:** Oben eintippen, `Eingabe` drücken – fertig. Ein Klick auf
+das Kästchen setzt den Haken, die Knöpfe rechts ändern Wichtigkeit und
+Termin oder räumen Erledigtes weg. Die Liste steht in
+`Aufgaben.txt` im Heimatverzeichnis und ist so gebaut, dass man sie auch
+im Editor bearbeiten kann; eine nackte Zeile Text genügt als Aufgabe.
+Sortiert wird nach dem, was als Nächstes ansteht: Offenes vor Erledigtem,
+Termine vor Terminlosem, früher vor später, dann die Wichtigkeit.
+Überschrittene Termine stehen rot.
+
 **Benutzer:** Legt Konten an, setzt Passwörter, vergibt und nimmt
 Verwalterrechte und sperrt Anmeldungen. Ohne Verwalterrecht sieht man
 dieselbe Liste, kann darin aber nur das eigene Passwort ändern – wer sonst
@@ -249,6 +276,8 @@ Neustart weg.
 | `rechte <datei> [modus]` | Rechte zeigen oder setzen (`750` oder `rwxr-x---`) |
 | `besitzer <datei> [name[:gruppe]]` | Eigentümer zeigen oder setzen |
 | `sperren` | Bildschirm sperren |
+| `protokoll [alle\|warnung\|fehler\|speichern\|leeren]` | Systemprotokoll ansehen, sichern, leeren |
+| `aufgaben [neu <text>\|fertig <n>\|weg <n>\|wichtig <n> <stufe>\|termin <n> <datum>]` | Aufgabenliste führen |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
 
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
@@ -284,6 +313,9 @@ also so, wie es ein Betriebssystem tut.
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
+| **Protokoll** | Ring über die letzten 512 Meldungen mit Zeit, Dringlichkeit und Herkunft; alles, was `kprintf` schreibt, landet zeilenweise darin – der ganze Startvorgang ist danach im Fenster nachlesbar |
+| **Systemmonitor** | Programme, Threads und Maschine in drei Ansichten; Rechenzeitanteile werden jede Sekunde gemessen, Speicher je Programm gezählt, fremde Programme beendet nur ein Verwalter |
+| **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
 | **Benutzer** | Mehrere Konten mit Nummer, Gruppe, Heimatverzeichnis und Verwalterrecht; das Passwort liegt als 4096-fach wiederholter HMAC-SHA256 über einem eigenen Salz in `/Festplatte/benutzer.conf` |
 | **Rechte** | Eigentümer, Gruppe und neun Bits je Eintrag, dazu das Klebebit; geprüft beim Nachschlagen, Aufzählen, Lesen, Schreiben, Anlegen, Umbenennen und Löschen |
 | **Anmeldung** | Anmeldebildschirm beim Start, Sperren, Abmelden und Benutzerwechsel; nach drei Fehlversuchen eine Zwangspause |
@@ -299,7 +331,7 @@ also so, wie es ein Betriebssystem tut.
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
 | **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername, Hintergrund und Schriftart in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, Benutzer, Papierkorb, Tabelle, Schreiben, Vortrag, Programmieren, elf Ring-3-Programme |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Systemmonitor, Protokoll, Aufgaben, Installation, Einstellungen, Benutzer, Papierkorb, Tabelle, Schreiben, Vortrag, Programmieren, elf Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 
@@ -390,6 +422,37 @@ eine Tabelle aus Bytes. Umschalten lässt es sich in den Einstellungen –
 das Fenster zeichnet sich sofort in der neuen Schrift und ist damit seine
 eigene Vorschau – oder in der Konsole mit `schrift`.
 
+### Was das System von sich erzählt
+
+Bis vor kurzem gingen alle Meldungen des Kerns auf die serielle
+Schnittstelle. In einer virtuellen Maschine ist das bequem; auf einem
+richtigen Rechner ohne Kabel war der ganze Startvorgang danach weg – und
+gerade dort will man wissen, warum die Platte nicht gefunden wurde.
+
+Jetzt liegen sie zusätzlich in einem Ring im Arbeitsspeicher: die letzten
+512, mit Zeit, Dringlichkeit und Herkunft. Ein Ring und keine wachsende
+Liste, denn ein Protokoll, das den Speicher auffrisst, ist schlimmer als
+eines, das die ältesten Zeilen vergisst; wie viele herausgefallen sind,
+steht in der Fußzeile.
+
+Hineingeschrieben wird auf zwei Wegen. `log_write()` nimmt Dringlichkeit
+und Herkunft gleich mit – so melden sich An- und Abmeldungen,
+Fehlversuche, gestartete und beendete Programme, geänderte Rechte. Der
+zweite Weg ist ein Trick: Was `kprintf` auf die serielle Schnittstelle
+schreibt, wird zeilenweise mitgeschnitten. Damit steht der komplette
+Startvorgang im Fenster, ohne dass eine einzige der bestehenden
+`kprintf`-Zeilen angefasst werden musste. Da die Meldungen des Kerns nach
+dem Muster `Bereich : Text` gebaut sind, wandert das Wort vor dem
+Doppelpunkt in die Spalte für die Herkunft, und Wörter wie „kein" oder
+„nicht" färben die Zeile als Warnung ein. Das ist grob geraten – aber es
+macht aus hundert unveränderten Zeilen ein lesbares Protokoll.
+
+Die Sperre um den Ring wird mit abgeschalteten Unterbrechungen genommen:
+Auch ein Treiber im Interrupt darf etwas melden, und ohne das käme der
+Kern an sich selbst nicht vorbei. Gehalten wird sie nur für das
+Umkopieren eines Eintrags; formatiert wird davor, denn `ksnprintf` nimmt
+keine Sperre.
+
 ### Wer darf was
 
 Bis vor kurzem gehörte dieser Rechner immer genau einem Menschen: Wer
@@ -474,6 +537,8 @@ cd tests && make
 | **Tabellenkalkulation** | 94 Prüfungen: Zahlen, Bezüge, jeder Rechenschritt, alle Funktionen, Kreisbezüge, CSV hin und zurück |
 | **Textverarbeitung** | 62 Prüfungen: Bearbeiten, Auszeichnungen, HTML schreiben und wieder lesen, fremdes HTML, Grenzen |
 | **Dokumentbaum** | 83 Prüfungen zu Zerteiler, Kaskade, Umbruch, Skripten am Baum und Zeitgebern |
+| **Aufgaben** | 96 Prüfungen: Anlegen und Entfernen, Reihenfolge, Termine samt Schaltjahren, Datei hin und zurück, von Hand geschriebene Listen |
+| **Systemprotokoll** | 50 Prüfungen: Ring samt Überlauf, Dringlichkeiten, Zerlegung der `kprintf`-Zeilen, Sichern |
 | **Rechte und Benutzer** | 117 Prüfungen: Rechtebits samt Reihenfolge, Klebebit, Textform hin und zurück, Passwort-Prüfwerte, `benutzer.conf` schreiben und lesen, beschädigte Dateien |
 
 Die Testbilder erzeugt `make testbilder` neu (benötigt Pillow).
@@ -503,12 +568,13 @@ kernel/
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
     gfx/              DEFLATE, PNG, JPEG, GIF, BMP, Skalieren und Zeichnen
-    lib/              Zeichenketten, Ausgabe, 128-Bit-Division
+    lib/              Zeichenketten, Ausgabe, Systemprotokoll,
+                      128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop,
                       Anmeldebildschirm, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
     apps/             Dateimanager, Browser, Installation, Einstellungen,
-                      Benutzerverwaltung,
+                      Benutzerverwaltung, Systemmonitor, Protokoll, Aufgaben,
                       Dokumentbaum, HTML-Leser, CSS, Umbruch, Editor,
                       Programmieren, Tabelle, Schreiben, Vortrag,
                       Konsole, Systeminformation, Dialoge

@@ -13,7 +13,9 @@
 #include "clipboard.h"
 #include "config.h"
 #include "lock.h"
+#include "log.h"
 #include "perm.h"
+#include "tasks.h"
 #include "user.h"
 #include "nic.h"
 #include "cpu.h"
@@ -149,6 +151,8 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  rechte <datei> [modus]   Rechte zeigen oder setzen");
     term_line(st, C_NORMAL, "  besitzer <datei> [name]  Eigentuemer zeigen oder setzen");
     term_line(st, C_NORMAL, "  sperren          Bildschirm sperren");
+    term_line(st, C_NORMAL, "  protokoll [...]  Systemprotokoll zeigen, sichern, leeren");
+    term_line(st, C_NORMAL, "  aufgaben [...]   Aufgabenliste zeigen und pflegen");
     term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
     term_line(st, C_NORMAL, "  starte <programm> [text]  Programm in Ring 3 starten");
     term_line(st, C_NORMAL, "  programme        mitgelieferte Programme zeigen");
@@ -868,6 +872,258 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
                 "raeumt auf", (unsigned)count, total);
 }
 
+/* --- Protokoll und Aufgaben ---------------------------------------- */
+
+static void cmd_log(struct term_state *st, const char *what)
+{
+    if (what && !strcasecmp(what, "leeren")) {
+        if (!session_is_admin()) {
+            term_line(st, C_ERROR, "Leeren darf nur ein Verwalter.");
+            return;
+        }
+        log_clear();
+        term_line(st, C_NORMAL, "Protokoll geleert.");
+        return;
+    }
+
+    if (what && !strcasecmp(what, "speichern")) {
+        char path[FS_PATH_MAX];
+
+        user_home_file("protokoll.txt", LOG_PATH_DEFAULT, path, sizeof(path));
+
+        if (log_save(path))
+            term_printf(st, C_NORMAL, "Gesichert in %s", path);
+        else
+            term_printf(st, C_ERROR, "%s liess sich nicht schreiben", path);
+        return;
+    }
+
+    /* Ohne Angabe die letzten zwanzig, sonst alles ab dieser
+     * Dringlichkeit - eine Konsole mit fuenfhundert Zeilen Protokoll
+     * hilft niemandem. */
+    enum log_level from = LOG_DEBUG;
+    bool tail = true;
+
+    if (what && !strcasecmp(what, "warnung")) { from = LOG_WARN;  tail = false; }
+    else if (what && !strcasecmp(what, "fehler")) { from = LOG_ERROR; tail = false; }
+    else if (what && !strcasecmp(what, "alle"))   { tail = false; }
+    else if (what && what[0]) {
+        term_line(st, C_ERROR,
+                  "protokoll [alle|warnung|fehler|speichern|leeren]");
+        return;
+    }
+
+    size_t count = log_count();
+    size_t first = 0;
+
+    if (tail && count > 20)
+        first = count - 20;
+
+    struct log_entry e;
+    size_t shown = 0;
+
+    for (size_t i = first; i < count; i++) {
+        if (!log_get(i, &e) || e.level < (uint8_t)from)
+            continue;
+        term_printf(st, e.level >= LOG_WARN ? C_ERROR : C_NORMAL,
+                    "[%5u.%03u] %s %-11s %s",
+                    (unsigned)(e.ms / 1000), (unsigned)(e.ms % 1000),
+                    log_level_short(e.level), e.source, e.text);
+        shown++;
+    }
+
+    term_printf(st, C_HIGHLIGHT,
+                "%u von %u Meldungen - %u Warnungen, %u Fehler",
+                (unsigned)shown, (unsigned)count,
+                (unsigned)log_count_level(LOG_WARN),
+                (unsigned)log_count_level(LOG_ERROR));
+    if (log_lost())
+        term_printf(st, C_NORMAL, "%u aeltere sind aus dem Ring gefallen.",
+                    (unsigned)log_lost());
+}
+
+/* Die Aufgabenliste des angemeldeten Benutzers. Sie wird bei jedem
+ * Befehl frisch gelesen und gleich wieder geschrieben - so sind Konsole
+ * und Fenster nie verschiedener Meinung. */
+static void task_path(char *out, size_t size)
+{
+    user_home_file("Aufgaben.txt", "/Dokumente/Aufgaben.txt", out, size);
+}
+
+static bool tasks_read(struct tasklist *list, char *path, size_t size)
+{
+    task_path(path, size);
+    tasks_clear(list);
+
+    struct fs_node *file = fs_lookup(NULL, path);
+
+    if (!file || file->type != FS_FILE || !fs_load(file) || !file->data)
+        return false;
+
+    char *text = kmalloc(file->size + 1);
+
+    if (!text)
+        return false;
+
+    memcpy(text, file->data, file->size);
+    text[file->size] = '\0';
+    tasks_from_text(list, text);
+    kfree(text);
+    return true;
+}
+
+static bool tasks_store(struct tasklist *list, const char *path)
+{
+    size_t cap = TASK_MAX * (TASK_TEXT_MAX + 48) + 256;
+    char  *text = kmalloc(cap);
+
+    if (!text)
+        return false;
+
+    size_t used = tasks_to_text(list, text, cap);
+    struct fs_node *file = fs_lookup(NULL, path);
+
+    if (!file)
+        file = fs_create_path(NULL, path, FS_FILE);
+
+    bool ok = file && file->type == FS_FILE && fs_write(file, text, used);
+
+    kfree(text);
+    return ok;
+}
+
+/* Zwei Reste, weil die Befehle verschieden gebaut sind: "neu" nimmt
+ * alles ab dem dritten Wort, "wichtig" und "termin" alles ab dem
+ * vierten - dazwischen steht bei ihnen die Nummer. */
+static void cmd_tasks(struct term_state *st, const char *what,
+                      const char *arg, const char *text_rest,
+                      const char *value_rest)
+{
+    struct tasklist *list = kzalloc(sizeof(*list));
+    char path[FS_PATH_MAX];
+
+    if (!list) {
+        term_line(st, C_ERROR, "Kein Speicher.");
+        return;
+    }
+
+    tasks_read(list, path, sizeof(path));
+
+    struct task *view[TASK_MAX];
+    size_t n = tasks_sorted(list, view, ARRAY_LEN(view), false);
+    bool   dirty = false;
+
+    /* Die Nummer, die der Benutzer eintippt, ist die Zeilennummer der
+     * Anzeige - nicht die innere Kennung. Alles andere waere fuer eine
+     * Liste, die man ansieht und dann anfasst, unbrauchbar. */
+    int index = 0;
+
+    for (const char *p = arg; p && *p >= '0' && *p <= '9'; p++)
+        index = index * 10 + (*p - '0');
+
+    struct task *chosen = (index >= 1 && (size_t)index <= n)
+                        ? view[index - 1] : NULL;
+
+    if (!what || !what[0]) {
+        if (!n) {
+            term_line(st, C_NORMAL, "Nichts zu tun.");
+        } else {
+            term_line(st, C_HIGHLIGHT, "Aufgaben:");
+            for (size_t i = 0; i < n; i++) {
+                char date[16];
+
+                tasks_format_date(view[i], date, sizeof(date));
+                term_printf(st, view[i]->done ? C_NORMAL : C_HIGHLIGHT,
+                            "  %2u [%c] %-8s %-11s %s", (unsigned)(i + 1),
+                            view[i]->done ? 'x' : ' ',
+                            task_prio_name(view[i]->prio), date,
+                            view[i]->text);
+            }
+        }
+        term_printf(st, C_NORMAL, "  %u offen von %u - %s",
+                    (unsigned)tasks_count(list, true),
+                    (unsigned)tasks_count(list, false), path);
+        term_line(st, C_NORMAL,
+                  "  aufgaben neu <text> | fertig <n> | weg <n> | "
+                  "wichtig <n> <stufe> | termin <n> <datum>");
+        kfree(list);
+        return;
+    }
+
+    if (!strcasecmp(what, "neu")) {
+        const char *text = text_rest;
+
+        if (!text || !text[0]) {
+            term_line(st, C_ERROR, "aufgaben neu <text>");
+            kfree(list);
+            return;
+        }
+        if (!tasks_add(list, text)) {
+            term_line(st, C_ERROR, "Die Liste ist voll.");
+            kfree(list);
+            return;
+        }
+        term_printf(st, C_NORMAL, "Notiert: %s", text);
+        dirty = true;
+    } else if (!chosen) {
+        term_line(st, C_ERROR, "Welche Aufgabe? Nummer aus der Liste angeben.");
+        kfree(list);
+        return;
+    } else if (!strcasecmp(what, "fertig")) {
+        chosen->done = !chosen->done;
+        term_printf(st, C_NORMAL, "%s: %s", chosen->done ? "Erledigt"
+                                                         : "Wieder offen",
+                    chosen->text);
+        dirty = true;
+    } else if (!strcasecmp(what, "weg")) {
+        char name[TASK_TEXT_MAX + 1];
+
+        strlcpy(name, chosen->text, sizeof(name));
+        tasks_remove(list, chosen->id);
+        term_printf(st, C_NORMAL, "Geloescht: %s", name);
+        dirty = true;
+    } else if (!strcasecmp(what, "wichtig")) {
+        uint8_t prio;
+
+        if (!task_prio_parse(value_rest, &prio)) {
+            term_line(st, C_ERROR, "hoch, mittel oder niedrig");
+            kfree(list);
+            return;
+        }
+        chosen->prio = prio;
+        term_printf(st, C_NORMAL, "%s ist jetzt %s", chosen->text,
+                    task_prio_name(prio));
+        dirty = true;
+    } else if (!strcasecmp(what, "termin")) {
+        uint16_t year;
+        uint8_t  month, day;
+
+        if (!tasks_parse_date(value_rest, &year, &month, &day)) {
+            term_line(st, C_ERROR, "TT.MM.JJJJ oder ein Strich");
+            kfree(list);
+            return;
+        }
+        chosen->year = year;
+        chosen->month = month;
+        chosen->day = day;
+
+        char date[16];
+
+        tasks_format_date(chosen, date, sizeof(date));
+        term_printf(st, C_NORMAL, "Termin von %s: %s", chosen->text, date);
+        dirty = true;
+    } else {
+        term_printf(st, C_ERROR, "Unbekannt: %s", what);
+        kfree(list);
+        return;
+    }
+
+    if (dirty && !tasks_store(list, path))
+        term_printf(st, C_ERROR, "%s liess sich nicht schreiben", path);
+
+    kfree(list);
+}
+
 /* --- Benutzer und Rechte ------------------------------------------- */
 
 static void cmd_who(struct term_state *st)
@@ -1327,6 +1583,12 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "programme")) {
         cmd_ls(st, "/Programme", false);
+
+    } else if (!strcasecmp(cmd, "protokoll")) {
+        cmd_log(st, a1);
+
+    } else if (!strcasecmp(cmd, "aufgaben")) {
+        cmd_tasks(st, a1, a2, rest_of(raw, 2), rest_of(raw, 3));
 
     } else if (!strcasecmp(cmd, "wer") || !strcasecmp(cmd, "whoami")) {
         cmd_who(st);

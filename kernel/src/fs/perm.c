@@ -11,6 +11,7 @@
 
 #include "perm.h"
 #include "kstring.h"
+#include "log.h"
 #include "mm.h"
 #include "thread.h"
 #include "user.h"
@@ -110,6 +111,8 @@ bool perm_set_mode(struct fs_node *node, uint16_t mode)
 
     node->mode = (uint16_t)(mode & (MODE_MASK | MODE_STICKY));
     perm_store_record(node);
+    log_info("rechte", "%s auf %04o gesetzt", node->name,
+             (unsigned)node->mode);
     return true;
 }
 
@@ -126,6 +129,8 @@ bool perm_set_owner(struct fs_node *node, uint32_t uid, uint32_t gid)
     node->uid = uid;
     node->gid = gid;
     perm_store_record(node);
+    log_info("rechte", "%s gehoert jetzt %u:%u", node->name,
+             (unsigned)uid, (unsigned)gid);
     return true;
 }
 

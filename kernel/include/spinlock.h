@@ -56,6 +56,26 @@ static inline bool spin_held(const struct spinlock *lock)
 /* Mit abgeschalteten Unterbrechungen: Wird die Sperre auch aus einem
  * Interrupt heraus genommen, wuerde sich der Kern sonst selbst
  * blockieren. Der Rueckgabewert gehoert in spin_unlock_irq(). */
+#ifdef RETRO_HOSTED
+
+/* Auf dem Entwicklungsrechner laufen die Testsammlungen in Ring 3, und
+ * dort ist cli verboten - der Versuch endet sofort. Unterbrechungen
+ * gibt es dort ohnehin keine abzuschalten, also bleibt nur die Sperre
+ * selbst uebrig. */
+static inline uint64_t spin_lock_irq(struct spinlock *lock)
+{
+    spin_lock(lock);
+    return 0;
+}
+
+static inline void spin_unlock_irq(struct spinlock *lock, uint64_t flags)
+{
+    UNUSED(flags);
+    spin_unlock(lock);
+}
+
+#else
+
 static inline uint64_t spin_lock_irq(struct spinlock *lock)
 {
     uint64_t flags;
@@ -71,5 +91,7 @@ static inline void spin_unlock_irq(struct spinlock *lock, uint64_t flags)
     if (flags & (1u << 9))
         __asm__ volatile("sti" ::: "memory");
 }
+
+#endif /* RETRO_HOSTED */
 
 #endif /* SPINLOCK_H */

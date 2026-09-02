@@ -32,6 +32,9 @@ void app_sheet(void);
 void app_write(void);
 void app_slides(void);
 void app_users(void);
+void app_monitor(void);
+void app_log(void);
+void app_tasks(void);
 
 /* Der Dateimanager laesst sich auch in einem bestimmten Ordner
  * oeffnen - der Papierkorb auf dem Desktop tut genau das. */
