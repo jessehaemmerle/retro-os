@@ -12,6 +12,9 @@
 #include "net.h"
 #include "clipboard.h"
 #include "config.h"
+#include "lock.h"
+#include "perm.h"
+#include "user.h"
 #include "nic.h"
 #include "cpu.h"
 #include "setup.h"
@@ -128,7 +131,7 @@ static void cmd_help(struct term_state *st)
 {
     term_line(st, C_HIGHLIGHT, "Verfuegbare Befehle:");
     term_line(st, C_NORMAL, "  hilfe            diese Uebersicht");
-    term_line(st, C_NORMAL, "  ls [pfad]        Ordnerinhalt anzeigen");
+    term_line(st, C_NORMAL, "  ls [-l] [pfad]   Ordnerinhalt anzeigen (-l mit Rechten)");
     term_line(st, C_NORMAL, "  cd <pfad>        Ordner wechseln");
     term_line(st, C_NORMAL, "  pwd              aktuellen Pfad anzeigen");
     term_line(st, C_NORMAL, "  cat <datei>      Datei ausgeben");
@@ -140,6 +143,12 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  echo <text>      Text ausgeben");
     term_line(st, C_NORMAL, "  speicher         Speicherbelegung");
     term_line(st, C_NORMAL, "  schrift [name]   Schriftarten zeigen oder waehlen");
+    term_line(st, C_NORMAL, "  wer              angemeldeter Benutzer und Gruppen");
+    term_line(st, C_NORMAL, "  gruppen          Gruppen und ihre Mitglieder");
+    term_line(st, C_NORMAL, "  benutzer [...]   Benutzer zeigen und verwalten");
+    term_line(st, C_NORMAL, "  rechte <datei> [modus]   Rechte zeigen oder setzen");
+    term_line(st, C_NORMAL, "  besitzer <datei> [name]  Eigentuemer zeigen oder setzen");
+    term_line(st, C_NORMAL, "  sperren          Bildschirm sperren");
     term_line(st, C_NORMAL, "  threads          laufende Threads anzeigen");
     term_line(st, C_NORMAL, "  starte <programm> [text]  Programm in Ring 3 starten");
     term_line(st, C_NORMAL, "  programme        mitgelieferte Programme zeigen");
@@ -160,7 +169,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  neustart         Rechner neu starten");
 }
 
-static void cmd_ls(struct term_state *st, const char *arg)
+static void cmd_ls(struct term_state *st, const char *arg, bool detail)
 {
     struct fs_node *dir = arg ? fs_lookup(st->cwd, arg) : st->cwd;
 
@@ -176,6 +185,11 @@ static void cmd_ls(struct term_state *st, const char *arg)
     struct fs_node *entries[256];
     size_t n = fs_list(dir, entries, ARRAY_LEN(entries));
 
+    if (!n && !perm_may(dir, P_R)) {
+        term_printf(st, C_ERROR, "ls: \"%s\" darfst du nicht lesen", dir->name);
+        return;
+    }
+
     for (size_t i = 0; i < n; i++) {
         struct fs_node *e = entries[i];
         char size[24];
@@ -185,10 +199,20 @@ static void cmd_ls(struct term_state *st, const char *arg)
         else
             fs_format_size(size, sizeof(size), e->size);
 
-        term_printf(st, e->type == FS_DIR ? C_HIGHLIGHT : C_NORMAL,
-                    "  %-28s %10s  %02u.%02u.%04u %02u:%02u",
-                    e->name, size, e->mtime_day, e->mtime_month,
-                    e->mtime_year, e->mtime_hour, e->mtime_min);
+        if (detail) {
+            char mode[11];
+
+            perm_mode_text(e->mode, e->type, mode);
+            term_printf(st, e->type == FS_DIR ? C_HIGHLIGHT : C_NORMAL,
+                        "  %s %-10s %-10s %-22s %10s",
+                        mode, user_name_of(e->uid), group_name_of(e->gid),
+                        e->name, size);
+        } else {
+            term_printf(st, e->type == FS_DIR ? C_HIGHLIGHT : C_NORMAL,
+                        "  %-28s %10s  %02u.%02u.%04u %02u:%02u",
+                        e->name, size, e->mtime_day, e->mtime_month,
+                        e->mtime_year, e->mtime_hour, e->mtime_min);
+        }
     }
     term_printf(st, C_NORMAL, "  %u Eintraege", (unsigned)n);
 }
@@ -844,6 +868,237 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
                 "raeumt auf", (unsigned)count, total);
 }
 
+/* --- Benutzer und Rechte ------------------------------------------- */
+
+static void cmd_who(struct term_state *st)
+{
+    struct user *u = session_user();
+
+    if (!u) {
+        term_line(st, C_NORMAL, "Niemand angemeldet - alles laeuft als root.");
+        return;
+    }
+
+    term_printf(st, C_HIGHLIGHT, "%s (%s)", u->name, u->full);
+    term_printf(st, C_NORMAL, "  Nummer    : %u", (unsigned)u->uid);
+    term_printf(st, C_NORMAL, "  Heim      : %s", u->home);
+    term_printf(st, C_NORMAL, "  Rechte    : %s",
+                u->admin ? "Verwalter" : "gewoehnlicher Benutzer");
+
+    char line[128];
+    size_t used = 0;
+
+    for (size_t i = 0; i < group_count(); i++) {
+        struct group *g = group_at(i);
+
+        if (!user_in_group(u->uid, g->gid))
+            continue;
+        ksnprintf(line + used, sizeof(line) - used, "%s%s",
+                  used ? ", " : "", g->name);
+        used += strlen(line + used);
+    }
+    term_printf(st, C_NORMAL, "  Gruppen   : %s", used ? line : "keine");
+}
+
+static void cmd_groups(struct term_state *st)
+{
+    term_line(st, C_HIGHLIGHT, "Gruppen:");
+    for (size_t i = 0; i < group_count(); i++) {
+        struct group *g = group_at(i);
+        char line[160];
+        size_t used = 0;
+
+        line[0] = '\0';
+        for (size_t m = 0; m < g->members; m++) {
+            ksnprintf(line + used, sizeof(line) - used, "%s%s",
+                      used ? ", " : "", user_name_of(g->member[m]));
+            used += strlen(line + used);
+        }
+        term_printf(st, C_NORMAL, "  %-12s %4u  %s", g->name, (unsigned)g->gid,
+                    used ? line : "-");
+    }
+}
+
+static void cmd_users(struct term_state *st, const char *what,
+                      const char *name, const char *extra)
+{
+    if (!what || !what[0]) {
+        term_line(st, C_HIGHLIGHT, "Benutzer:");
+        for (size_t i = 0; i < user_count(); i++) {
+            struct user *u = user_at(i);
+
+            term_printf(st, C_NORMAL, "  %-14s %5u %-10s %-22s %s",
+                        u->name, (unsigned)u->uid, group_name_of(u->gid),
+                        u->home,
+                        u->locked ? "gesperrt"
+                                  : (u->admin ? "Verwalter"
+                                              : (u->nopass ? "ohne Passwort"
+                                                           : "")));
+        }
+        term_line(st, C_NORMAL,
+                  "  benutzer neu|loeschen|passwort|verwalter <name> [wert]");
+        return;
+    }
+
+    if (!session_is_admin()) {
+        term_line(st, C_ERROR, "Dafuer braucht es Verwalterrechte.");
+        return;
+    }
+    if (!name || !name[0]) {
+        term_line(st, C_ERROR, "Es fehlt der Name.");
+        return;
+    }
+
+    char error[96] = "";
+
+    if (!strcasecmp(what, "neu")) {
+        struct user *u = user_create(name, name, extra, false,
+                                     error, sizeof(error));
+
+        if (!u) {
+            term_printf(st, C_ERROR, "%s", error);
+            return;
+        }
+        user_ensure_home(u);
+        term_printf(st, C_NORMAL, "%s angelegt, Nummer %u, Heim %s",
+                    u->name, (unsigned)u->uid, u->home);
+    } else if (!strcasecmp(what, "loeschen")) {
+        struct user *u = user_by_name(name);
+
+        if (!user_delete(u, error, sizeof(error))) {
+            term_printf(st, C_ERROR, "%s", error);
+            return;
+        }
+        term_printf(st, C_NORMAL, "%s entfernt.", name);
+    } else if (!strcasecmp(what, "passwort")) {
+        struct user *u = user_by_name(name);
+
+        if (!u) {
+            term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", name);
+            return;
+        }
+        user_set_password(u, extra);
+        term_printf(st, C_NORMAL, "Passwort von %s gesetzt.", u->name);
+    } else if (!strcasecmp(what, "verwalter")) {
+        struct user *u = user_by_name(name);
+
+        if (!u) {
+            term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", name);
+            return;
+        }
+        u->admin = !u->admin;
+        if (u->admin)
+            group_add_member(group_by_gid(GID_ROOT), u->uid);
+        else
+            group_remove_member(group_by_gid(GID_ROOT), u->uid);
+        term_printf(st, C_NORMAL, "%s ist %s Verwalter.", u->name,
+                    u->admin ? "jetzt" : "nicht mehr");
+    } else {
+        term_printf(st, C_ERROR, "Unbekannt: %s", what);
+        return;
+    }
+
+    if (fs_disk_mounted() && user_save())
+        term_line(st, C_NORMAL, "Gespeichert in " USER_PATH);
+    else if (!fs_disk_mounted())
+        term_line(st, C_NORMAL, "Ohne Festplatte gilt das bis zum Ausschalten.");
+}
+
+static void cmd_mode(struct term_state *st, const char *path, const char *mode)
+{
+    struct fs_node *n = path ? fs_lookup(st->cwd, path) : NULL;
+
+    if (!n) {
+        term_printf(st, C_ERROR, "rechte: \"%s\" nicht gefunden",
+                    path ? path : "");
+        return;
+    }
+
+    char text[11];
+
+    if (!mode || !mode[0]) {
+        perm_mode_text(n->mode, n->type, text);
+        term_printf(st, C_NORMAL, "%s %s %s  %s  (%04o)", text,
+                    user_name_of(n->uid), group_name_of(n->gid), n->name,
+                    (unsigned)n->mode);
+        return;
+    }
+
+    uint16_t want;
+
+    if (!perm_parse_mode(mode, &want)) {
+        term_line(st, C_ERROR, "rechte: \"750\" oder \"rwxr-x---\" wird erwartet");
+        return;
+    }
+    if (!perm_set_mode(n, want)) {
+        term_line(st, C_ERROR, "Das darf nur der Eigentuemer oder ein Verwalter.");
+        return;
+    }
+
+    perm_mode_text(n->mode, n->type, text);
+    term_printf(st, C_NORMAL, "%s  %s", text, n->name);
+    if (perm_store_dirty())
+        perm_store_save();
+}
+
+static void cmd_owner(struct term_state *st, const char *path, const char *who)
+{
+    struct fs_node *n = path ? fs_lookup(st->cwd, path) : NULL;
+
+    if (!n) {
+        term_printf(st, C_ERROR, "besitzer: \"%s\" nicht gefunden",
+                    path ? path : "");
+        return;
+    }
+    if (!who || !who[0]) {
+        term_printf(st, C_NORMAL, "%s gehoert %s:%s", n->name,
+                    user_name_of(n->uid), group_name_of(n->gid));
+        return;
+    }
+
+    /* "name" oder "name:gruppe" */
+    char        buffer[64];
+    const char *group_name = NULL;
+
+    strlcpy(buffer, who, sizeof(buffer));
+
+    char *colon = strchr(buffer, ':');
+
+    if (colon) {
+        *colon = '\0';
+        group_name = colon + 1;
+    }
+
+    struct user *u = user_by_name(buffer);
+
+    if (!u) {
+        term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", buffer);
+        return;
+    }
+
+    uint32_t gid = u->gid;
+
+    if (group_name && group_name[0]) {
+        struct group *g = group_by_name(group_name);
+
+        if (!g) {
+            term_printf(st, C_ERROR, "Unbekannte Gruppe: %s", group_name);
+            return;
+        }
+        gid = g->gid;
+    }
+
+    if (!perm_set_owner(n, u->uid, gid)) {
+        term_line(st, C_ERROR, "Verschenken darf nur ein Verwalter.");
+        return;
+    }
+
+    term_printf(st, C_NORMAL, "%s gehoert jetzt %s:%s", n->name, u->name,
+                group_name_of(gid));
+    if (perm_store_dirty())
+        perm_store_save();
+}
+
 /* Gibt die Zeile ab dem n-ten Wort zurueck - fuer Argumente, in denen
  * Leerzeichen stehen duerfen. */
 static const char *rest_of(const char *raw, int skip)
@@ -950,7 +1205,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         cmd_help(st);
 
     } else if (!strcasecmp(cmd, "ls") || !strcasecmp(cmd, "dir")) {
-        cmd_ls(st, a1);
+        bool detail = a1 && !strcmp(a1, "-l");
+
+        cmd_ls(st, detail ? a2 : a1, detail);
 
     } else if (!strcasecmp(cmd, "cd")) {
         struct fs_node *dir = a1 ? fs_lookup(st->cwd, a1) : fs_root();
@@ -993,11 +1250,19 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
     } else if (!strcasecmp(cmd, "schreib")) {
         struct fs_node *f = a1 ? fs_lookup(st->cwd, a1) : NULL;
 
-        if (!f)
-            f = a1 ? fs_create(st->cwd, a1, FS_FILE) : NULL;
+        if (!f && a1)
+            f = fs_create_path(st->cwd, a1, FS_FILE);
 
-        if (!f || f->type != FS_FILE) {
+        if (!a1) {
             term_line(st, C_ERROR, "schreib: <datei> <text>");
+        } else if (!f) {
+            term_printf(st, C_ERROR, "schreib: \"%s\" laesst sich nicht "
+                                     "anlegen - fehlen die Rechte?", a1);
+        } else if (f->type != FS_FILE) {
+            term_printf(st, C_ERROR, "schreib: \"%s\" ist ein Ordner", a1);
+        } else if (!perm_may(f, P_W)) {
+            term_printf(st, C_ERROR, "schreib: \"%s\" darfst du nicht "
+                                     "beschreiben", a1);
         } else {
             const char *text = raw;
 
@@ -1061,7 +1326,25 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         cmd_start_program(win, st, a1, raw);
 
     } else if (!strcasecmp(cmd, "programme")) {
-        cmd_ls(st, "/Programme");
+        cmd_ls(st, "/Programme", false);
+
+    } else if (!strcasecmp(cmd, "wer") || !strcasecmp(cmd, "whoami")) {
+        cmd_who(st);
+
+    } else if (!strcasecmp(cmd, "gruppen")) {
+        cmd_groups(st);
+
+    } else if (!strcasecmp(cmd, "benutzer")) {
+        cmd_users(st, a1, a2, argc > 3 ? argv[3] : NULL);
+
+    } else if (!strcasecmp(cmd, "rechte")) {
+        cmd_mode(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "besitzer")) {
+        cmd_owner(st, a1, a2);
+
+    } else if (!strcasecmp(cmd, "sperren")) {
+        lock_show(LOCK_LOCKED);
 
     } else if (!strcasecmp(cmd, "schrift")) {
         cmd_font(st, rest_of(raw, 1));

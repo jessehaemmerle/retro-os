@@ -131,6 +131,7 @@ kleiner aus, denn FAT32 braucht mindestens 65525 Cluster.
 | Ecke unten rechts ziehen | Fenster vergrößern |
 | `_` / `X` in der Titelleiste | Fenster ablegen / schließen |
 | Klick in der Taskleiste | Fenster holen oder ablegen |
+| Startmenü → Sperren | Bildschirm sperren, Fenster bleiben stehen |
 
 **Dateimanager:** Doppelklick öffnet Ordner und Dateien, die rechte Maustaste
 öffnet das Kontextmenü. Über die Tastatur: Pfeiltasten wählen aus, `Eingabe`
@@ -204,6 +205,17 @@ Browser die Skripte einer Seite abarbeitet; `console.log()` schreibt ins
 untere Feld, ein Fehler erscheint dort rot mit seiner Zeile. Eine
 `.js`-Datei im Dateimanager öffnet sich hier statt im Editor.
 
+**Benutzer:** Legt Konten an, setzt Passwörter, vergibt und nimmt
+Verwalterrechte und sperrt Anmeldungen. Ohne Verwalterrecht sieht man
+dieselbe Liste, kann darin aber nur das eigene Passwort ändern – wer sonst
+noch an diesem Rechner arbeitet, ist keine Geheimsache, fremde Konten
+anzufassen schon. Geändert wird zunächst nur im Speicher; erst
+*Speichern* schreibt `/Festplatte/benutzer.conf`. Im Startmenü stehen
+darunter **Sperren** (die Sitzung bleibt stehen, nur der Bildschirm ist
+zu), **Benutzer wechseln** und **Abmelden**. Im Dateimanager zeigt
+*Eigenschaften* im Kontextmenü Eigentümer und Rechte und lässt sie ändern,
+wenn einem der Eintrag gehört.
+
 **Papierkorb:** Gelöschtes verschwindet nicht sofort, sondern wandert nach
 `/Papierkorb` – aus dem Dateimanager, aus der Konsole, von der Festplatte
 wie aus dem Arbeitsspeicher. Der Korb merkt sich, wo jedes Stück herkam;
@@ -231,6 +243,12 @@ Neustart weg.
 | `prozesse` | laufende Programme mit Verwandtschaft und geteiltem Speicher |
 | `papierkorb [zurueck <n>\|leeren]` | Geloeschtes ansehen, zurueckholen, endgueltig entfernen |
 | `schrift [name]` | Schriftarten mit Lizenz auflisten oder sofort umschalten |
+| `wer` | angemeldeter Benutzer, seine Nummer, sein Heim und seine Gruppen |
+| `gruppen` | Gruppen mit Nummer und Mitgliedern |
+| `benutzer [neu\|loeschen\|passwort\|verwalter <name> [wert]]` | Konten zeigen und verwalten |
+| `rechte <datei> [modus]` | Rechte zeigen oder setzen (`750` oder `rwxr-x---`) |
+| `besitzer <datei> [name[:gruppe]]` | Eigentümer zeigen oder setzen |
+| `sperren` | Bildschirm sperren |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
 
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
@@ -266,6 +284,9 @@ also so, wie es ein Betriebssystem tut.
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
+| **Benutzer** | Mehrere Konten mit Nummer, Gruppe, Heimatverzeichnis und Verwalterrecht; das Passwort liegt als 4096-fach wiederholter HMAC-SHA256 über einem eigenen Salz in `/Festplatte/benutzer.conf` |
+| **Rechte** | Eigentümer, Gruppe und neun Bits je Eintrag, dazu das Klebebit; geprüft beim Nachschlagen, Aufzählen, Lesen, Schreiben, Anlegen, Umbenennen und Löschen |
+| **Anmeldung** | Anmeldebildschirm beim Start, Sperren, Abmelden und Benutzerwechsel; nach drei Fehlversuchen eine Zwangspause |
 | **Schriften** | Zehn freie Monospace-Schriften in der 8×16-Zelle – DejaVu, Liberation, JetBrains, IBM Plex, Fira, Source Code Pro, Inconsolata, Ubuntu, Unifont und VT323; umschaltbar im laufenden Betrieb |
 | **Symbole** | Lucide (ISC) in 16 und 32 Punkt, aus den SVG-Vorlagen erzeugt und mit dunkler Umrandung versehen, damit sie auf hellem wie dunklem Grund lesen |
 | **Papierkorb** | Gelöschtes wandert nach `/Papierkorb` und merkt sich, wo es herkam; Wiederherstellen, endgültiges Löschen, Leeren |
@@ -278,7 +299,7 @@ also so, wie es ein Betriebssystem tut.
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
 | **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername, Hintergrund und Schriftart in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, Papierkorb, Tabelle, Schreiben, Vortrag, Programmieren, elf Ring-3-Programme |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, Benutzer, Papierkorb, Tabelle, Schreiben, Vortrag, Programmieren, elf Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 
@@ -369,6 +390,50 @@ eine Tabelle aus Bytes. Umschalten lässt es sich in den Einstellungen –
 das Fenster zeichnet sich sofort in der neuen Schrift und ist damit seine
 eigene Vorschau – oder in der Konsole mit `schrift`.
 
+### Wer darf was
+
+Bis vor kurzem gehörte dieser Rechner immer genau einem Menschen: Wer
+davorsaß, durfte alles. Für einen Stick im Laufwerk stimmt das auch –
+sobald das System aber auf einer Festplatte liegt und mehrere Leute daran
+arbeiten, braucht es Konten.
+
+Jeder Eintrag im Dateibaum trägt jetzt einen Eigentümer, eine Gruppe und
+neun Bits nach dem Muster `rwxrwxrwx`. Bei Ordnern bedeuten sie etwas
+anderes als bei Dateien: `r` erlaubt das Aufzählen, `w` das Anlegen und
+Löschen darin, `x` das Hindurchgehen. Ein Ordner mit `x`, aber ohne `r`
+lässt sich also durchqueren, wenn man den Namen kennt, gibt aber seinen
+Inhalt nicht preis. Dazu kommt das Klebebit: Im Papierkorb und unter
+`/Temp` darf jeder ablegen, aber nur der Eigentümer eines Eintrags ihn
+wieder wegnehmen.
+
+Geprüft wird an den sechs Stellen, an denen der Dateibaum tatsächlich
+etwas tut – Nachschlagen, Aufzählen, Lesen, Schreiben, Anlegen, Löschen –,
+nicht in jedem Programm einzeln. Ein Ring-3-Programm läuft unter der
+Nummer dessen, der es aufgerufen hat, und kann darum nie mehr als er.
+Wenn das System seine eigenen Dateien führt – Einstellungen sichern, den
+Papierkorb pflegen, die Benutzerdatenbank schreiben –, hebt es die Prüfung
+für die Dauer dieser Arbeit auf; der Zähler dafür sitzt im Thread, nicht
+in einer globalen Variablen, sonst wäre er auf mehreren Kernen falsch.
+
+Das Passwort selbst wird nirgends gespeichert. In `benutzer.conf` steht
+ein zufälliges Salz und der 4096-fach wiederholte HMAC-SHA256 darüber. Aus
+dem Wert lässt sich das Passwort nicht zurückrechnen, zwei Leute mit
+demselben Passwort bekommen verschiedene Einträge, und wer die Datei
+erbeutet, zahlt die Rechenzeit für jeden einzelnen Versuch. Die Datei
+selbst gehört root und ist `-rw-------`.
+
+FAT32 hat für all das kein Feld. Statt das Dateisystem zu erweitern – das
+könnte dann kein anderes System mehr lesen – liegt daneben eine Liste
+`/Festplatte/rechte.conf`, Pfad für Pfad. Sie enthält nur, was von der
+Vorgabe abweicht, und wird beim Einlesen jedes Ordners angewandt.
+
+Solange es keine gespeicherte Datenbank gibt – von der CD, vom Stick, oder
+gleich nach der Installation –, meldet sich RetroOS ohne Nachfrage als
+root an. Einen Anmeldebildschirm vor ein System zu setzen, das ohnehin
+jedem gehört, der die Scheibe einlegt, wäre Theater. Sobald unter
+**Benutzer** das erste Konto angelegt und gespeichert ist, fragt der
+nächste Start nach Name und Passwort.
+
 ### Wie die Teile zusammenspielen
 
 Der Dateibaum kennt zwei Sorten von Knoten. Alles unterhalb von
@@ -409,6 +474,7 @@ cd tests && make
 | **Tabellenkalkulation** | 94 Prüfungen: Zahlen, Bezüge, jeder Rechenschritt, alle Funktionen, Kreisbezüge, CSV hin und zurück |
 | **Textverarbeitung** | 62 Prüfungen: Bearbeiten, Auszeichnungen, HTML schreiben und wieder lesen, fremdes HTML, Grenzen |
 | **Dokumentbaum** | 83 Prüfungen zu Zerteiler, Kaskade, Umbruch, Skripten am Baum und Zeitgebern |
+| **Rechte und Benutzer** | 117 Prüfungen: Rechtebits samt Reihenfolge, Klebebit, Textform hin und zurück, Passwort-Prüfwerte, `benutzer.conf` schreiben und lesen, beschädigte Dateien |
 
 Die Testbilder erzeugt `make testbilder` neu (benötigt Pillow).
 
@@ -430,16 +496,19 @@ kernel/
                       USB-Speicher, virtio-net, igb, e1000e, e1000,
                       RTL8169, RTL8139
     fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand,
-                      Installation auf Festplatte, Papierkorb
+                      Installation auf Festplatte, Papierkorb,
+                      Benutzer und Rechte
     net/              Kartenauswahl, Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS,
                       TCP, TLS, HTTP
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
     gfx/              DEFLATE, PNG, JPEG, GIF, BMP, Skalieren und Zeichnen
     lib/              Zeichenketten, Ausgabe, 128-Bit-Division
-    gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop, Bedienelemente
+    gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop,
+                      Anmeldebildschirm, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
     apps/             Dateimanager, Browser, Installation, Einstellungen,
+                      Benutzerverwaltung,
                       Dokumentbaum, HTML-Leser, CSS, Umbruch, Editor,
                       Programmieren, Tabelle, Schreiben, Vortrag,
                       Konsole, Systeminformation, Dialoge

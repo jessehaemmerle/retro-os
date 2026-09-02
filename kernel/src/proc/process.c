@@ -16,6 +16,7 @@
 #include "uiapi.h"
 #include "thread.h"
 #include "spinlock.h"
+#include "user.h"
 
 void enter_user_mode(uint64_t entry, uint64_t stack) NORETURN;
 void fork_return(const struct syscall_frame *frame) NORETURN;
@@ -77,6 +78,9 @@ struct process *process_current(void)
 
     return t ? t->process : NULL;
 }
+
+uint32_t process_uid(struct process *proc) { return proc ? proc->uid : UID_ROOT; }
+uint32_t process_gid(struct process *proc) { return proc ? proc->gid : GID_ROOT; }
 
 size_t process_count(void)
 {
@@ -314,6 +318,12 @@ struct process *process_start(const char *path, const char *args,
      * Gruppe an. */
     proc->leader = proc;
 
+    /* Es laeuft unter dem, der es aufgerufen hat - nicht unter root.
+     * Damit gelten im Dateibaum genau dessen Rechte, und ein
+     * Benutzerprogramm kann nichts, was sein Benutzer nicht darf. */
+    proc->uid = session_uid();
+    proc->gid = session_gid();
+
     const char *slash = strrchr(path, '/');
     strlcpy(proc->name, slash ? slash + 1 : path, sizeof(proc->name));
     if (args)
@@ -493,6 +503,8 @@ struct process *process_fork(struct process *parent,
     child->parent     = parent;
     child->parent_pid = parent->pid;
     child->leader     = console_of(parent);
+    child->uid        = parent->uid;
+    child->gid        = parent->gid;
 
     /* Verbindungen benutzen beide weiter - erst wenn der letzte sie
      * schliesst, geht die Verbindung zu. */

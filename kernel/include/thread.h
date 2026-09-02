@@ -49,6 +49,11 @@ struct thread {
     volatile bool on_cpu;        /* laeuft noch auf seinem Stapel          */
     uint32_t  last_cpu;          /* wo er zuletzt lief                */
 
+    /* Groesser als null heisst: Dieser Thread arbeitet gerade fuer das
+     * System selbst - Einstellungen sichern, Papierkorb fuehren - und
+     * die Rechte im Dateibaum gelten dabei nicht. Siehe perm.h. */
+    uint16_t  perm_system;
+
     struct process *process;     /* NULL = reiner Kernel-Thread */
     struct thread  *next;
 };

@@ -38,6 +38,12 @@ struct process {
     char     name[32];
     char     args[PROCESS_ARGS_MAX];
 
+    /* Unter wem laeuft das Programm? Ein Kind erbt das vom Elternteil,
+     * ein frisch gestartetes vom angemeldeten Benutzer. Die Rechte im
+     * Dateibaum richten sich danach - ein Programm kann also nicht mehr
+     * als der Mensch, der es aufgerufen hat. */
+    uint32_t uid, gid;
+
     struct address_space space;
     struct thread       *thread;
 
@@ -110,5 +116,10 @@ void   process_exit(struct process *proc, int code);
 
 size_t process_count(void);
 struct process *process_at(size_t index);
+
+/* Unter welcher Nummer laeuft der Prozess? Getrennt deklariert, damit
+ * die Rechtepruefung nicht den ganzen Prozesskopf braucht. */
+uint32_t process_uid(struct process *proc);
+uint32_t process_gid(struct process *proc);
 
 #endif /* PROCESS_H */

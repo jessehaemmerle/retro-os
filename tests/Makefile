@@ -36,6 +36,12 @@ SKRIPT := js_test.c shim.c \
 TABELLE := tabellen_test.c shim.c \
            ../kernel/src/apps/sheet.c
 
+RECHTE := rechte_test.c shim.c \
+          ../kernel/src/fs/perm.c \
+          ../kernel/src/fs/user.c \
+          ../kernel/src/crypto/sha2.c \
+          ../kernel/src/crypto/hkdf.c
+
 SCHREIBEN := schreiben_test.c shim.c \
              ../kernel/src/apps/writedoc.c \
              ../kernel/src/apps/dom.c \
@@ -53,8 +59,8 @@ BAUM := dom_test.c shim.c \
         ../kernel/src/js/jsdom.c \
         ../kernel/src/js/jsmain.c
 
-.PHONY: all krypto bilder skript baum tabelle schreiben testbilder clean
-all: krypto bilder skript baum tabelle schreiben
+.PHONY: all krypto bilder skript baum tabelle schreiben rechte testbilder clean
+all: krypto bilder skript baum tabelle schreiben rechte
 
 krypto: krypto-test
 	@./krypto-test
@@ -76,6 +82,12 @@ baum: baum-test
 
 baum-test: $(BAUM)
 	@$(CC) $(CFLAGS) -I../kernel/src/js $(BAUM) -o $@
+
+rechte: rechte-test
+	@./rechte-test
+
+rechte-test: $(RECHTE)
+	@$(CC) $(CFLAGS) $(RECHTE) -o $@
 
 tabelle: tabellen-test
 	@./tabellen-test

@@ -9,7 +9,9 @@
 #include "font.h"
 #include "kstring.h"
 #include "mm.h"
+#include "perm.h"
 #include "theme.h"
+#include "user.h"
 #include "trash.h"
 #include "widgets.h"
 
@@ -38,6 +40,7 @@ enum context_id {
     CTX_DELETE,
     CTX_NEW_DIR,
     CTX_NEW_FILE,
+    CTX_PROPS,
 };
 
 struct fm_state {
@@ -400,6 +403,75 @@ static void fm_action(struct window *win, int action)
     }
 }
 
+/* Die Rechte des ausgewaehlten Eintrags. Wer ihn besitzt, darf sie hier
+ * gleich aendern; alle anderen sehen nur, woran sie sind. */
+static void on_mode_entered(const char *text, void *user)
+{
+    struct window *win = user;
+
+    if (!gui_window_alive(win))
+        return;
+
+    struct fm_state *st = win->user;
+    struct fs_node *sel = (st->selection >= 0) ? st->entries[st->selection] : NULL;
+    uint16_t mode;
+
+    if (!sel || !fs_node_alive(sel))
+        return;
+    if (!perm_parse_mode(text, &mode)) {
+        dialog_message("Rechte",
+                       "Erwartet wird \"750\" oder \"rwxr-x---\".");
+        return;
+    }
+    if (!perm_set_mode(sel, mode)) {
+        dialog_message("Rechte",
+                       "Das darf nur der Eigentuemer oder ein Verwalter.");
+        return;
+    }
+    if (perm_store_dirty())
+        perm_store_save();
+    gui_invalidate();
+}
+
+static void fm_properties(struct window *win)
+{
+    struct fm_state *st = win->user;
+    struct fs_node *sel = (st->selection >= 0) ? st->entries[st->selection] : NULL;
+
+    if (!sel)
+        return;
+
+    char mode[11];
+    char size[24];
+    char text[160];
+    char path[FS_PATH_MAX];
+
+    perm_mode_text(sel->mode, sel->type, mode);
+    fs_path(sel, path, sizeof(path));
+    if (sel->type == FS_DIR)
+        strlcpy(size, "Ordner", sizeof(size));
+    else
+        fs_format_size(size, sizeof(size), sel->size);
+
+    ksnprintf(text, sizeof(text), "%s\n%s, %s\nGehoert %s:%s - %s (%04o)",
+              path, size,
+              sel->backend == FS_BACKEND_FAT ? "auf der Platte"
+                                             : "im Arbeitsspeicher",
+              user_name_of(sel->uid), group_name_of(sel->gid), mode,
+              (unsigned)sel->mode);
+
+    if (!perm_owns(sel)) {
+        dialog_message("Eigenschaften", text);
+        return;
+    }
+
+    char preset[8];
+
+    ksnprintf(preset, sizeof(preset), "%04o", (unsigned)sel->mode);
+
+    dialog_input("Eigenschaften", text, preset, on_mode_entered, win);
+}
+
 static void context_selected(int id, void *user)
 {
     struct window *win = user;
@@ -410,6 +482,7 @@ static void context_selected(int id, void *user)
     case CTX_DELETE:   fm_action(win, TB_DELETE);    break;
     case CTX_NEW_DIR:  fm_action(win, TB_NEW_DIR);   break;
     case CTX_NEW_FILE: fm_action(win, TB_NEW_FILE);  break;
+    case CTX_PROPS:    fm_properties(win);           break;
     }
 }
 
@@ -426,6 +499,8 @@ static void open_context_menu(struct window *win, int32_t sx, int32_t sy)
         { NULL,           ICON_FILE,        false, false,      0 },
         { "Neuer Ordner", ICON_NEW_FOLDER,  true, true,        CTX_NEW_DIR },
         { "Neue Datei",   ICON_NEW_FILE,    true, true,        CTX_NEW_FILE },
+        { NULL,           ICON_FILE,        false, false,      0 },
+        { "Eigenschaften", ICON_KEY,        true, sel != NULL, CTX_PROPS },
     };
 
     gui_open_menu(sx, sy, items, ARRAY_LEN(items), context_selected, win);

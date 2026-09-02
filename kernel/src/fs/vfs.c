@@ -15,7 +15,9 @@
 #include "block.h"
 #include "kstring.h"
 #include "mm.h"
+#include "perm.h"
 #include "rtc.h"
+#include "user.h"
 
 static struct fat_volume disk_volume;
 static struct fs_node   *disk_mount_point;
@@ -55,6 +57,13 @@ static struct fs_node *node_new(const char *name, enum fs_type type)
 
     strlcpy(n->name, name, sizeof(n->name));
     n->type = (uint8_t)type;
+
+    /* Wer anlegt, besitzt. Die Rechte sind die uebliche Vorgabe: eigene
+     * Sachen selbst schreiben, alle anderen duerfen lesen. */
+    n->uid  = session_uid();
+    n->gid  = session_gid();
+    n->mode = type == FS_DIR ? MODE_DIR_DEFAULT : MODE_FILE_DEFAULT;
+
     stamp(n);
     node_count++;
     return n;
@@ -101,6 +110,12 @@ struct fs_node *fs_find_child(struct fs_node *dir, const char *name)
     if (!dir || dir->type != FS_DIR)
         return NULL;
 
+    /* Ohne x kommt man nicht durch einen Ordner - auch dann nicht, wenn
+     * man den Namen des gesuchten Eintrags kennt. Genau das ist der
+     * Unterschied zwischen "darf hineinsehen" und "darf hindurch". */
+    if (!perm_may(dir, P_X))
+        return NULL;
+
     ensure_loaded(dir);
 
     for (struct fs_node *it = dir->first_child; it; it = it->next_sibling) {
@@ -115,6 +130,8 @@ struct fs_node *fs_create(struct fs_node *dir, const char *name, enum fs_type ty
     if (!dir || dir->type != FS_DIR || !name || !name[0])
         return NULL;
     if (strchr(name, '/'))
+        return NULL;
+    if (!perm_may(dir, P_W | P_X))
         return NULL;
     if (fs_find_child(dir, name))
         return NULL;
@@ -143,29 +160,64 @@ struct fs_node *fs_create(struct fs_node *dir, const char *name, enum fs_type ty
     return n;
 }
 
+struct fs_node *fs_create_as(struct fs_node *dir, const char *name,
+                             enum fs_type type, uint32_t uid, uint32_t gid,
+                             uint16_t mode)
+{
+    perm_system_begin();
+
+    struct fs_node *n = fs_create(dir, name, type);
+
+    if (n) {
+        n->uid  = uid;
+        n->gid  = gid;
+        n->mode = mode;
+    }
+
+    perm_system_end();
+    return n;
+}
+
+/* Fehlende Zwischenordner entstehen mit. Wer "/a/b/c.txt" anlegen
+ * laesst, meint das auch dann, wenn es /a/b noch nicht gibt - und muesste
+ * sonst jeder Aufrufer dieselbe Schleife selbst schreiben. */
 struct fs_node *fs_create_path(struct fs_node *base, const char *path,
                                enum fs_type type)
 {
-    char parent[FS_PATH_MAX];
-    const char *name = path;
+    struct fs_node *dir = (path[0] == '/') ? root : (base ? base : root);
+    char part[FS_NAME_MAX + 1];
 
-    strlcpy(parent, path, sizeof(parent));
-
-    char *slash = strrchr(parent, '/');
-    struct fs_node *dir;
-
-    if (slash) {
-        *slash = '\0';
-        name = path + (slash - parent) + 1;
-        dir = fs_lookup(base, parent[0] ? parent : "/");
-    } else {
-        dir = base ? base : root;
-    }
-
-    if (!dir || dir->type != FS_DIR || !name[0])
+    while (*path == '/')
+        path++;
+    if (!*path)
         return NULL;
 
-    return fs_create(dir, name, type);
+    for (;;) {
+        size_t n = 0;
+
+        while (*path && *path != '/' && n < FS_NAME_MAX)
+            part[n++] = *path++;
+        part[n] = '\0';
+
+        while (*path == '/')
+            path++;
+
+        if (!*path)
+            break;              /* das war der letzte Teil - der Name */
+
+        struct fs_node *next = fs_find_child(dir, part);
+
+        if (!next)
+            next = fs_create(dir, part, FS_DIR);
+        if (!next || next->type != FS_DIR)
+            return NULL;
+        dir = next;
+    }
+
+    if (!part[0])
+        return NULL;
+
+    return fs_create(dir, part, type);
 }
 
 static void free_subtree(struct fs_node *node)
@@ -209,9 +261,13 @@ bool fs_remove(struct fs_node *node)
         return false;
     if (node == disk_mount_point)
         return false;
+    if (!perm_may_unlink(node->parent, node))
+        return false;
 
     if (node->backend == FS_BACKEND_FAT && !fat_remove_recursive(node))
         return false;
+
+    perm_store_forget(node);
 
     struct fs_node *parent = node->parent;
     unlink_child(node);
@@ -224,6 +280,8 @@ bool fs_remove(struct fs_node *node)
 bool fs_rename(struct fs_node *node, const char *name)
 {
     if (!node || node == root || !name || !name[0] || strchr(name, '/'))
+        return false;
+    if (!perm_may_unlink(node->parent, node))
         return false;
 
     struct fs_node *clash = fs_find_child(node->parent, name);
@@ -245,7 +303,9 @@ bool fs_rename(struct fs_node *node, const char *name)
         node->fat_ref = entry.ref;
     }
 
+    perm_store_forget(node);
     strlcpy(node->name, name, sizeof(node->name));
+    perm_store_record(node);
     stamp(node);
     return true;
 }
@@ -256,6 +316,9 @@ bool fs_move(struct fs_node *node, struct fs_node *new_parent)
         return false;
     if (node == new_parent)
         return false;
+    if (!perm_may_unlink(node->parent, node) ||
+        !perm_may(new_parent, P_W | P_X))
+        return false;
     if (fs_find_child(new_parent, node->name))
         return false;
 
@@ -265,8 +328,10 @@ bool fs_move(struct fs_node *node, struct fs_node *new_parent)
             return false;
     }
 
+    perm_store_forget(node);
     unlink_child(node);
     link_child(new_parent, node);
+    perm_store_record(node);
     stamp(new_parent);
     return true;
 }
@@ -292,6 +357,8 @@ static bool ensure_capacity(struct fs_node *file, size_t need)
 bool fs_write(struct fs_node *file, const void *data, size_t size)
 {
     if (!file || file->type != FS_FILE || file->readonly)
+        return false;
+    if (!perm_may(file, P_W))
         return false;
 
     if (file->backend == FS_BACKEND_FAT) {
@@ -319,6 +386,8 @@ bool fs_write(struct fs_node *file, const void *data, size_t size)
 bool fs_append(struct fs_node *file, const void *data, size_t size)
 {
     if (!file || file->type != FS_FILE || file->readonly)
+        return false;
+    if (!perm_may(file, P_W))
         return false;
     if (!fs_load(file))
         return false;
@@ -381,6 +450,8 @@ size_t fs_child_count(struct fs_node *dir)
 
     if (!dir || dir->type != FS_DIR)
         return 0;
+    if (!perm_may(dir, P_R))
+        return 0;
 
     ensure_loaded(dir);
     for (struct fs_node *it = dir->first_child; it; it = it->next_sibling)
@@ -401,6 +472,11 @@ size_t fs_list(struct fs_node *dir, struct fs_node **out, size_t max)
     size_t n = 0;
 
     if (!dir || dir->type != FS_DIR)
+        return 0;
+    /* Aufzaehlen braucht r. Ein Ordner mit x, aber ohne r laesst sich
+     * durchqueren, wenn man den Namen kennt - sein Inhalt bleibt aber
+     * verborgen. */
+    if (!perm_may(dir, P_R))
         return 0;
 
     ensure_loaded(dir);
@@ -561,8 +637,16 @@ static void load_child_cb(void *user, const struct fat_dirent *entry)
     n->mtime_hour  = entry->hour;
     n->mtime_min   = entry->minute;
 
+    /* Was FAT32 nicht speichern kann, kommt aus der Liste daneben.
+     * Steht dort nichts, gehoert der Eintrag root und ist fuer alle
+     * lesbar - so wie es bis zu dieser Fassung ueberall war. */
+    n->uid  = UID_ROOT;
+    n->gid  = GID_ROOT;
+    n->mode = n->type == FS_DIR ? MODE_DIR_DEFAULT : MODE_FILE_DEFAULT;
+
     node_count++;
     link_child(dir, n);
+    perm_store_apply(n);
 }
 
 static void fat_load_children(struct fs_node *dir)
@@ -574,6 +658,8 @@ static void fat_load_children(struct fs_node *dir)
 bool fs_load(struct fs_node *file)
 {
     if (!file || file->type != FS_FILE)
+        return false;
+    if (!perm_may(file, P_R))
         return false;
     if (file->backend != FS_BACKEND_FAT)
         return true;
@@ -599,6 +685,9 @@ bool fs_load(struct fs_node *file)
 
 static bool attach_mount_point(void)
 {
+    /* Ein- und Aushaengen ist Sache des Systems, nicht des Benutzers. */
+    perm_system_begin();
+
     /* Einen eventuell vorhandenen alten Einhaengepunkt entfernen. */
     struct fs_node *old = fs_find_child(root, "Festplatte");
     if (old) {
@@ -612,9 +701,12 @@ static bool attach_mount_point(void)
         fs_remove(old);
     }
 
-    struct fs_node *mount = fs_create(root, "Festplatte", FS_DIR);
-    if (!mount)
+    struct fs_node *mount = fs_create_as(root, "Festplatte", FS_DIR,
+                                         UID_ROOT, GID_ROOT, MODE_DIR_DEFAULT);
+    if (!mount) {
+        perm_system_end();
         return false;
+    }
 
     mount->backend         = FS_BACKEND_FAT;
     mount->fat_cluster     = disk_volume.root_cluster;
@@ -622,6 +714,7 @@ static bool attach_mount_point(void)
     mount->readonly        = true;   /* der Einhaengepunkt selbst bleibt */
 
     disk_mount_point = mount;
+    perm_system_end();
     return true;
 }
 
@@ -656,6 +749,7 @@ bool fs_mount_disk(void)
  * Leere. */
 void fs_detach_disk(void)
 {
+    perm_system_begin();
     if (disk_mount_point) {
         struct fs_node *child = disk_mount_point->first_child;
 
@@ -670,6 +764,7 @@ void fs_detach_disk(void)
         disk_mount_point->children_loaded = false;
     }
     disk_volume.mounted = false;
+    perm_system_end();
 }
 
 bool fs_format_disk(const char *label)

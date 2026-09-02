@@ -125,6 +125,14 @@ static void do_format(struct sink *s, const char *fmt, va_list ap)
             emit_padded(s, num, width, left, zero, false);
             break;
         }
+        case 'o': {
+            /* Rechtebits liest man in Achtelschritten - dafuer gibt es
+             * diese Umwandlung, sonst braeuchte niemand sie. */
+            uint64_t v = longness ? va_arg(ap, uint64_t) : va_arg(ap, unsigned);
+            format_number(num, v, 8, false);
+            emit_padded(s, num, width, left, zero, false);
+            break;
+        }
         case 'x':
         case 'X': {
             uint64_t v = longness ? va_arg(ap, uint64_t) : va_arg(ap, unsigned);

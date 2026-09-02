@@ -31,6 +31,7 @@ void app_code(void);
 void app_sheet(void);
 void app_write(void);
 void app_slides(void);
+void app_users(void);
 
 /* Der Dateimanager laesst sich auch in einem bestimmten Ordner
  * oeffnen - der Papierkorb auf dem Desktop tut genau das. */
@@ -57,6 +58,9 @@ void dialog_input(const char *title, const char *prompt, const char *preset,
                   dialog_text_fn on_ok, void *user);
 void dialog_confirm(const char *title, const char *message,
                     dialog_confirm_fn on_answer, void *user);
+/* Wie dialog_input, zeigt aber nur Sternchen. */
+void dialog_password(const char *title, const char *prompt,
+                     dialog_text_fn on_ok, void *user);
 void dialog_message(const char *title, const char *message);
 
 #endif /* APPS_H */

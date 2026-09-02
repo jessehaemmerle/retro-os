@@ -29,3 +29,6 @@ tests/krypto-test
 tests/bild-test
 tests/js-test
 tests/baum-test
+tests/tabellen-test
+tests/schreiben-test
+tests/rechte-test

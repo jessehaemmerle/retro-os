@@ -25,6 +25,7 @@ const struct app_entry app_list[] = {
     { "Vortrag",           ICON_SLIDES,      app_slides,      true,  NULL },
     { "Programmieren",     ICON_CODE,        app_code,        true,  NULL },
     { "Einstellungen",     ICON_SETTINGS,    app_settings,    true,  NULL },
+    { "Benutzer",          ICON_USERS,       app_users,       true,  NULL },
     { "Installieren",      ICON_DISK,        app_setup,       true,  NULL },
     { "Papierkorb",        ICON_TRASH,       app_trash,       true,  trash_icon },
     { "Ueber RetroOS",     ICON_INFO,        app_about,       false, NULL },

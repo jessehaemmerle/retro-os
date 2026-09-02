@@ -49,6 +49,15 @@ enum icon_id {
     ICON_SAVE,
     ICON_CLOCK,
 
+    /* Benutzer, Gruppen und Rechte */
+    ICON_USER,
+    ICON_USERS,
+    ICON_USER_ADD,
+    ICON_LOCK,
+    ICON_KEY,
+    ICON_SHIELD,
+    ICON_LOGOUT,
+
     /* Bueroprogramme */
     ICON_TABLE,
     ICON_DOCUMENT,

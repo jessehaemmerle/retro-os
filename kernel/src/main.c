@@ -29,6 +29,9 @@
 #include "vmm.h"
 #include "vfs.h"
 #include "trash.h"
+#include "lock.h"
+#include "perm.h"
+#include "user.h"
 
 NORETURN void kmain(void)
 {
@@ -90,12 +93,20 @@ NORETURN void kmain(void)
 
     /* Daten und Oberflaeche */
     config_defaults();
+    user_init();
     fs_init();
     fs_mount_disk();
-    trash_init();
 
     /* Erst jetzt gibt es die Festplatte - und damit die gespeicherten
-     * Einstellungen. Bis hierher galt die Werkseinstellung. */
+     * Rechte, Benutzer und Einstellungen. Bis hierher galt die
+     * Werkseinstellung, und alles lief als root. */
+    perm_store_load();
+    if (user_load())
+        kprintf("Benutzer    : %u aus %s\n",
+                (unsigned)user_count(), USER_PATH);
+
+    trash_init();
+
     if (config_load())
         kprintf("Einstellung : aus %s uebernommen\n", CONFIG_PATH);
     config_apply();
@@ -120,6 +131,17 @@ NORETURN void kmain(void)
     net_init();
 
     gui_init();
+
+    /* Gibt es eine gespeicherte Benutzerdatenbank, wird angemeldet.
+     * Ohne sie - vom Stick oder von der CD - laeuft RetroOS wie frueher
+     * als root durch; einen Anmeldebildschirm vor ein System zu setzen,
+     * das ohnehin jedem gehoert, der die Scheibe einlegt, waere Theater. */
+    if (user_store_exists()) {
+        lock_show(LOCK_START);
+    } else {
+        session_login(user_by_uid(UID_ROOT));
+        kprintf("Benutzer    : root (keine Datenbank - alles erlaubt)\n");
+    }
 
     kprintf("Oberflaeche : bereit\n\n");
 

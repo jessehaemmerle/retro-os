@@ -8,6 +8,7 @@
 #include "apps.h"
 #include "config.h"
 #include "font.h"
+#include "user.h"
 #include "keymap.h"
 #include "kstring.h"
 #include "mm.h"
@@ -232,6 +233,15 @@ static void settings_save(struct window *win)
     struct settings_ui *ui = win->user;
 
     config_apply();
+
+    /* Die Datei gilt fuer den ganzen Rechner - Tastatur, Zeitzone,
+     * Rechnername. Wer sie aendern darf, entscheidet fuer alle mit. */
+    if (!session_is_admin()) {
+        strlcpy(ui->status, "Dauerhaft speichern darf nur ein Verwalter.",
+                sizeof(ui->status));
+        gui_invalidate();
+        return;
+    }
 
     if (!fs_disk_mounted()) {
         strlcpy(ui->status, "Ohne Festplatte gilt das nur bis zum Ausschalten.",

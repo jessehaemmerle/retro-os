@@ -335,6 +335,12 @@ static void paint_done(struct setup_ui *ui, struct canvas *c, int32_t w)
     y += 30;
     gfx_text(c, 20, y, "Dateien unter /Festplatte bleiben ab jetzt liegen.",
              COL_TEXT_DIM);
+    y += 18;
+    gfx_text(c, 20, y, "Konten legst du unter \"Benutzer\" an - ab dann",
+             COL_TEXT_DIM);
+    y += 16;
+    gfx_text(c, 20, y, "fragt RetroOS beim Start nach Name und Passwort.",
+             COL_TEXT_DIM);
 
     if (ui->chosen >= 0 &&
         ui->rows[ui->chosen].plan.mode == SETUP_BESIDE &&

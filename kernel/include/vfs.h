@@ -24,6 +24,12 @@ struct fs_node {
     uint8_t         type;
     bool            readonly;      /* Systemdateien lassen sich nicht loeschen */
 
+    /* Wem gehoert der Eintrag, und wer darf was damit? Neun Bits nach
+     * dem Muster rwxrwxrwx, dazu das Klebebit fuer Ordner, in die alle
+     * ablegen duerfen. Die Auswertung steht in perm.h. */
+    uint32_t        uid, gid;
+    uint16_t        mode;
+
     struct fs_node *parent;
     struct fs_node *first_child;
     struct fs_node *next_sibling;
@@ -98,5 +104,12 @@ size_t fs_bytes_used(void);
 
 /* Heuristik anhand der Endung - steuert Symbol und Standardprogramm. */
 bool fs_is_text(const struct fs_node *node);
+
+/* Legt einen Eintrag an, ohne die Rechte des Aufrufers zu pruefen, und
+ * setzt gleich Eigentuemer und Rechte. Fuer den Aufbau des
+ * Grundbestands beim Start und fuer das System selbst. */
+struct fs_node *fs_create_as(struct fs_node *dir, const char *name,
+                             enum fs_type type, uint32_t uid, uint32_t gid,
+                             uint16_t mode);
 
 #endif /* VFS_H */

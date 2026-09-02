@@ -110,7 +110,7 @@ struct window *gui_window_at(size_t index);
 struct window *gui_find_by_paint(win_paint_fn fn);
 
 /* --- Popup-Menue --- */
-#define MENU_MAX_ITEMS 12
+#define MENU_MAX_ITEMS 24
 
 struct menu_item {
     const char  *label;      /* NULL = Trennlinie */

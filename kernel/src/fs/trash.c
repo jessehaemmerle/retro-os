@@ -20,6 +20,8 @@
 
 #include "kstring.h"
 #include "mm.h"
+#include "perm.h"
+#include "user.h"
 
 #define TRASH_MAX 64
 
@@ -37,8 +39,14 @@ void trash_init(void)
     memset(entries, 0, sizeof(entries));
 
     korb = fs_lookup(fs_root(), TRASH_PATH);
-    if (!korb)
-        korb = fs_create(fs_root(), TRASH_PATH + 1, FS_DIR);
+    if (!korb) {
+        /* Jeder wirft hier hinein, aber das Klebebit sorgt dafuer, dass
+         * niemand fremde Sachen wieder herausholt oder endgueltig
+         * loescht. Ohne das waere der Korb ein Loch in der Rechteverwaltung:
+         * geloeschte Dateien liegen darin ja weiter vollstaendig da. */
+        korb = fs_create_as(fs_root(), TRASH_PATH + 1, FS_DIR,
+                            UID_ROOT, GID_ROOT, 0777 | MODE_STICKY);
+    }
 
     /* Der Korb selbst laesst sich nicht wegwerfen. */
     if (korb)
@@ -110,11 +118,14 @@ const char *trash_origin(const struct fs_node *node)
 
 /* --- Kopieren ueber die Dateisystemgrenze --------------------------- */
 
+/* Die Kopie im Korb behaelt Eigentuemer und Rechte des Originals -
+ * sonst kaeme etwas anderes zurueck, als weggeworfen wurde. */
 static bool copy_into(struct fs_node *src, struct fs_node *dest_parent,
                       const char *name)
 {
     if (src->type == FS_DIR) {
-        struct fs_node *copy = fs_create(dest_parent, name, FS_DIR);
+        struct fs_node *copy = fs_create_as(dest_parent, name, FS_DIR,
+                                            src->uid, src->gid, src->mode);
 
         if (!copy)
             return false;
@@ -130,13 +141,23 @@ static bool copy_into(struct fs_node *src, struct fs_node *dest_parent,
     if (!fs_load(src))
         return false;
 
-    struct fs_node *copy = fs_create(dest_parent, name, FS_FILE);
+    struct fs_node *copy = fs_create_as(dest_parent, name, FS_FILE,
+                                        src->uid, src->gid, src->mode);
 
     if (!copy)
         return false;
     if (src->size == 0)
         return true;
-    return fs_write(copy, src->data, src->size);
+
+    /* Schreiben darf hier das System: Rechte sind schon beim Wegwerfen
+     * geprueft worden, und die Kopie gehoert unter Umstaenden jemand
+     * anderem als dem, der geloescht hat. */
+    perm_system_begin();
+
+    bool ok = fs_write(copy, src->data, src->size);
+
+    perm_system_end();
+    return ok;
 }
 
 /* Ein freier Name im Korb: "bericht.txt", dann "bericht.txt (2)". */

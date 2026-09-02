@@ -3,6 +3,8 @@
 #include "config.h"
 #include "font.h"
 #include "gfx.h"
+#include "perm.h"
+#include "user.h"
 #include "keymap.h"
 #include "kstring.h"
 #include "mm.h"
@@ -111,21 +113,23 @@ static void apply_pair(const char *key, const char *value)
 
 bool config_load(void)
 {
+    perm_system_begin();
+
     struct fs_node *file = fs_lookup(NULL, CONFIG_PATH);
 
-    if (!file || file->type != FS_FILE)
+    if (!file || file->type != FS_FILE || !fs_load(file) || !file->data ||
+        file->size == 0 || file->size > 8192) {
+        perm_system_end();
         return false;
-
-    if (!fs_load(file) || !file->data || file->size == 0)
-        return false;
-    if (file->size > 8192)
-        return false;
+    }
 
     size_t size = file->size;
     char *text = kmalloc(size + 1);
 
-    if (!text)
+    if (!text) {
+        perm_system_end();
         return false;
+    }
 
     memcpy(text, file->data, size);
     text[size] = '\0';
@@ -157,6 +161,7 @@ bool config_load(void)
     }
 
     kfree(text);
+    perm_system_end();
     return true;
 }
 
@@ -185,14 +190,28 @@ bool config_save(void)
               (unsigned)current.background,
               current.font);
 
+    /* Das Schreiben selbst erledigt das System; wer es anstossen darf,
+     * entscheidet die Oberflaeche. */
+    perm_system_begin();
+
     struct fs_node *file = fs_lookup(NULL, CONFIG_PATH);
 
     if (!file)
         file = fs_create_path(NULL, CONFIG_PATH, FS_FILE);
-    if (!file || file->type != FS_FILE)
-        return false;
 
-    return fs_write(file, text, strlen(text));
+    bool ok = file && file->type == FS_FILE &&
+              fs_write(file, text, strlen(text));
+
+    if (ok) {
+        /* Lesen darf jeder, aendern nur der Verwalter. */
+        file->uid  = UID_ROOT;
+        file->gid  = GID_ROOT;
+        file->mode = 0644;
+        perm_store_record(file);
+    }
+
+    perm_system_end();
+    return ok;
 }
 
 void config_apply(void)

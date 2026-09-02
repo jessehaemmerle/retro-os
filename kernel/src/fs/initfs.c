@@ -6,6 +6,8 @@
 
 #include "vfs.h"
 #include "kstring.h"
+#include "perm.h"
+#include "user.h"
 
 void programs_install(struct fs_node *directory);
 
@@ -47,11 +49,22 @@ static void put_binary(struct fs_node *dir, const char *name,
 
 void initfs_populate(struct fs_node *root)
 {
+    /* Der Grundbestand entsteht, bevor sich jemand anmelden kann - er
+     * gehoert darum root. Wer spaeter etwas anlegt, besitzt es selbst. */
     struct fs_node *system   = dir(root, "System");
     struct fs_node *programs = dir(root, "Programme");
     struct fs_node *docs     = dir(root, "Dokumente");
     struct fs_node *media    = dir(root, "Medien");
-    dir(root, "Temp");
+
+    /* Hier liegen die Heimatverzeichnisse, solange keine Festplatte da
+     * ist. Nur hineingehen und aufzaehlen darf jeder; anlegen darf nur
+     * der Verwalter, denn ein neues Heim gehoert zur Benutzerverwaltung. */
+    fs_create_as(root, "Benutzer", FS_DIR, UID_ROOT, GID_ROOT, 0755);
+
+    /* Ablage fuer alle: hineinlegen darf jeder, wegnehmen nur der, dem
+     * ein Eintrag gehoert. Das ist das Klebebit. */
+    fs_create_as(root, "Temp", FS_DIR, UID_ROOT, GID_ROOT,
+                 0777 | MODE_STICKY);
 
     /* --- System --- */
     put(system, "version.txt",

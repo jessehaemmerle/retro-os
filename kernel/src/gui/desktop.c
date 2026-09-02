@@ -6,7 +6,9 @@
 #include "arch.h"
 #include "font.h"
 #include "kstring.h"
+#include "lock.h"
 #include "power.h"
+#include "user.h"
 #include "rtc.h"
 #include "theme.h"
 
@@ -19,6 +21,9 @@
 #define MENU_ID_APPS   100
 #define MENU_ID_REBOOT 200
 #define MENU_ID_SHUTDOWN 201
+#define MENU_ID_LOCK   202
+#define MENU_ID_LOGOUT 203
+#define MENU_ID_SWITCH 204
 
 static int      selected_icon = -1;
 static bool     start_pressed;
@@ -177,6 +182,18 @@ static struct rect clock_rect(void)
     return rect_make(c->w - 78, c->h - TASKBAR_HEIGHT + 3, 75, TASKBAR_HEIGHT - 6);
 }
 
+/* Wer angemeldet ist, steht neben der Uhr. Auf einem Rechner, an dem
+ * mehrere arbeiten, ist das die wichtigste Auskunft der Leiste. */
+static struct rect user_rect(void)
+{
+    struct canvas *c = gfx_screen();
+    struct user   *u = session_user();
+    int32_t        w = 26 + (u ? gfx_text_width(u->name) : 0);
+
+    return rect_make(c->w - 84 - w, c->h - TASKBAR_HEIGHT + 3, w,
+                     TASKBAR_HEIGHT - 6);
+}
+
 static size_t taskbar_button_count(void)
 {
     size_t n = 0;
@@ -275,6 +292,16 @@ static void paint_taskbar(struct canvas *c)
         gfx_reset_clip(c);
     }
 
+    struct user *me = session_user();
+
+    if (me) {
+        struct rect ur = user_rect();
+
+        gfx_bevel_thin(c, ur, false);
+        icon_draw(c, ur.x + 4, ur.y + 2, me->admin ? ICON_SHIELD : ICON_USER, 1);
+        gfx_text(c, ur.x + 24, ur.y + 4, me->name, COL_TEXT);
+    }
+
     struct rect ck = clock_rect();
     gfx_bevel_thin(c, ck, false);
     int32_t tw = gfx_text_width(clock_text);
@@ -292,6 +319,24 @@ static void start_menu_selected(int id, void *user)
         power_reboot();
     if (id == MENU_ID_SHUTDOWN)
         power_shutdown();
+    if (id == MENU_ID_LOCK) {
+        lock_show(LOCK_LOCKED);
+        return;
+    }
+    if (id == MENU_ID_LOGOUT) {
+        /* Abmelden heisst: alles zumachen, was diesem Benutzer gehoert.
+         * Eine Sitzung, die nach dem Abmelden weiterlaeuft, waere keine. */
+        while (gui_window_count())
+            gui_close_window(gui_window_at(0));
+        lock_show(LOCK_LOGOUT);
+        return;
+    }
+    if (id == MENU_ID_SWITCH) {
+        while (gui_window_count())
+            gui_close_window(gui_window_at(0));
+        lock_show(LOCK_SWITCH);
+        return;
+    }
 
     size_t index = (size_t)(id - MENU_ID_APPS);
     if (index < app_count && app_list[index].launch)
@@ -305,7 +350,7 @@ static void open_start_menu(void)
     struct menu_item items[MENU_MAX_ITEMS];
     size_t n = 0;
 
-    for (size_t i = 0; i < app_count && n < MENU_MAX_ITEMS - 3; i++) {
+    for (size_t i = 0; i < app_count && n < MENU_MAX_ITEMS - 7; i++) {
         items[n].label    = app_list[i].name;
         items[n].icon     = app_list[i].icon;
         items[n].has_icon = true;
@@ -313,6 +358,22 @@ static void open_start_menu(void)
         items[n].id       = MENU_ID_APPS + (int)i;
         n++;
     }
+
+    /* Die Sitzung steht zwischen den Programmen und dem Ausschalten -
+     * dort sucht man sie, und dort tut ein Fehlgriff am wenigsten weh. */
+    items[n++] = (struct menu_item){ .label = NULL };
+    items[n++] = (struct menu_item){ .label = "Sperren", .icon = ICON_LOCK,
+                                     .has_icon = true,
+                                     .enabled = session_user() != NULL,
+                                     .id = MENU_ID_LOCK };
+    items[n++] = (struct menu_item){ .label = "Benutzer wechseln", .icon = ICON_USERS,
+                                     .has_icon = true,
+                                     .enabled = user_store_exists(),
+                                     .id = MENU_ID_SWITCH };
+    items[n++] = (struct menu_item){ .label = "Abmelden", .icon = ICON_LOGOUT,
+                                     .has_icon = true,
+                                     .enabled = user_store_exists(),
+                                     .id = MENU_ID_LOGOUT };
 
     items[n++] = (struct menu_item){ .label = NULL };
     items[n++] = (struct menu_item){ .label = "Neu starten", .icon = ICON_SETTINGS,

@@ -60,6 +60,15 @@ ICONS = [
     ("ICON_SAVE",        "save",             "#8FB8E8"),
     ("ICON_CLOCK",       "clock",            "#7FD4E8"),
 
+    # Benutzer, Gruppen und Rechte.
+    ("ICON_USER",        "user",             "#9BD1E8"),
+    ("ICON_USERS",       "users",            "#9BD1E8"),
+    ("ICON_USER_ADD",    "user-plus",        "#7BE08C"),
+    ("ICON_LOCK",        "lock",             "#F2C14E"),
+    ("ICON_KEY",         "key-round",        "#F2C14E"),
+    ("ICON_SHIELD",      "shield-check",     "#7BE0AE"),
+    ("ICON_LOGOUT",      "log-out",          "#E08A6A"),
+
     # Bueroprogramme und ihre Formatleisten. 
     ("ICON_TABLE",       "table",            "#7BE08C"),
     ("ICON_DOCUMENT",    "letter-text",      "#8FB8E8"),

@@ -20,6 +20,7 @@
 #include "kstring.h"
 #include "mm.h"
 #include "net.h"
+#include "lock.h"
 #include "thread.h"
 #include "theme.h"
 
@@ -530,6 +531,13 @@ static void compose(void)
     cursor_valid = false;
     gfx_reset_clip(c);
 
+    /* Solange gesperrt ist, gibt es nichts anderes zu sehen. Die Fenster
+     * bleiben unter der Sperre stehen, aber niemand kommt an sie heran. */
+    if (lock_active()) {
+        lock_paint(c);
+        return;
+    }
+
     desktop_paint_background(c);
 
     struct window *focus = gui_focused();
@@ -614,6 +622,11 @@ static void to_client(const struct window *win, struct gui_event *ev,
 
 static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
 {
+    if (lock_active()) {
+        lock_mouse(x, y, button, true);
+        return;
+    }
+
     if (menu_active) {
         if (rect_contains(menu_rect, x, y)) {
             int idx = menu_item_at(y);
@@ -709,6 +722,11 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
 
 static void handle_mouse_up(int32_t x, int32_t y, uint8_t button)
 {
+    if (lock_active()) {
+        lock_mouse(x, y, button, false);
+        return;
+    }
+
     if (drag_win) {
         drag_win = NULL;
         return;
@@ -727,6 +745,11 @@ static void handle_mouse_up(int32_t x, int32_t y, uint8_t button)
 
 static void handle_mouse_move(int32_t x, int32_t y, bool pressed)
 {
+    if (lock_active()) {
+        lock_mouse(x, y, 0, false);
+        return;
+    }
+
     if (drag_win) {
         struct canvas *screen = gfx_screen();
 
@@ -773,6 +796,11 @@ static void handle_mouse_move(int32_t x, int32_t y, bool pressed)
 
 static void handle_key(struct key_event *ke)
 {
+    if (lock_active()) {
+        lock_key(ke);
+        return;
+    }
+
     if (menu_active && ke->pressed && ke->key == KEY_ESCAPE) {
         gui_close_menu();
         return;
@@ -849,7 +877,7 @@ NORETURN void gui_run(void)
             else if (!ms.right && prev_right)
                 handle_mouse_up(cursor_x, cursor_y, MB_RIGHT);
 
-            if (ms.scroll) {
+            if (ms.scroll && !lock_active()) {
                 struct window *win = window_at(cursor_x, cursor_y);
 
                 if (win) {
@@ -868,12 +896,17 @@ NORETURN void gui_run(void)
         uint64_t now = timer_ms();
         if (now - last_tick >= 100) {
             last_tick = now;
-            desktop_tick();
 
-            struct window *win = gui_focused();
-            if (win) {
-                struct gui_event ev = { .type = EV_TICK };
-                send(win, &ev);
+            if (lock_active()) {
+                lock_tick();
+            } else {
+                desktop_tick();
+
+                struct window *win = gui_focused();
+                if (win) {
+                    struct gui_event ev = { .type = EV_TICK };
+                    send(win, &ev);
+                }
             }
         }
 

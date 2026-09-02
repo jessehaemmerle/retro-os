@@ -28,6 +28,7 @@ struct dialog_state {
     int32_t cursor;
     bool  caret_on;
     bool  preset_intact;   /* Vorgabe wird beim ersten Zeichen ersetzt */
+    bool  secret;          /* Passwort - im Feld stehen nur Sternchen  */
 
     int   pressed_button;        /* -1 = keiner */
 
@@ -105,9 +106,25 @@ static void dialog_paint(struct window *win, struct canvas *c)
     icon_draw(&local, 14, 14, st->kind == DLG_MESSAGE ? ICON_INFO : win->icon, 2);
     paint_wrapped(&local, 56, 16, client.w - 70, st->prompt);
 
-    if (st->kind == DLG_INPUT)
-        widget_field(&local, dialog_field_rect(win), st->text,
+    if (st->kind == DLG_INPUT) {
+        /* Bei einem Passwort steht im Feld nur, wie viele Zeichen schon
+         * da sind - genug, um zu sehen, dass die Tastatur ankommt, und
+         * zu wenig fuer den, der ueber die Schulter schaut. */
+        char shown[DLG_INPUT_MAX + 1];
+
+        if (st->secret) {
+            size_t len = strlen(st->text);
+
+            for (size_t i = 0; i < len; i++)
+                shown[i] = '*';
+            shown[len] = '\0';
+        } else {
+            strlcpy(shown, st->text, sizeof(shown));
+        }
+
+        widget_field(&local, dialog_field_rect(win), shown,
                      st->caret_on ? st->cursor : -1, true);
+    }
 
     for (int i = 0; i < dialog_button_count(st); i++)
         widget_button(&local, dialog_button_rect(win, i),
@@ -291,6 +308,22 @@ void dialog_input(const char *title, const char *prompt, const char *preset,
         strlcpy(st->text, preset, sizeof(st->text));
     st->preset_intact = preset && preset[0];
     st->cursor  = (int32_t)strlen(st->text);
+    st->on_text = on_ok;
+    st->user    = user;
+}
+
+void dialog_password(const char *title, const char *prompt,
+                     dialog_text_fn on_ok, void *user)
+{
+    struct window *win = dialog_create(title, DLG_INPUT, prompt, ICON_KEY, 168);
+
+    if (!win)
+        return;
+
+    struct dialog_state *st = win->user;
+
+    st->secret  = true;
+    st->cursor  = 0;
     st->on_text = on_ok;
     st->user    = user;
 }
