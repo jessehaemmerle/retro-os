@@ -505,7 +505,8 @@ bool fs_is_text(const struct fs_node *node)
         return true;
 
     static const char *text_ext[] = { ".txt", ".md", ".cfg", ".conf", ".log",
-                                      ".c", ".h", ".sh", ".ini", ".list" };
+                                      ".c", ".h", ".sh", ".ini", ".list",
+                                      ".js", ".json", ".css" };
     for (size_t i = 0; i < ARRAY_LEN(text_ext); i++) {
         if (strcasecmp(dot, text_ext[i]) == 0)
             return true;

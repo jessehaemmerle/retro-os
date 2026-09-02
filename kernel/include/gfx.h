@@ -40,6 +40,10 @@ void gfx_reset_clip(struct canvas *c);
 
 /* --- Primitive --- */
 void gfx_pixel(struct canvas *c, int32_t x, int32_t y, uint32_t color);
+/* Mischt einen Punkt ein. Die oberen acht Bit sagen, wie deckend er
+ * ist: 0 laesst den Untergrund stehen, 255 ersetzt ihn. Dazwischen
+ * wird gemischt - das brauchen die weichen Kanten der Symbole. */
+void gfx_blend(struct canvas *c, int32_t x, int32_t y, uint32_t argb);
 void gfx_fill(struct canvas *c, struct rect r, uint32_t color);
 void gfx_frame(struct canvas *c, struct rect r, uint32_t color);
 void gfx_hline(struct canvas *c, int32_t x, int32_t y, int32_t len, uint32_t color);

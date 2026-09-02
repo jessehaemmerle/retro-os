@@ -10,6 +10,7 @@
 #include "kstring.h"
 #include "mm.h"
 #include "theme.h"
+#include "trash.h"
 #include "widgets.h"
 
 #define TOOLBAR_H   34
@@ -27,6 +28,7 @@ enum toolbar_button {
     TB_NEW_FILE,
     TB_RENAME,
     TB_DELETE,
+    TB_RESTORE,
     TB_COUNT
 };
 
@@ -78,13 +80,36 @@ static int32_t visible_rows(struct window *win)
     return MAX(list_rect(win).h / ROW_H, 1);
 }
 
-static struct rect tool_rect(int index)
+/* Im Papierkorb ergeben Anlegen und Umbenennen keinen Sinn - dafuer
+ * gehoert dorthin der Weg zurueck. Die Leiste zeigt also nicht immer
+ * dieselben Knoepfe. */
+static bool tool_visible(struct fm_state *st, int index)
 {
-    static const int32_t widths[TB_COUNT] = { 34, 34, 34, 130, 114, 114, 98 };
+    bool im_korb = trash_contains(st->dir);
+
+    switch (index) {
+    case TB_NEW_DIR:
+    case TB_NEW_FILE:
+    case TB_RENAME:
+        return !im_korb;
+    case TB_RESTORE:
+        return im_korb;
+    default:
+        return true;
+    }
+}
+
+static struct rect tool_rect(struct window *win, int index)
+{
+    struct fm_state *st = win->user;
+    static const int32_t widths[TB_COUNT] = { 34, 34, 34, 130, 114, 114, 112, 150 };
     int32_t x = 4;
 
-    for (int i = 0; i < index; i++)
+    for (int i = 0; i < index; i++) {
+        if (!tool_visible(st, i))
+            continue;
         x += widths[i] + (i == TB_HOME ? 12 : 3);
+    }
 
     return rect_make(x, 4, widths[index], TOOLBAR_H - 8);
 }
@@ -132,6 +157,7 @@ static void fm_refresh(struct window *win)
     st->tool_enabled[TB_NEW_FILE] = true;
     st->tool_enabled[TB_RENAME]   = sel && !sel->readonly;
     st->tool_enabled[TB_DELETE]   = sel && !sel->readonly;
+    st->tool_enabled[TB_RESTORE]  = sel && sel->parent == trash_dir();
 
     gui_invalidate();
 }
@@ -151,8 +177,22 @@ static void ensure_visible(struct window *win)
 
 static enum icon_id entry_icon(const struct fs_node *node)
 {
+    const char *dot = node->name[0] ? strrchr(node->name, '.') : NULL;
+
     if (node == fs_disk_root())
         return ICON_DISK;
+    if (dot && node->type == FS_FILE) {
+        if (strcasecmp(dot, ".js") == 0)
+            return ICON_CODE;
+        if (strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".jpg") == 0 ||
+            strcasecmp(dot, ".jpeg") == 0 || strcasecmp(dot, ".gif") == 0 ||
+            strcasecmp(dot, ".bmp") == 0)
+            return ICON_IMAGE;
+        if (strcasecmp(dot, ".html") == 0 || strcasecmp(dot, ".htm") == 0)
+            return ICON_BROWSER;
+    }
+    if (node == trash_dir())
+        return trash_count() ? ICON_TRASH_FULL : ICON_TRASH;
     if (node->type == FS_DIR)
         return ICON_FOLDER;
     return fs_is_text(node) ? ICON_FILE_TEXT : ICON_FILE;
@@ -167,8 +207,17 @@ static void fm_open_selected(struct window *win)
 
     struct fs_node *node = st->entries[st->selection];
 
-    if (node->type == FS_DIR)
+    if (node->type == FS_DIR) {
         fm_set_dir(win, node, true);
+        return;
+    }
+
+    /* Quelltext gehoert ins Programmierfenster, alles andere in den
+     * Editor. */
+    const char *dot = strrchr(node->name, '.');
+
+    if (dot && strcasecmp(dot, ".js") == 0)
+        code_open(node);
     else
         editor_open(node);
 }
@@ -242,10 +291,29 @@ static void on_delete_confirmed(bool yes, void *user)
     if (st->selection < 0)
         return;
 
-    if (!fs_remove(st->entries[st->selection]))
+    struct fs_node *sel = st->entries[st->selection];
+
+    /* Was schon im Korb liegt, ist beim naechsten Loeschen wirklich
+     * weg - sonst gaebe es kein Ende. */
+    bool ok = trash_contains(sel) ? trash_purge(sel) : trash_delete(sel);
+
+    if (!ok)
         dialog_message("Loeschen",
                        "Dieser Eintrag gehoert zum System und "
                        "laesst sich nicht loeschen.");
+    fm_refresh(win);
+}
+
+static void on_restore(struct window *win)
+{
+    struct fm_state *st = win->user;
+
+    if (st->selection < 0)
+        return;
+
+    if (!trash_restore(st->entries[st->selection]))
+        dialog_message("Wiederherstellen",
+                       "Der alte Platz ist nicht mehr erreichbar.");
     fm_refresh(win);
 }
 
@@ -288,13 +356,23 @@ static void fm_action(struct window *win, int action)
         if (sel && !sel->readonly) {
             char msg[200];
 
-            ksnprintf(msg, sizeof(msg),
-                      sel->type == FS_DIR
-                          ? "Ordner \"%s\" mit allen Inhalten loeschen?"
-                          : "Datei \"%s\" wirklich loeschen?",
-                      sel->name);
+            if (trash_contains(sel))
+                ksnprintf(msg, sizeof(msg),
+                          "\"%s\" endgueltig loeschen? Das laesst sich "
+                          "nicht mehr zuruecknehmen.", sel->name);
+            else
+                ksnprintf(msg, sizeof(msg),
+                          sel->type == FS_DIR
+                              ? "Ordner \"%s\" in den Papierkorb legen?"
+                              : "\"%s\" in den Papierkorb legen?",
+                          sel->name);
             dialog_confirm("Loeschen", msg, on_delete_confirmed, win);
         }
+        break;
+
+    case TB_RESTORE:
+        if (sel && sel->parent == trash_dir())
+            on_restore(win);
         break;
     }
 }
@@ -337,19 +415,29 @@ static void open_context_menu(struct window *win, int32_t sx, int32_t sy)
 static void paint_toolbar(struct window *win, struct canvas *c)
 {
     struct fm_state *st = win->user;
-    static const char *labels[TB_COUNT] = {
-        "", "", "", "Neuer Ordner", "Neue Datei", "Umbenennen", "Loeschen"
+    /* Im Papierkorb heisst Loeschen etwas anderes als anderswo: Dort
+     * ist es endgueltig, und daneben steht der Weg zurueck. */
+    bool im_korb = trash_contains(st->dir);
+
+    const char *labels[TB_COUNT] = {
+        "", "", "", "Neuer Ordner", "Neue Datei", "Umbenennen",
+        im_korb ? "Endgueltig" : "Loeschen",
+        im_korb ? "Wiederherstellen" : ""
     };
-    static const enum icon_id icons[TB_COUNT] = {
+    const enum icon_id icons[TB_COUNT] = {
         ICON_BACK, ICON_UP, ICON_HOME,
-        ICON_NEW_FOLDER, ICON_NEW_FILE, ICON_EDITOR, ICON_TRASH
+        ICON_NEW_FOLDER, ICON_NEW_FILE, ICON_EDITOR,
+        im_korb ? ICON_TRASH_FULL : ICON_TRASH,
+        ICON_RESTORE
     };
 
     widget_toolbar(c, rect_make(0, 0, c->w, TOOLBAR_H));
 
     for (int i = 0; i < TB_COUNT; i++) {
-        struct rect r = tool_rect(i);
+        struct rect r = tool_rect(win, i);
 
+        if (!tool_visible(st, i))
+            continue;
         if (r.x + r.w > c->w)
             break;
         widget_icon_button(c, r, icons[i], labels[i],
@@ -497,7 +585,9 @@ static void fm_mouse_down(struct window *win, const struct gui_event *ev)
 
     if (ev->y < TOOLBAR_H) {
         for (int i = 0; i < TB_COUNT; i++) {
-            if (rect_contains(tool_rect(i), ev->x, ev->y) && st->tool_enabled[i]) {
+            if (tool_visible(st, i) &&
+                rect_contains(tool_rect(win, i), ev->x, ev->y) &&
+                st->tool_enabled[i]) {
                 st->pressed_tool = i;
                 gui_invalidate();
                 return;
@@ -589,7 +679,7 @@ static void fm_event(struct window *win, const struct gui_event *ev)
         int tool = st->pressed_tool;
 
         st->pressed_tool = -1;
-        if (tool >= 0 && rect_contains(tool_rect(tool), ev->x, ev->y))
+        if (tool >= 0 && rect_contains(tool_rect(win, tool), ev->x, ev->y))
             fm_action(win, tool);
         gui_invalidate();
         break;
@@ -630,7 +720,9 @@ static void fm_close(struct window *win)
     win->user = NULL;
 }
 
-void app_filemanager(void)
+/* Oeffnet den Dateimanager in einem bestimmten Ordner. NULL bedeutet
+ * die Wurzel. */
+void filemanager_open(struct fs_node *dir)
 {
     struct fm_state *st = kzalloc(sizeof(*st));
 
@@ -648,7 +740,7 @@ void app_filemanager(void)
         return;
     }
 
-    st->dir          = fs_root();
+    st->dir          = (dir && dir->type == FS_DIR) ? dir : fs_root();
     st->selection    = 0;
     st->pressed_tool = -1;
 
@@ -661,4 +753,14 @@ void app_filemanager(void)
 
     fm_refresh(win);
     gui_focus_window(win);
+}
+
+void app_filemanager(void)
+{
+    filemanager_open(fs_root());
+}
+
+void app_trash(void)
+{
+    filemanager_open(trash_dir());
 }

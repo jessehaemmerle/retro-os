@@ -28,6 +28,7 @@
 #include "thread.h"
 #include "vmm.h"
 #include "vfs.h"
+#include "trash.h"
 
 NORETURN void kmain(void)
 {
@@ -91,6 +92,7 @@ NORETURN void kmain(void)
     config_defaults();
     fs_init();
     fs_mount_disk();
+    trash_init();
 
     /* Erst jetzt gibt es die Festplatte - und damit die gespeicherten
      * Einstellungen. Bis hierher galt die Werkseinstellung. */

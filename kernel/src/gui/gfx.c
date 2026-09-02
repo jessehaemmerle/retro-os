@@ -92,6 +92,32 @@ void gfx_pixel(struct canvas *c, int32_t x, int32_t y, uint32_t color)
     c->px[y * c->stride + x] = color;
 }
 
+/* Ueber den Untergrund mischen. Gerechnet wird je Farbkanal mit
+ * ganzen Zahlen; der Kern kennt keine Gleitkommaeinheit. */
+void gfx_blend(struct canvas *c, int32_t x, int32_t y, uint32_t argb)
+{
+    uint32_t alpha = argb >> 24;
+
+    if (alpha == 0 || !rect_contains(c->clip, x, y))
+        return;
+
+    uint32_t *slot = &c->px[y * c->stride + x];
+
+    if (alpha == 255) {
+        *slot = argb & 0x00FFFFFF;
+        return;
+    }
+
+    uint32_t back = *slot;
+    uint32_t rest = 255 - alpha;
+
+    uint32_t r = (((argb >> 16) & 0xFF) * alpha + ((back >> 16) & 0xFF) * rest) / 255;
+    uint32_t g = (((argb >>  8) & 0xFF) * alpha + ((back >>  8) & 0xFF) * rest) / 255;
+    uint32_t b = ((argb & 0xFF) * alpha + (back & 0xFF) * rest) / 255;
+
+    *slot = (r << 16) | (g << 8) | b;
+}
+
 void gfx_fill(struct canvas *c, struct rect r, uint32_t color)
 {
     r = rect_intersect(r, c->clip);

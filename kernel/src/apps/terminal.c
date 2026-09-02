@@ -15,6 +15,7 @@
 #include "cpu.h"
 #include "setup.h"
 #include "process.h"
+#include "trash.h"
 #include "thread.h"
 #include "boot.h"
 #include "font.h"
@@ -148,6 +149,7 @@ static void cmd_help(struct term_state *st)
     term_line(st, C_NORMAL, "  aufloesen <name> Namen in eine Adresse wandeln");
     term_line(st, C_NORMAL, "  holen <adresse> [datei]  Seite abrufen/speichern");
     term_line(st, C_NORMAL, "  prozesse                 laufende Programme mit Verwandtschaft");
+    term_line(st, C_NORMAL, "  papierkorb [zurueck <n>|leeren]  Geloeschtes ansehen und holen");
     term_line(st, C_NORMAL, "  installieren [ziel]      RetroOS auf eine Platte bringen");
     term_line(st, C_NORMAL, "  platte           Datentraeger anzeigen");
     term_line(st, C_NORMAL, "  usb              Geraete am USB-Bus anzeigen");
@@ -768,6 +770,78 @@ static void cmd_processes(struct term_state *st)
                 (unsigned)(pmm_shared_bytes() / 1024));
 }
 
+/* Der Papierkorb von der Konsole aus. Ohne Argument die Liste, sonst
+ * "zurueck <Nummer>" oder "leeren". */
+static void cmd_trash(struct term_state *st, const char *what, const char *arg)
+{
+    struct fs_node *korb = trash_dir();
+
+    if (!korb) {
+        term_line(st, C_ERROR, "Es gibt keinen Papierkorb.");
+        return;
+    }
+
+    if (what && !strcasecmp(what, "leeren")) {
+        size_t gone = trash_empty();
+
+        term_printf(st, C_NORMAL, "%u Eintraege endgueltig geloescht.",
+                    (unsigned)gone);
+        return;
+    }
+
+    struct fs_node *items[64];
+    size_t count = fs_list(korb, items, ARRAY_LEN(items));
+
+    if (what && !strcasecmp(what, "zurueck")) {
+        int index = 0;
+
+        for (const char *p = arg; p && *p >= '0' && *p <= '9'; p++)
+            index = index * 10 + (*p - '0');
+
+        if (index < 1 || (size_t)index > count) {
+            term_printf(st, C_ERROR,
+                        "papierkorb zurueck: Nummer 1 bis %u erwartet",
+                        (unsigned)count);
+            return;
+        }
+
+        struct fs_node *pick = items[index - 1];
+        char name[FS_NAME_MAX + 1];
+
+        strlcpy(name, pick->name, sizeof(name));
+        if (trash_restore(pick))
+            term_printf(st, C_NORMAL, "\"%s\" ist wieder da.", name);
+        else
+            term_printf(st, C_ERROR,
+                        "\"%s\" liess sich nicht zurueckholen.", name);
+        return;
+    }
+
+    if (count == 0) {
+        term_line(st, C_NORMAL, "Der Papierkorb ist leer.");
+        return;
+    }
+
+    term_printf(st, C_HIGHLIGHT, "%-4s %-24s %-10s %s",
+                "Nr.", "Name", "Groesse", "Kam von");
+
+    for (size_t i = 0; i < count; i++) {
+        char size[24];
+
+        fs_format_size(size, sizeof(size), fs_total_size(items[i]));
+        term_printf(st, C_NORMAL, "%-4u %-24s %-10s %s",
+                    (unsigned)(i + 1), items[i]->name, size,
+                    trash_origin(items[i]));
+    }
+
+    char total[24];
+
+    fs_format_size(total, sizeof(total), trash_bytes());
+    term_printf(st, C_NORMAL, "");
+    term_printf(st, C_NORMAL, "%u Eintraege, %s - \"papierkorb leeren\" "
+                "raeumt auf", (unsigned)count, total);
+}
+
 static void cmd_threads(struct term_state *st)
 {
     term_printf(st, C_HIGHLIGHT, "%-4s %-16s %-10s %-6s %-8s %s",
@@ -824,6 +898,7 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     const char *cmd = argv[0];
     const char *a1  = argc > 1 ? argv[1] : NULL;
+    const char *a2  = argc > 2 ? argv[2] : NULL;
 
     if (!strcasecmp(cmd, "hilfe") || !strcasecmp(cmd, "help") ||
         !strcmp(cmd, "?")) {
@@ -898,10 +973,24 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
     } else if (!strcasecmp(cmd, "rm") || !strcasecmp(cmd, "del")) {
         struct fs_node *n = a1 ? fs_lookup(st->cwd, a1) : NULL;
 
-        if (!n)
+        if (!n) {
             term_printf(st, C_ERROR, "rm: \"%s\" nicht gefunden", a1 ? a1 : "");
-        else if (!fs_remove(n))
+        } else if (trash_contains(n)) {
+            /* Aus dem Korb heraus gibt es kein weiteres Zurueck. */
+            if (trash_purge(n))
+                term_printf(st, C_NORMAL, "\"%s\" endgueltig geloescht", a1);
+            else
+                term_printf(st, C_ERROR, "rm: \"%s\" ist geschuetzt", a1);
+        } else if (trash_delete(n)) {
+            term_printf(st, C_NORMAL,
+                        "\"%s\" liegt im Papierkorb - \"papierkorb zurueck\" "
+                        "holt es wieder", a1);
+        } else {
             term_printf(st, C_ERROR, "rm: \"%s\" ist geschuetzt", a1);
+        }
+
+    } else if (!strcasecmp(cmd, "papierkorb")) {
+        cmd_trash(st, a1, a2);
 
     } else if (!strcasecmp(cmd, "edit")) {
         struct fs_node *f = a1 ? fs_lookup(st->cwd, a1) : NULL;

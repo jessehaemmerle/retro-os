@@ -48,7 +48,7 @@
 #define COL_PAGE_BG   RGB(0xFF, 0xFF, 0xFF)
 #define COL_PLACE     RGB(0x88, 0x88, 0x88)
 
-enum br_button { BR_BACK, BR_RELOAD, BR_HOME, BR_GO, BR_COUNT };
+enum br_button { BR_BACK, BR_RELOAD, BR_HOME, BR_SAVE, BR_GO, BR_COUNT };
 
 /* ------------------------------------------------------------------ */
 /* Nachgeladene Bestandteile                                           */
@@ -77,6 +77,7 @@ struct load_job {
     char     url[BR_URL_MAX + 1];
     volatile int state;
     int32_t  resource;          /* -1 = die Seite selbst */
+    bool     download;          /* nicht anzeigen, sondern ablegen */
 
     struct http_response response;
     bool     ok;
@@ -614,6 +615,129 @@ static bool load_local_resource(struct resource *r, const char *path)
     return true;
 }
 
+/* ------------------------------------------------------------------ */
+/* Herunterladen                                                       */
+/* ------------------------------------------------------------------ */
+
+/* Wo Heruntergeladenes hingehoert. Auf einer eingehaengten Platte
+ * ueberlebt es den Neustart, sonst bleibt nur der Arbeitsspeicher. */
+static struct fs_node *download_dir(void)
+{
+    struct fs_node *base = fs_disk_root() ? fs_disk_root() : fs_root();
+    struct fs_node *dir = fs_find_child(base, "Downloads");
+
+    if (dir && dir->type == FS_DIR)
+        return dir;
+    if (dir)
+        return NULL;            /* Da liegt eine Datei dieses Namens. */
+    return fs_create(base, "Downloads", FS_DIR);
+}
+
+/* Ein Dateiname aus der Adresse: das letzte Stueck des Weges, ohne
+ * Fragezeichenteil und ohne Zeichen, die in einem Namen nichts zu
+ * suchen haben. */
+static void name_from_url(const char *url, char *out, size_t size)
+{
+    const char *start = url;
+
+    /* Das Schema abstreifen, wenn eines da ist. */
+    for (const char *p = url; p[0] && p[1] && p[2]; p++) {
+        if (p[0] == ':' && p[1] == '/' && p[2] == '/') {
+            start = p + 3;
+            break;
+        }
+    }
+
+    const char *slash = strrchr(start, '/');
+
+    if (slash)
+        start = slash + 1;
+
+    size_t at = 0;
+
+    for (const char *p = start; *p && at + 1 < size; p++) {
+        char ch = *p;
+
+        if (ch == '?' || ch == '#')
+            break;
+        if (ch == '/' || ch == '\\' || ch == ':' || ch == '*' ||
+            ch == '"' || ch == '<' || ch == '>' || ch == '|')
+            ch = '_';
+        if (ch < 32)
+            break;
+        out[at++] = ch;
+    }
+    out[at] = '\0';
+
+    if (!out[0])
+        strlcpy(out, "download.bin", size);
+}
+
+/* Legt den Rumpf der Antwort ab. Die Meldung landet in status. */
+static bool save_download(struct br_state *st,
+                          const struct http_response *response,
+                          const char *url)
+{
+    struct fs_node *dir = download_dir();
+
+    if (!dir) {
+        strlcpy(st->status, "Der Ordner \"Downloads\" liess sich nicht anlegen.",
+                sizeof(st->status));
+        return false;
+    }
+
+    char wanted[FS_NAME_MAX + 1];
+    char name[FS_NAME_MAX + 1];
+
+    name_from_url(url, wanted, sizeof(wanted));
+    strlcpy(name, wanted, sizeof(name));
+
+    /* Nichts ueberschreiben: "bild.png", dann "bild.png (2)". */
+    for (unsigned n = 2; fs_find_child(dir, name) && n < 1000; n++)
+        ksnprintf(name, sizeof(name), "%s (%u)", wanted, n);
+
+    struct fs_node *file = fs_create(dir, name, FS_FILE);
+
+    if (!file || !fs_write(file, response->body, response->body_length)) {
+        if (file)
+            fs_remove(file);
+        strlcpy(st->status, "Zu wenig Platz fuer den Download.",
+                sizeof(st->status));
+        return false;
+    }
+
+    char path[FS_PATH_MAX];
+    char size[24];
+
+    fs_path(file, path, sizeof(path));
+    fs_format_size(size, sizeof(size), response->body_length);
+
+    ksnprintf(st->status, sizeof(st->status), "Gespeichert: %s (%s)%s",
+              path, size,
+              response->truncated ? " - unvollstaendig!" : "");
+    return true;
+}
+
+/* Kann der Browser das ueberhaupt zeigen? Alles andere wird abgelegt
+ * statt dargestellt - so wie es ein Browser tut, wenn ein Verweis auf
+ * ein Archiv oder ein Programm zeigt. */
+static bool can_display(const char *type)
+{
+    static const char *shown[] = {
+        "text/html", "text/plain", "application/xhtml", "application/json",
+        "text/css", "text/javascript", "application/javascript", "image/",
+    };
+
+    if (!type[0])
+        return true;            /* Keine Angabe - dann eben versuchen. */
+
+    for (size_t i = 0; i < ARRAY_LEN(shown); i++) {
+        if (strncasecmp(type, shown[i], strlen(shown[i])) == 0)
+            return true;
+    }
+    return false;
+}
+
 /* Wertet das Ergebnis des Arbeits-Threads fuer die Seite aus. */
 static bool finish_http(struct br_state *st)
 {
@@ -778,6 +902,36 @@ static void do_load(struct window *win, const char *url)
 
     st->scroll = 0;
 
+    /* Ein Download hat mit dem Dokument nichts zu tun: Die Seite bleibt
+     * stehen, nur die Statuszeile berichtet. */
+    if (st->job.download) {
+        st->job.download = false;
+        st->phase = PHASE_FERTIG;
+
+        if (!st->job.ok)
+            strlcpy(st->status, st->job.response.error[0]
+                        ? st->job.response.error
+                        : "Der Download ist fehlgeschlagen.",
+                    sizeof(st->status));
+        else
+            save_download(st, &st->job.response, url);
+
+        if (st->job.ok)
+            http_response_free(&st->job.response);
+        gui_invalidate();
+        return;
+    }
+
+    /* Was sich nicht anzeigen laesst, wird abgelegt. */
+    if (st->job.ok && st->job.resource < 0 &&
+        !can_display(st->job.response.content_type)) {
+        st->phase = PHASE_FERTIG;
+        save_download(st, &st->job.response, url);
+        http_response_free(&st->job.response);
+        gui_invalidate();
+        return;
+    }
+
     if (strncasecmp(url, "start:", 6) == 0)
         load_start_page(st);
     else if (strncasecmp(url, "datei:", 6) == 0) {
@@ -875,7 +1029,7 @@ static struct rect button_rect(int index)
 
 static struct rect address_rect(struct window *win)
 {
-    int32_t left = 4 + 3 * 32 + 6;
+    int32_t left = 4 + 4 * 32 + 6;
 
     return rect_make(left, 5, gui_client_width(win) - left - 56,
                      BR_TOOLBAR_H - 10);
@@ -1090,6 +1244,9 @@ static void br_paint(struct window *win, struct canvas *c)
                        st->pressed == BR_RELOAD, true);
     widget_icon_button(&local, button_rect(BR_HOME), ICON_HOME, NULL,
                        st->pressed == BR_HOME, true);
+    widget_icon_button(&local, button_rect(BR_SAVE), ICON_DOWNLOAD, NULL,
+                       st->pressed == BR_SAVE,
+                       st->job.state == JOB_IDLE);
 
     struct rect address = address_rect(win);
 
@@ -1141,6 +1298,48 @@ static int32_t max_scroll(struct window *win)
     return MAX(st->layout.height + 2 * BR_MARGIN - page_rect(win).h, 0);
 }
 
+/* Holt eine Adresse ausdruecklich als Datei, ohne sie anzuzeigen. */
+static void browser_download(struct window *win, const char *url)
+{
+    struct br_state *st = win->user;
+
+    if (strncasecmp(url, "http://", 7) != 0 &&
+        strncasecmp(url, "https://", 8) != 0) {
+        strlcpy(st->status, "Herunterladen geht nur aus dem Netz.",
+                sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+    if (!net_ready()) {
+        strlcpy(st->status, "Keine Netzwerkverbindung.", sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+    if (st->job.state != JOB_IDLE) {
+        strlcpy(st->status, "Es laeuft schon ein Auftrag.", sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+
+    if (!st->worker)
+        st->worker = thread_create("browser", browser_worker, st, PRIO_NORMAL);
+    if (!st->worker) {
+        strlcpy(st->status, "Kein freier Arbeits-Thread.", sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+
+    strlcpy(st->job.url, url, sizeof(st->job.url));
+    st->job.resource = -1;
+    st->job.download = true;
+    st->job.state = JOB_REQUESTED;
+    wake_one(&st->job);
+
+    ksnprintf(st->status, sizeof(st->status), "Lade herunter: %s", url);
+    st->phase = PHASE_SEITE;
+    gui_invalidate();
+}
+
 static void br_action(struct window *win, int action)
 {
     struct br_state *st = win->user;
@@ -1160,6 +1359,9 @@ static void br_action(struct window *win, int action)
         break;
     case BR_HOME:
         browser_navigate(win, "start:", true);
+        break;
+    case BR_SAVE:
+        browser_download(win, st->address[0] ? st->address : st->url);
         break;
     case BR_GO:
         browser_navigate(win, st->address, true);
@@ -1440,7 +1642,7 @@ static void br_event(struct window *win, const struct gui_event *ev)
     switch (ev->type) {
     case EV_MOUSE_DOWN: {
         if (ev->y < BR_TOOLBAR_H) {
-            for (int i = 0; i < BR_HOME + 1; i++) {
+            for (int i = 0; i < BR_SAVE + 1; i++) {
                 if (rect_contains(button_rect(i), ev->x, ev->y)) {
                     st->pressed = i;
                     gui_invalidate();
@@ -1499,7 +1701,7 @@ static void br_event(struct window *win, const struct gui_event *ev)
         st->pressed = -1;
         if (pressed == BR_GO && rect_contains(go_rect(win), ev->x, ev->y))
             br_action(win, BR_GO);
-        else if (pressed >= 0 && pressed <= BR_HOME &&
+        else if (pressed >= 0 && pressed <= BR_SAVE &&
                  rect_contains(button_rect(pressed), ev->x, ev->y))
             br_action(win, pressed);
         gui_invalidate();

@@ -1,15 +1,24 @@
 /* icons.h - die Symbolsammlung der Oberflaeche.
  *
- * Jedes Symbol ist 16x16 Pixel gross und als Textbild abgelegt: ein Zeichen
- * je Pixel. Das laesst sich im Quelltext lesen und aendern, ohne dass ein
- * Zeichenprogramm noetig waere.
+ * Die Bilder stammen aus dem Lucide-Satz (ISC-Lizenz, siehe
+ * third_party/lucide/LICENSE) und liegen als fertige Punktbilder im
+ * Kernel - erzeugt von scripts/gen_icons.py. Handgemalte Textgrafik
+ * war das vorher; ein gepflegter Zeichensatz sieht nicht nur besser
+ * aus, er bringt auch fuer jedes neue Programm gleich ein passendes
+ * Bild mit.
+ *
+ * Jedes Symbol gibt es in zwei Groessen. Ein 16er auf das Doppelte zu
+ * ziehen wuerde grob aussehen; deshalb ist das 32er eigens gezeichnet.
+ * Die Strichzeichnungen tragen eine dunkle Umrandung, damit sie auf
+ * dem Desktop wie in einer hellen Werkzeugleiste lesbar bleiben.
  */
 #ifndef ICONS_H
 #define ICONS_H
 
 #include "gfx.h"
 
-#define ICON_SIZE 16
+#define ICON_SIZE       16
+#define ICON_SIZE_LARGE 32
 
 enum icon_id {
     ICON_FOLDER,
@@ -22,6 +31,7 @@ enum icon_id {
     ICON_EDITOR,
     ICON_INFO,
     ICON_TRASH,
+    ICON_TRASH_FULL,
     ICON_UP,
     ICON_BACK,
     ICON_HOME,
@@ -31,9 +41,23 @@ enum icon_id {
     ICON_BROWSER,
     ICON_RELOAD,
     ICON_NETWORK,
+    ICON_CODE,
+    ICON_DOWNLOAD,
+    ICON_IMAGE,
+    ICON_RESTORE,
+    ICON_PLAY,
+    ICON_SAVE,
+    ICON_CLOCK,
     ICON_COUNT
 };
 
-void icon_draw(struct canvas *c, int32_t x, int32_t y, enum icon_id id, int32_t scale);
+/* Die Punktbilder, ein Wort je Punkt: 0xAARRGGBB. */
+extern const uint32_t *const icon_bits16[ICON_COUNT];
+extern const uint32_t *const icon_bits32[ICON_COUNT];
+
+/* scale 1 zeichnet das 16er, scale 2 das 32er; groessere Werte ziehen
+ * das 32er auf. */
+void icon_draw(struct canvas *c, int32_t x, int32_t y, enum icon_id id,
+               int32_t scale);
 
 #endif /* ICONS_H */

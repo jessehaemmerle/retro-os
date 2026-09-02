@@ -135,7 +135,9 @@ static void paint_desktop_icons(struct canvas *c)
         bool sel = ((int)i == selected_icon);
 
         int32_t ix = cell.x + (cell.w - 32) / 2;
-        icon_draw(c, ix, cell.y, app->icon, 2);
+
+        icon_draw(c, ix, cell.y,
+                  app->icon_now ? app->icon_now() : app->icon, 2);
 
         char    line[2][24];
         int32_t lines = wrap_label(app->name, cell.w, line);

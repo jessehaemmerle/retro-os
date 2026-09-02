@@ -65,7 +65,8 @@ void initfs_populate(struct fs_node *root)
 
     put(system, "lizenz.txt",
         "RetroOS steht unter der MIT-Lizenz.\n"
-        "Der Bootloader (Limine) steht unter der BSD-2-Clause-Lizenz.\n", true);
+        "Der Bootloader (Limine) steht unter der BSD-2-Clause-Lizenz.\n"
+        "Die Symbole stammen aus dem Lucide-Satz (ISC-Lizenz).\n", true);
 
     struct fs_node *cfg = dir(system, "Konfiguration");
     put(cfg, "desktop.cfg",

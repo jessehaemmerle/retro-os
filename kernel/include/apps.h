@@ -10,6 +10,9 @@ struct app_entry {
     enum icon_id icon;
     void       (*launch)(void);
     bool         on_desktop;
+    /* Manche Symbole haengen vom Zustand ab - der Papierkorb sieht
+     * voll anders aus als leer. Ohne diesen Haken gilt icon. */
+    enum icon_id (*icon_now)(void);
 };
 
 extern const struct app_entry app_list[];
@@ -23,6 +26,15 @@ void app_about(void);
 void app_browser(void);
 void app_setup(void);
 void app_settings(void);
+void app_trash(void);
+void app_code(void);
+
+/* Der Dateimanager laesst sich auch in einem bestimmten Ordner
+ * oeffnen - der Papierkorb auf dem Desktop tut genau das. */
+struct fs_node;
+void filemanager_open(struct fs_node *dir);
+/* Oeffnet eine Quelltextdatei im Programmierfenster. */
+void code_open(struct fs_node *file);
 
 /* Oeffnet eine Adresse im Browser (auch aus anderen Programmen heraus). */
 void browser_open(const char *url);

@@ -139,7 +139,11 @@ kleiner aus, denn FAT32 braucht mindestens 65525 Cluster.
 andere im Arbeitsspeicher.
 
 **Browser:** Adresse eintippen und `Eingabe`. Verweise, Knöpfe und
-Eingabefelder sind bedienbar, `Rücktaste` geht zurück, `F5` lädt neu.
+Eingabefelder sind bedienbar, `Rücktaste` geht zurück, `F5` lädt neu. Der
+grüne Pfeil in der Leiste lädt die Adresse als Datei herunter, statt sie
+anzuzeigen; was der Browser ohnehin nicht darstellen kann – ein Archiv,
+ein Programm, ein PDF –, landet von selbst dort. Alles Heruntergeladene
+liegt in `Downloads`, auf der Festplatte, wenn eine eingehängt ist.
 
 | Adresse | Bedeutung |
 | --- | --- |
@@ -154,6 +158,22 @@ Schriftgrößen, Kästen, Tabellen, Bilder in drei Formaten und ein Skript
 mit Knöpfen.
 
 **Editor:** normales Tippen, `Strg`+`S` speichert – auch auf die Festplatte.
+
+**Programmieren:** ein Editor, der ausführt, was in ihm steht.
+Schlüsselwörter, Zeichenketten, Zahlen und Anmerkungen bekommen Farbe,
+links stehen Zeilennummern, unten die Ausgabe. `F5` führt aus, `Strg`+`S`
+speichert. Gerechnet wird mit demselben JavaScript-Deuter, mit dem der
+Browser die Skripte einer Seite abarbeitet; `console.log()` schreibt ins
+untere Feld, ein Fehler erscheint dort rot mit seiner Zeile. Eine
+`.js`-Datei im Dateimanager öffnet sich hier statt im Editor.
+
+**Papierkorb:** Gelöschtes verschwindet nicht sofort, sondern wandert nach
+`/Papierkorb` – aus dem Dateimanager, aus der Konsole, von der Festplatte
+wie aus dem Arbeitsspeicher. Der Korb merkt sich, wo jedes Stück herkam;
+*Wiederherstellen* legt es dorthin zurück und legt den Ordner neu an, falls
+er inzwischen fehlt. Endgültig wird es erst beim zweiten Löschen oder beim
+Leeren. Der Korb liegt im Arbeitsspeicher: Was darin liegt, ist nach einem
+Neustart weg.
 
 **Konsole:** `hilfe` zeigt alle Befehle. Neben `ls`, `cd`, `cat`, `mkdir`,
 `touch`, `schreib`, `rm` und `edit` gibt es:
@@ -172,6 +192,7 @@ mit Knöpfen.
 | `holen <adresse> [datei]` | Seite abrufen und wahlweise speichern |
 | `starte server [port] [wurzel]` | Webserver – die Ablage vom Wirtsrechner aus durchsehen |
 | `prozesse` | laufende Programme mit Verwandtschaft und geteiltem Speicher |
+| `papierkorb [zurueck <n>\|leeren]` | Geloeschtes ansehen, zurueckholen, endgueltig entfernen |
 | `neustart` / `leeren` | Rechner neu starten, Bildschirm leeren |
 
 Über das Startmenü lässt sich der Rechner auch abschalten – über ACPI,
@@ -207,12 +228,15 @@ also so, wie es ein Betriebssystem tut.
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
 | **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
+| **Symbole** | Lucide (ISC) in 16 und 32 Punkt, aus den SVG-Vorlagen erzeugt und mit dunkler Umrandung versehen, damit sie auf hellem wie dunklem Grund lesen |
+| **Papierkorb** | Gelöschtes wandert nach `/Papierkorb` und merkt sich, wo es herkam; Wiederherstellen, endgültiges Löschen, Leeren |
+| **Downloads** | Was der Browser nicht anzeigen kann, legt er unter `Downloads` ab – ebenso alles, was der Knopf in der Leiste holt |
 | **Kerne** | Alle Kerne des Rechners werden gestartet; eigene GDT, TSS und Zeitgeber je Kern, gemeinsame Daten unter Warteschlangensperren |
 | **Ring 3** | Eigene Fenster und TCP-Verbindungen über Systemaufrufe – ein Benutzerprogramm kann zeichnen, ins Netz und selbst zuhören |
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
 | **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername und Hintergrund in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, elf Ring-3-Programme |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, Papierkorb, Programmieren, elf Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 
@@ -345,7 +369,7 @@ kernel/
                       USB-Speicher, virtio-net, igb, e1000e, e1000,
                       RTL8169, RTL8139
     fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand,
-                      Installation auf Festplatte
+                      Installation auf Festplatte, Papierkorb
     net/              Kartenauswahl, Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS,
                       TCP, TLS, HTTP
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
@@ -355,20 +379,23 @@ kernel/
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
     apps/             Dateimanager, Browser, Installation, Einstellungen,
-                      Dokumentbaum, HTML-Leser,
-                      CSS, Umbruch, Editor, Konsole, Systeminformation, Dialoge
+                      Dokumentbaum, HTML-Leser, CSS, Umbruch, Editor,
+                      Programmieren, Konsole, Systeminformation, Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate und Beispielbilder
+third_party/lucide/   Symbolvorlagen (ISC) samt Lizenz
 tests/                Testsammlungen für den Entwicklungsrechner
 boot/limine.conf      Bootloader-Eintrag
-scripts/              Bootloader holen, Schrift, Zertifikate und Bilder erzeugen
+scripts/              Bootloader holen, Schrift, Symbole, Zertifikate und
+                      Bilder erzeugen
 ```
 
 Erzeugte und eingecheckte Dateien: die Schrift in
-`kernel/src/gui/font_data.c` (`python3 scripts/gen_font.py`), die
-Wurzelzertifikate in `data/wurzelzertifikate.der`
-(`python3 scripts/gen_trust_store.py`) und die Beispielbilder in `data/`
-(`python3 scripts/gen_bilder.py`).
+`kernel/src/gui/font_data.c` (`python3 scripts/gen_font.py`), die Symbole
+in `kernel/src/gui/icon_data.c` (`python3 scripts/gen_icons.py`, braucht
+`cairosvg` und `pillow`), die Wurzelzertifikate in
+`data/wurzelzertifikate.der` (`python3 scripts/gen_trust_store.py`) und die
+Beispielbilder in `data/` (`python3 scripts/gen_bilder.py`).
 
 ## Bekannte Grenzen
 
