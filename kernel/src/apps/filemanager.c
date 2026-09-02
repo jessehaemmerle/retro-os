@@ -184,6 +184,10 @@ static enum icon_id entry_icon(const struct fs_node *node)
     if (dot && node->type == FS_FILE) {
         if (strcasecmp(dot, ".js") == 0)
             return ICON_CODE;
+        if (strcasecmp(dot, ".csv") == 0)
+            return ICON_TABLE;
+        if (strcasecmp(dot, ".folien") == 0)
+            return ICON_SLIDES;
         if (strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".jpg") == 0 ||
             strcasecmp(dot, ".jpeg") == 0 || strcasecmp(dot, ".gif") == 0 ||
             strcasecmp(dot, ".bmp") == 0)
@@ -212,14 +216,33 @@ static void fm_open_selected(struct window *win)
         return;
     }
 
-    /* Quelltext gehoert ins Programmierfenster, alles andere in den
+    /* Jede Endung hat ihr Programm; was keines hat, geht in den
      * Editor. */
     const char *dot = strrchr(node->name, '.');
 
-    if (dot && strcasecmp(dot, ".js") == 0)
-        code_open(node);
-    else
+    if (!dot) {
         editor_open(node);
+        return;
+    }
+
+    if (strcasecmp(dot, ".js") == 0) {
+        code_open(node);
+    } else if (strcasecmp(dot, ".csv") == 0) {
+        sheet_open(node);
+    } else if (strcasecmp(dot, ".folien") == 0) {
+        slides_open(node);
+    } else if (strcasecmp(dot, ".html") == 0 || strcasecmp(dot, ".htm") == 0) {
+        /* Anschauen ist der haeufigere Wunsch als aendern - zum
+         * Bearbeiten gibt es "Oeffnen" in Schreiben. */
+        char path[FS_PATH_MAX];
+        char url[FS_PATH_MAX + 8];
+
+        fs_path(node, path, sizeof(path));
+        ksnprintf(url, sizeof(url), "datei:%s", path);
+        browser_open(url);
+    } else {
+        editor_open(node);
+    }
 }
 
 /* ------------------------------------------------------------------ */

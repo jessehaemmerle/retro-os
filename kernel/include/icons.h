@@ -48,6 +48,25 @@ enum icon_id {
     ICON_PLAY,
     ICON_SAVE,
     ICON_CLOCK,
+
+    /* Bueroprogramme */
+    ICON_TABLE,
+    ICON_DOCUMENT,
+    ICON_SLIDES,
+    ICON_PRESENT,
+    ICON_BOLD,
+    ICON_ITALIC,
+    ICON_UNDERLINE,
+    ICON_ALIGN_LEFT,
+    ICON_ALIGN_MID,
+    ICON_ALIGN_RIGHT,
+    ICON_LIST,
+    ICON_HEADING,
+    ICON_SUM,
+    ICON_PLUS,
+    ICON_PREV,
+    ICON_NEXT,
+
     ICON_COUNT
 };
 

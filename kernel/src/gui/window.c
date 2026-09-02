@@ -111,6 +111,10 @@ bool gui_window_alive(const struct window *win)
 
 struct rect gui_client_rect(const struct window *win)
 {
+    /* Ein rahmenloses Fenster ist ganz Inhalt. */
+    if (win->flags & WF_BARE)
+        return win->frame;
+
     return rect_make(win->frame.x + BORDER_WIDTH,
                      win->frame.y + BORDER_WIDTH + TITLEBAR_HEIGHT,
                      win->frame.w - 2 * BORDER_WIDTH,
@@ -136,12 +140,12 @@ struct canvas gui_client_canvas(const struct window *win, const struct canvas *c
 
 int32_t gui_client_width(const struct window *win)
 {
-    return win->frame.w - 2 * BORDER_WIDTH;
+    return gui_client_rect(win).w;
 }
 
 int32_t gui_client_height(const struct window *win)
 {
-    return win->frame.h - 2 * BORDER_WIDTH - TITLEBAR_HEIGHT;
+    return gui_client_rect(win).h;
 }
 
 void gui_invalidate(void) { dirty = true; }
@@ -393,6 +397,17 @@ static void window_paint(struct canvas *c, struct window *win, bool focused)
 {
     struct rect f = win->frame;
 
+    /* Rahmenlos: nur der Inhalt, sonst nichts. */
+    if (win->flags & WF_BARE) {
+        if (win->on_paint) {
+            struct canvas inner = *c;
+
+            gfx_set_clip(&inner, rect_intersect(c->clip, f));
+            win->on_paint(win, &inner);
+        }
+        return;
+    }
+
     /* Rahmen */
     gfx_fill(c, f, COL_FACE);
     gfx_bevel(c, f, true);
@@ -525,8 +540,14 @@ static void compose(void)
             window_paint(c, win, win == focus);
     }
 
-    /* Die Taskleiste bleibt immer sichtbar, auch unter einem Fenster. */
-    desktop_paint_taskbar(c);
+    /* Die Taskleiste bleibt sichtbar - es sei denn, ein rahmenloses
+     * Fenster liegt ganz oben und beansprucht den Bildschirm. */
+    struct window *top = stack_count ? stack[stack_count - 1] : NULL;
+    bool fullscreen = top && top->visible && !top->minimized &&
+                      (top->flags & WF_BARE);
+
+    if (!fullscreen)
+        desktop_paint_taskbar(c);
 
     if (menu_active)
         menu_paint(c);
@@ -624,6 +645,20 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
         gui_focus_window(win);
 
     struct rect f = win->frame;
+
+    /* Ein rahmenloses Fenster hat weder Leiste noch Knoepfe - jeder
+     * Klick geht an den Inhalt. */
+    if (win->flags & WF_BARE) {
+        struct gui_event ev = {
+            .type = dbl ? EV_DOUBLE_CLICK : EV_MOUSE_DOWN,
+            .button = button,
+        };
+
+        to_client(win, &ev, x, y);
+        send(win, &ev);
+        return;
+    }
+
     struct rect title = rect_make(f.x + BORDER_WIDTH, f.y + BORDER_WIDTH,
                                   f.w - 2 * BORDER_WIDTH, TITLEBAR_HEIGHT);
 

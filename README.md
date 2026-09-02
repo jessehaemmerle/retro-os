@@ -159,6 +159,43 @@ mit Knöpfen.
 
 **Editor:** normales Tippen, `Strg`+`S` speichert – auch auf die Festplatte.
 
+**Tabelle:** ein Gitter aus 26 Spalten und 100 Zeilen. Wer tippt,
+schreibt in die Zelle unter dem Rahmen; `Eingabe` geht eine Zeile
+hinunter, `Tabulator` eine Spalte weiter, `F2` hängt an den vorhandenen
+Inhalt an. Ein Gleichheitszeichen macht aus der Eingabe eine Formel:
+
+| Formel | Ergebnis |
+| --- | --- |
+| `=B2*C2` | Bezüge auf andere Zellen, `$A$1` geht auch |
+| `=SUMME(D2:D9)` | über einen Bereich, ebenso `MITTELWERT`, `MIN`, `MAX`, `ANZAHL` |
+| `=RUNDEN(A1; 2)` | dazu `ABS`, `WURZEL` und `WENN(Bedingung; dann; sonst)` |
+| `=A1>10` | Vergleiche liefern 1 oder 0 |
+
+Gerechnet wird in Festkomma mit vier Nachkommastellen – der Kernel hat
+keine Gleitkommaeinheit. Ein Kreisbezug endet nicht in einer Schleife,
+sondern in `#KREIS`; die übrigen Fehler heißen `#FORMEL`, `#BEZUG`,
+`#DIV/0`, `#NAME` und `#WERT`. Gespeichert wird als CSV mit Strichpunkten,
+Formeln bleiben dabei Formeln – die Auszeichnung *fett* allerdings nicht,
+die kennt CSV nicht.
+
+**Schreiben:** Absätze mit Formatvorlagen – Textkörper, zwei
+Überschriften, Aufzählung, Zitat –, dazu **fett** und unterstrichen an
+einzelnen Zeichen und Ausrichtung je Absatz. Ausgewählt wird mit der Maus
+oder mit `Umschalt` und den Pfeiltasten, `Strg`+`B` und `Strg`+`U` zeichnen
+die Auswahl aus. Kursiv fehlt: Der Zeichensatz hat nur einen aufrechten
+und einen fetten Schnitt. Gespeichert wird HTML, und zwar solches, das der
+Browser dieses Systems unverändert anzeigt.
+
+**Vortrag:** Folien mit Titel und Punkten, links die Übersicht, rechts die
+gewählte in Vierdrittel-Format. Getippt wird unmittelbar in der Folie;
+`Eingabe` legt eine Zeile an, `Tabulator` springt weiter, `Strg`+`Auf`/`Ab`
+verschiebt die Folie in der Reihenfolge. Drei Anordnungen: Titelfolie,
+Aufzählung, Zitat. `F5` führt vor – über den ganzen Bildschirm, ohne
+Rahmen und ohne Taskleiste; Pfeiltasten und Leertaste blättern, `Escape`
+kommt zurück. Passt eine Folie nicht, wird die Schrift kleiner statt der
+Text abgeschnitten. Das Dateiformat ist Text und in drei Zeilen erklärt:
+`#` beginnt eine Folie, `!` nennt ihre Anordnung, `-` eine Zeile.
+
 **Programmieren:** ein Editor, der ausführt, was in ihm steht.
 Schlüsselwörter, Zeichenketten, Zahlen und Anmerkungen bekommen Farbe,
 links stehen Zeilennummern, unten die Ausgabe. `F5` führt aus, `Strg`+`S`
@@ -233,10 +270,13 @@ also so, wie es ein Betriebssystem tut.
 | **Downloads** | Was der Browser nicht anzeigen kann, legt er unter `Downloads` ab – ebenso alles, was der Knopf in der Leiste holt |
 | **Kerne** | Alle Kerne des Rechners werden gestartet; eigene GDT, TSS und Zeitgeber je Kern, gemeinsame Daten unter Warteschlangensperren |
 | **Ring 3** | Eigene Fenster und TCP-Verbindungen über Systemaufrufe – ein Benutzerprogramm kann zeichnen, ins Netz und selbst zuhören |
+| **Tabellenkalkulation** | Gitter, Festkommarechnung, Formeln mit Bereichen und Funktionen, Erkennung von Kreisbezügen, CSV |
+| **Textverarbeitung** | Absatzformate, fett und unterstrichen je Zeichen, Ausrichtung, Umbruch, Speichern und Laden als HTML |
+| **Präsentation** | Folien mit drei Anordnungen, Übersichtsleiste, Vollbild ohne Fensterrahmen, Schrift passt sich der Folie an |
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
 | **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername und Hintergrund in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
-| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, Papierkorb, Programmieren, elf Ring-3-Programme |
+| **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Installation, Einstellungen, Papierkorb, Tabelle, Schreiben, Vortrag, Programmieren, elf Ring-3-Programme |
 
 ### Der Browser im Einzelnen
 
@@ -347,6 +387,8 @@ cd tests && make
 | **Kryptografie** | 68 Prüfungen gegen FIPS 180-4, RFC 4231, RFC 5869, RFC 8439, FIPS 197, NIST GCM, RFC 7748, RFC 8448 und echte OpenSSL-Signaturen |
 | **Bilder** | 13 Prüfungen: PNG in allen Farbtypen und Bittiefen samt Adam7, GIF verschränkt, BMP, JPEG gegen libjpeg |
 | **JavaScript** | 55 kleine Programme mit erwarteter Ausgabe |
+| **Tabellenkalkulation** | 94 Prüfungen: Zahlen, Bezüge, jeder Rechenschritt, alle Funktionen, Kreisbezüge, CSV hin und zurück |
+| **Textverarbeitung** | 62 Prüfungen: Bearbeiten, Auszeichnungen, HTML schreiben und wieder lesen, fremdes HTML, Grenzen |
 | **Dokumentbaum** | 83 Prüfungen zu Zerteiler, Kaskade, Umbruch, Skripten am Baum und Zeitgebern |
 
 Die Testbilder erzeugt `make testbilder` neu (benötigt Pillow).
@@ -380,7 +422,8 @@ kernel/
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
     apps/             Dateimanager, Browser, Installation, Einstellungen,
                       Dokumentbaum, HTML-Leser, CSS, Umbruch, Editor,
-                      Programmieren, Konsole, Systeminformation, Dialoge
+                      Programmieren, Tabelle, Schreiben, Vortrag,
+                      Konsole, Systeminformation, Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate und Beispielbilder
 third_party/lucide/   Symbolvorlagen (ISC) samt Lizenz

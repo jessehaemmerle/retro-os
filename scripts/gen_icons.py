@@ -59,6 +59,24 @@ ICONS = [
     ("ICON_PLAY",        "play",             "#7BE08C"),
     ("ICON_SAVE",        "save",             "#8FB8E8"),
     ("ICON_CLOCK",       "clock",            "#7FD4E8"),
+
+    # Bueroprogramme und ihre Formatleisten. 
+    ("ICON_TABLE",       "table",            "#7BE08C"),
+    ("ICON_DOCUMENT",    "letter-text",      "#8FB8E8"),
+    ("ICON_SLIDES",      "presentation",     "#F0A55E"),
+    ("ICON_PRESENT",     "monitor-play",     "#F0A55E"),
+    ("ICON_BOLD",        "bold",             "#C3CBD3"),
+    ("ICON_ITALIC",      "italic",           "#C3CBD3"),
+    ("ICON_UNDERLINE",   "underline",        "#C3CBD3"),
+    ("ICON_ALIGN_LEFT",  "align-left",       "#C3CBD3"),
+    ("ICON_ALIGN_MID",   "align-center",     "#C3CBD3"),
+    ("ICON_ALIGN_RIGHT", "align-right",      "#C3CBD3"),
+    ("ICON_LIST",        "list",             "#C3CBD3"),
+    ("ICON_HEADING",     "heading",          "#C3CBD3"),
+    ("ICON_SUM",         "sigma",            "#7BE08C"),
+    ("ICON_PLUS",        "plus",             "#7BE08C"),
+    ("ICON_PREV",        "chevron-left",     "#8FB8E8"),
+    ("ICON_NEXT",        "chevron-right",    "#8FB8E8"),
 ]
 
 # Groesse -> (Strichbreite, Breite der Umrandung). Kleine Bilder

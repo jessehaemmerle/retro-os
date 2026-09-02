@@ -33,6 +33,14 @@ SKRIPT := js_test.c shim.c \
           ../kernel/src/apps/dom.c \
           ../kernel/src/apps/htmlparse.c
 
+TABELLE := tabellen_test.c shim.c \
+           ../kernel/src/apps/sheet.c
+
+SCHREIBEN := schreiben_test.c shim.c \
+             ../kernel/src/apps/writedoc.c \
+             ../kernel/src/apps/dom.c \
+             ../kernel/src/apps/htmlparse.c
+
 BAUM := dom_test.c shim.c \
         ../kernel/src/apps/dom.c \
         ../kernel/src/apps/htmlparse.c \
@@ -45,8 +53,8 @@ BAUM := dom_test.c shim.c \
         ../kernel/src/js/jsdom.c \
         ../kernel/src/js/jsmain.c
 
-.PHONY: all krypto bilder skript baum testbilder clean
-all: krypto bilder skript baum
+.PHONY: all krypto bilder skript baum tabelle schreiben testbilder clean
+all: krypto bilder skript baum tabelle schreiben
 
 krypto: krypto-test
 	@./krypto-test
@@ -69,6 +77,18 @@ baum: baum-test
 baum-test: $(BAUM)
 	@$(CC) $(CFLAGS) -I../kernel/src/js $(BAUM) -o $@
 
+tabelle: tabellen-test
+	@./tabellen-test
+
+tabellen-test: $(TABELLE)
+	@$(CC) $(CFLAGS) $(TABELLE) -o $@
+
+schreiben: schreiben-test
+	@./schreiben-test
+
+schreiben-test: $(SCHREIBEN)
+	@$(CC) $(CFLAGS) $(SCHREIBEN) -o $@
+
 bild-test: $(BILDER)
 	@$(CC) $(CFLAGS) $(BILDER) -lm -o $@
 
@@ -77,4 +97,5 @@ testbilder:
 	@python3 gen_images.py
 
 clean:
-	@rm -f krypto-test bild-test js-test baum-test
+	@rm -f krypto-test bild-test js-test baum-test tabellen-test \
+	       schreiben-test

@@ -55,6 +55,10 @@ enum window_flags {
     WF_NO_MIN    = 1 << 2,
     WF_NO_TASKBAR= 1 << 3,
     WF_CENTER    = 1 << 4,
+    /* Ohne Rahmen, Titelleiste und Taskleiste - der Inhalt fuellt das
+     * ganze Fenster. Gedacht fuer den Vollbildmodus eines Programms,
+     * das den Bildschirm fuer sich braucht. */
+    WF_BARE      = 1 << 5,
 };
 
 struct window {

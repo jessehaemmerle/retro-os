@@ -28,6 +28,9 @@ void app_setup(void);
 void app_settings(void);
 void app_trash(void);
 void app_code(void);
+void app_sheet(void);
+void app_write(void);
+void app_slides(void);
 
 /* Der Dateimanager laesst sich auch in einem bestimmten Ordner
  * oeffnen - der Papierkorb auf dem Desktop tut genau das. */
@@ -35,6 +38,10 @@ struct fs_node;
 void filemanager_open(struct fs_node *dir);
 /* Oeffnet eine Quelltextdatei im Programmierfenster. */
 void code_open(struct fs_node *file);
+/* Dasselbe fuer die Bueroprogramme. */
+void sheet_open(struct fs_node *file);
+void write_open(struct fs_node *file);
+void slides_open(struct fs_node *file);
 
 /* Oeffnet eine Adresse im Browser (auch aus anderen Programmen heraus). */
 void browser_open(const char *url);
