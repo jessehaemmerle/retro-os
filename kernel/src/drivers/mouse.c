@@ -3,12 +3,27 @@
  * Die Maus sendet Pakete zu drei Byte (Tasten/Vorzeichen, dx, dy). Nach der
  * "Magic Sequence" mit den Abtastraten 200/100/80 meldet sie sich als Typ 3
  * und liefert ein viertes Byte fuer das Scrollrad.
+ *
+ * Zwei Dinge halten den Treiber auch dort am Leben, wo der Anschluss
+ * nicht so sauber emuliert wird wie in QEMU.
+ *
+ * Erstens wird nicht blind losgeschickt: Antwortet auf den
+ * Ruecksetzbefehl niemand, gibt es keine Maus, und der Treiber sagt das
+ * und haelt still. Sonst wartet jeder folgende Befehl auf eine Antwort,
+ * die nie kommt - und das beim Hochfahren, wo noch niemand zusieht.
+ *
+ * Zweitens ist der Interrupt nicht der einzige Weg herein. Bleibt IRQ 12
+ * aus - eine Umlegung, die nicht stimmt, ein Emulator, der ihn nur
+ * manchmal ausloest -, holt die Hauptschleife die Bytes selbst ab. Und
+ * findet der Tastatur-Interrupt ein Byte, das der Maus gehoert, reicht
+ * er es hierher weiter, statt es als Tastendruck zu verwerfen.
  */
 
 #include "input.h"
 #include "arch.h"
 #include "io.h"
 #include "ps2.h"
+#include "spinlock.h"
 
 static uint8_t  packet[4];
 static uint8_t  packet_index;
@@ -21,6 +36,18 @@ static volatile bool    btn_left, btn_right, btn_middle;
 static volatile bool    dirty;
 
 static int32_t limit_x = 1023, limit_y = 767;
+
+/* Haengt eine Maus am Anschluss, und kommen ihre Bytes per Interrupt?
+ * Beides wird gebraucht, um ehrlich sagen zu koennen, woran es liegt,
+ * wenn sich der Zeiger nicht bewegt. */
+static bool     attached;
+static uint32_t irq_count;
+static uint32_t polled_count;
+
+/* Zwei Wege lesen am selben Anschluss - der Interrupt und die
+ * Hauptschleife. Ohne Sperre koennten beide dasselbe Byte holen, und
+ * das eine Paket waere dann um ein Byte verschoben. */
+static struct spinlock mouse_lock = SPINLOCK_INIT("maus");
 
 static void handle_packet(void)
 {
@@ -107,15 +134,12 @@ void mouse_inject_absolute(int32_t x, int32_t y, int8_t scroll,
     dirty = true;
 }
 
-static void mouse_irq(struct registers *regs)
+/* Ein Byte in die Zustandsmaschine geben. Von hier aus gibt es drei
+ * Wege herein: der eigene Interrupt, der der Tastatur und die
+ * Hauptschleife. */
+void mouse_feed_byte(uint8_t byte)
 {
-    UNUSED(regs);
-
-    /* Nur lesen, wenn das Byte wirklich von der Maus stammt (Bit 5). */
-    if (!(inb(0x64) & 0x20))
-        return;
-
-    packet[packet_index] = inb(0x60);
+    packet[packet_index] = byte;
 
     if (packet_index == 0 && !(packet[0] & 0x08))
         return;   /* nicht synchron - Byte verwerfen */
@@ -124,6 +148,73 @@ static void mouse_irq(struct registers *regs)
         packet_index = 0;
         handle_packet();
     }
+}
+
+/* Holt ein Byte, das der Maus gehoert. false heisst: da liegt keines -
+ * entweder ist der Puffer leer, oder das Byte gehoert der Tastatur.
+ * Nur unter der Sperre aufrufen. */
+static bool take_byte(uint8_t *out)
+{
+    uint8_t status = inb(0x64);
+
+    if (status == 0xFF || !(status & 0x01) || !(status & 0x20))
+        return false;
+    *out = inb(0x60);
+    return true;
+}
+
+static void mouse_irq(struct registers *regs)
+{
+    UNUSED(regs);
+
+    uint64_t flags = spin_lock_irq(&mouse_lock);
+    uint8_t  byte;
+
+    if (take_byte(&byte)) {
+        irq_count++;
+        mouse_feed_byte(byte);
+    }
+    spin_unlock_irq(&mouse_lock, flags);
+}
+
+/* Nachsehen, ob ein Mausbyte im Controller liegt, das kein Interrupt
+ * abgeholt hat. Kostet ein inb je Bilddurchlauf und rettet den Zeiger
+ * ueberall dort, wo IRQ 12 nicht ankommt.
+ *
+ * Unterbrechungen bleiben dabei aus: Sonst koennte der eigene Interrupt
+ * mitten hinein platzen und dasselbe Byte ein zweites Mal lesen. */
+void mouse_pump(void)
+{
+    if (!attached)
+        return;
+
+    /* Die Schleife hat eine Obergrenze: Ein Anschluss, der pausenlos
+     * Bytes nachliefert, soll die Oberflaeche nicht anhalten. */
+    for (int i = 0; i < 64; i++) {
+        uint64_t flags = spin_lock_irq(&mouse_lock);
+        uint8_t  byte;
+        bool     got = take_byte(&byte);
+
+        if (got) {
+            polled_count++;
+            mouse_feed_byte(byte);
+        }
+        spin_unlock_irq(&mouse_lock, flags);
+
+        if (!got)
+            return;
+    }
+}
+
+bool mouse_attached(void) { return attached; }
+
+/* Ein Zusatz fuer die Systeminformation, und zwar nur dann, wenn es
+ * etwas zu sagen gibt: Der Normalfall braucht keine Anmerkung. */
+const char *mouse_note(void)
+{
+    if (attached && irq_count == 0 && polled_count > 0)
+        return " (abgefragt)";
+    return "";
 }
 
 static void set_sample_rate(uint8_t rate)
@@ -139,12 +230,38 @@ void mouse_init(int32_t screen_w, int32_t screen_h)
     pos_x = screen_w / 2;
     pos_y = screen_h / 2;
 
+    attached = false;
+    irq_count = 0;
+    polled_count = 0;
+
     /* Die Maus am PS/2-Anschluss gibt es nur, wenn der Controller da
      * ist. Sonst bleibt es bei der USB-Maus. */
-    if (!ps2_present()) {
+    if (!ps2_present() || !ps2_port2_present()) {
         kprintf("Maus        : keine am PS/2-Anschluss\n");
         return;
     }
+
+    /* Zuruecksetzen und nachsehen, ob ueberhaupt jemand antwortet.
+     * Eine Maus quittiert mit 0xFA, meldet danach 0xAA (Selbsttest
+     * bestanden) und ihre Kennung. Kommt schon die Quittung nicht, ist
+     * der Anschluss leer - dann wird hier nicht weitergemacht. */
+    if (!ps2_mouse_command_ok(0xFF, NULL)) {
+        kprintf("Maus        : keine Antwort am PS/2-Anschluss\n");
+        kprintf("Maus        : in VirtualBox das Zeigergeraet auf "
+                "\"PS/2-Maus\" stellen\n");
+        return;
+    }
+
+    uint8_t selftest = 0;
+    uint8_t ignored = 0;
+
+    if (!ps2_read_byte(&selftest) || selftest != 0xAA) {
+        kprintf("Maus        : Selbsttest meldet 0x%02x\n", selftest);
+        return;
+    }
+    ps2_read_byte(&ignored);      /* Kennung, nach dem Ruecksetzen 0x00   */
+
+    attached = true;
 
     ps2_mouse_command(0xF6);      /* Standardwerte                        */
 

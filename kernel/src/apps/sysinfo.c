@@ -234,8 +234,17 @@ static void sys_paint(struct window *win, struct canvas *c)
     gfx_text_bold(&local, 16, y, tr("Eingabe"), COL_SELECT);
     y += 22;
 
-    row(&local, y, tr("PS/2-Anschluss"),
-        ps2_present() ? tr("Tastatur und Maus") : tr("nicht vorhanden"));
+    /* "Vorhanden" allein hilft niemandem weiter, dessen Zeiger sich
+     * nicht bewegt: Es zaehlt, ob an Port 2 auch wirklich eine Maus
+     * haengt. */
+    if (!ps2_present())
+        strlcpy(buf, tr("nicht vorhanden"), sizeof(buf));
+    else if (mouse_attached())
+        ksnprintf(buf, sizeof(buf), "%s%s", tr("Tastatur und Maus"),
+                  tr(mouse_note()));
+    else
+        strlcpy(buf, tr("nur Tastatur - keine Maus an Port 2"), sizeof(buf));
+    row(&local, y, tr("PS/2-Anschluss"), buf);
     y += 18;
 
     if (usb_device_count() == 0) {

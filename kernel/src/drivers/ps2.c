@@ -53,20 +53,55 @@ uint8_t ps2_read_data(void)
     return inb(PS2_DATA);
 }
 
+/* Wie ps2_read_data, sagt aber, ob ueberhaupt etwas kam. Das ist der
+ * Unterschied zwischen "das Geraet hat 0x00 geantwortet" und "es ist
+ * gar keines da" - und genau den braucht man, um festzustellen, ob am
+ * Mausanschluss jemand haengt. */
+bool ps2_read_byte(uint8_t *out)
+{
+    if (!ps2_wait_read())
+        return false;
+    *out = inb(PS2_DATA);
+    return true;
+}
+
 /* Ein Byte an das Geraet an Port 2 (Maus) schicken und Quittung lesen. */
 uint8_t ps2_mouse_command(uint8_t byte)
 {
-    ps2_write_cmd(0xD4);
-    ps2_write_data(byte);
-    return ps2_read_data();
+    uint8_t answer = 0;
+
+    ps2_mouse_command_ok(byte, &answer);
+    return answer;
+}
+
+/* Dasselbe mit Auskunft: true heisst, das Geraet hat mit 0xFA
+ * quittiert. Ein 0xFE ("noch einmal") wird zweimal wiederholt - ein
+ * Bus, auf dem gerade ein Paket unterwegs war, antwortet das gerne
+ * einmal, und beim dritten Mal liegt es nicht mehr am Zeitpunkt. */
+bool ps2_mouse_command_ok(uint8_t byte, uint8_t *answer)
+{
+    for (int versuch = 0; versuch < 3; versuch++) {
+        uint8_t got;
+
+        ps2_write_cmd(0xD4);
+        ps2_write_data(byte);
+
+        if (!ps2_read_byte(&got))
+            return false;
+        if (got == 0xFE)
+            continue;
+        if (answer)
+            *answer = got;
+        return got == 0xFA;
+    }
+    return false;
 }
 
 static bool present;
+static bool port2;
 
-bool ps2_present(void)
-{
-    return present;
-}
+bool ps2_present(void) { return present; }
+bool ps2_port2_present(void) { return port2; }
 
 /* Leert den Ausgabepuffer - mit Begrenzung. Fehlt der Baustein, liest
  * man an Port 0x64 lauter Einsen und wuerde sonst ewig kreisen. */
@@ -126,6 +161,24 @@ bool ps2_init(void)
     /* Ports wieder aktivieren. */
     ps2_write_cmd(0xAE);
     ps2_write_cmd(0xA8);
+
+    /* Der Controller ist da - aber haengt an Port 2 auch etwas? Das ist
+     * keine Spitzfindigkeit: In VirtualBox etwa ist das Zeigergeraet ab
+     * Werk ein USB-Tablett, und dann ist der Mausanschluss schlicht
+     * leer. Wer das nicht prueft, schickt Befehle ins Nichts und wartet
+     * bei jedem einzelnen auf eine Antwort, die nie kommt.
+     *
+     * Der Selbsttest des Ports allein reicht dafuer nicht: Er meldet
+     * auch dann 0x00, wenn niemand angeschlossen ist. Ob wirklich eine
+     * Maus da ist, sagt erst ihre Antwort auf den Ruecksetzbefehl -
+     * das macht mouse_init(). */
+    ps2_write_cmd(0xA9);
+
+    uint8_t result = 0xFF;
+
+    port2 = ps2_read_byte(&result) && result == 0x00;
+    if (!port2)
+        kprintf("PS/2        : Port 2 meldet 0x%02x - keine Maus\n", result);
 
     present = true;
     return true;

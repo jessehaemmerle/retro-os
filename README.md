@@ -337,7 +337,7 @@ also so, wie es ein Betriebssystem tut.
 | **Installation** | Schreibt eine eigene GUID-Tabelle, formatiert EFI-Abschnitt und Ablage, kopiert Bootloader und Kernel und setzt den Startsektor für BIOS-Rechner |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
 | **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte |
-| **Eingabe** | USB-Tastatur und -Maus im Boot-Protokoll, dazu der 8042-Controller, wo es ihn noch gibt; vier Belegungen (de/us/uk/ch) inkl. AltGr |
+| **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; vier Belegungen (de/us/uk/ch) inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
 | **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
@@ -882,6 +882,32 @@ Abspalten; er lässt sich auch ohne `fork` auslösen, indem man auf vier Kernen
 sechsmal `starte hallo` hintereinander eingibt. Mit einem Kern
 (`-smp 1`, die Voreinstellung) tritt er nicht auf. Bis das behoben ist,
 gehören mehrere Kerne und starker Prozesswechsel nicht zusammen.
+
+## In VirtualBox
+
+Zwei Einstellungen entscheiden darüber, ob RetroOS dort überhaupt
+hochkommt und ob sich der Zeiger bewegt.
+
+**Der Gast muss 64 Bit sein.** *Allgemein → Basis → Version* auf eine
+64-Bit-Variante stellen, am besten `Other/Unknown (64-bit)`. Sonst zeigt
+VirtualBox der VM eine 32-Bit-CPU, und der Bootloader bricht ab:
+
+```
+PANIC: limine: This CPU does not support 64-bit mode.
+```
+
+Stehen im Ausklappmenü gar keine 64-Bit-Einträge, kommt VirtualBox nicht
+an die Hardware-Virtualisierung: VT-x/AMD-V im Firmware-Setup des Wirts
+einschalten, und unter Windows Hyper-V, *Windows Hypervisor Platform*,
+WSL2 und die Speicherintegrität abschalten – die belegen VT-x sonst
+selbst (`bcdedit /set hypervisorlaunchtype off`, danach neu starten).
+
+**Das Zeigergerät muss eine PS/2-Maus sein.** *System → Mainboard →
+Zeigegerät* auf `PS/2-Maus` stellen. Ab Werk steht dort ein
+USB-Tablett, und VirtualBox hängt es an einen OHCI-Controller – RetroOS
+spricht xHCI und OHCI nicht, der Mausanschluss bliebe leer. Die
+Systeminformation sagt es dann auch: *nur Tastatur – keine Maus an
+Port 2*.
 
 ## Fehlersuche
 

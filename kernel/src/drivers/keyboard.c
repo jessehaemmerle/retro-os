@@ -13,6 +13,7 @@
 #include "io.h"
 #include "keymap.h"
 #include "kstring.h"
+#include "ps2.h"
 
 #define QUEUE_SIZE 64
 
@@ -57,6 +58,21 @@ static void update_mods(uint16_t key, bool pressed)
 static void keyboard_irq(struct registers *regs)
 {
     UNUSED(regs);
+
+    /* Beide Geraete haengen am selben Datenport. Sagt der Controller,
+     * dass das wartende Byte von der Maus kommt (Bit 5), gehoert es
+     * nicht hierher - es wird weitergereicht statt als Tastendruck
+     * verworfen. Das rettet die Maus dort, wo IRQ 12 nicht ankommt,
+     * ihre Bytes aber sehr wohl. */
+    uint8_t status = inb(0x64);
+
+    if (status == 0xFF || !(status & 0x01))
+        return;
+
+    if (status & 0x20) {
+        mouse_feed_byte(inb(0x60));
+        return;
+    }
 
     uint8_t sc = inb(0x60);
 

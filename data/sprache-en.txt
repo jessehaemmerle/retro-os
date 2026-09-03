@@ -788,3 +788,7 @@ Unbekannter Befehl: %s  ("hilfe" zeigt alle Befehle)	Unknown command: %s  ("hilf
 [%s abgebrochen]	[%s stopped]
 RetroOS-Konsole 1.0	RetroOS console 1.0
 "hilfe" zeigt alle Befehle.	"hilfe" lists all commands.
+
+# --- PS/2 ---
+nur Tastatur - keine Maus an Port 2	keyboard only - no mouse on port 2
+ (abgefragt)	 (polled)

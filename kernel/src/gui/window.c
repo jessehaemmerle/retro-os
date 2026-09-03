@@ -845,6 +845,12 @@ NORETURN void gui_run(void)
     for (;;) {
         bool activity = false;
 
+        /* Erst nachsehen, ob im PS/2-Controller ein Mausbyte liegt, das
+         * kein Interrupt abgeholt hat - sonst haette man in so einer
+         * Maschine gar keinen Zeiger. Ist alles in Ordnung, kostet es
+         * ein einziges inb. */
+        mouse_pump();
+
         while (keyboard_poll(&ke)) {
             handle_key(&ke);
             activity = true;

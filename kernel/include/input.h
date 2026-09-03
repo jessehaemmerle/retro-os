@@ -57,6 +57,17 @@ void keyboard_inject(uint16_t key, bool pressed);
 void mouse_init(int32_t screen_w, int32_t screen_h);
 /* Liefert true, wenn sich seit dem letzten Aufruf etwas geaendert hat. */
 bool mouse_poll(struct mouse_state *out);
+/* Ein Byte, das der Tastatur-Interrupt aufgesammelt hat, aber der Maus
+ * gehoert - beide haengen am selben Datenport. */
+void mouse_feed_byte(uint8_t byte);
+/* Nachsehen, ob im Controller ein Mausbyte liegt, das kein Interrupt
+ * abgeholt hat. Wird aus der Hauptschleife der Oberflaeche gerufen. */
+void mouse_pump(void);
+/* Haengt eine Maus am PS/2-Anschluss? */
+bool mouse_attached(void);
+/* Leer, solange alles gewoehnlich laeuft; sonst eine kurze Anmerkung
+ * fuer die Systeminformation. */
+const char *mouse_note(void);
 void mouse_set_position(int32_t x, int32_t y);
 
 /* Bewegung von einem anderen Treiber - etwa der USB-Maus. */
