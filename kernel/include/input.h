@@ -57,9 +57,10 @@ void keyboard_inject(uint16_t key, bool pressed);
 void mouse_init(int32_t screen_w, int32_t screen_h);
 /* Liefert true, wenn sich seit dem letzten Aufruf etwas geaendert hat. */
 bool mouse_poll(struct mouse_state *out);
-/* Ein Byte, das der Tastatur-Interrupt aufgesammelt hat, aber der Maus
- * gehoert - beide haengen am selben Datenport. */
-void mouse_feed_byte(uint8_t byte);
+/* Der Tastatur-Interrupt hat ein Byte gefunden, das der Maus gehoert -
+ * beide haengen am selben Datenport. Abgeholt wird es hier, unter der
+ * Sperre des Maustreibers. */
+void mouse_drain(void);
 /* Nachsehen, ob im Controller ein Mausbyte liegt, das kein Interrupt
  * abgeholt hat. Wird aus der Hauptschleife der Oberflaeche gerufen. */
 void mouse_pump(void);
@@ -69,6 +70,9 @@ bool mouse_attached(void);
  * hereinkamen und wie viele die Hauptschleife selbst geholt hat. */
 uint32_t mouse_irq_count(void);
 uint32_t mouse_polled_count(void);
+/* Wie oft ein Paket verworfen werden musste, weil es nicht
+ * aufging - der Zaehler, an dem man Ruckeln erkennt. */
+uint32_t mouse_resync_count(void);
 uint8_t  mouse_packet_size(void);
 /* Leer, solange alles gewoehnlich laeuft; sonst eine kurze Anmerkung
  * fuer die Systeminformation. */

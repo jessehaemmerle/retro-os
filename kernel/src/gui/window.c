@@ -62,6 +62,7 @@ static int32_t  cursor_x, cursor_y;
 static int32_t  cursor_saved_x = -1, cursor_saved_y = -1;
 static uint32_t cursor_backup[CURSOR_W * CURSOR_H];
 static bool     cursor_valid;
+static uint64_t last_compose_ms;
 
 /* Zustand des Ziehens von Fenstern */
 static struct window *drag_win;
@@ -593,13 +594,30 @@ static void present(void)
 {
     struct canvas *c = gfx_screen();
 
+    /* Der ganze Bildaufbau kostet: Der Hintergrund, alle Fenster und
+     * die Taskleiste werden neu gezeichnet, und danach geht ein
+     * Vollbild an die Grafikkarte. Bei jeder Mausbewegung ist das zu
+     * viel - viele Fenster faerben schon beim Darueberfahren einen
+     * Knopf um und verlangen dafuer ein neues Bild.
+     *
+     * Darum wird der Vollaufbau auf 60 Bilder je Sekunde begrenzt.
+     * Dazwischen laeuft der Zeiger weiter ueber den billigen Weg
+     * darunter - er bleibt fluessig, auch waehrend ein Fenster
+     * unentwegt neu gezeichnet werden will. Verloren geht dabei
+     * nichts: dirty bleibt stehen, und der naechste Durchlauf holt
+     * den Aufbau nach. */
     if (dirty) {
-        compose();
-        cursor_save(c, cursor_x, cursor_y);
-        cursor_draw(c, cursor_x, cursor_y);
-        gfx_flush();
-        dirty = false;
-        return;
+        uint64_t now = timer_ms();
+
+        if (now - last_compose_ms >= 16) {
+            last_compose_ms = now;
+            compose();
+            cursor_save(c, cursor_x, cursor_y);
+            cursor_draw(c, cursor_x, cursor_y);
+            gfx_flush();
+            dirty = false;
+            return;
+        }
     }
 
     /* Nur der Zeiger hat sich bewegt. */

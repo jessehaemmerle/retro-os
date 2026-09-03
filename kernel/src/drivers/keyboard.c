@@ -70,7 +70,7 @@ static void keyboard_irq(struct registers *regs)
         return;
 
     if (status & 0x20) {
-        mouse_feed_byte(inb(0x60));
+        mouse_drain();
         return;
     }
 

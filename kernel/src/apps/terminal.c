@@ -2612,6 +2612,8 @@ static void cmd_mouse(struct term_state *st)
                 (unsigned)mouse_irq_count());
     term_printf(st, C_NORMAL, tr("  Bytes abgefragt : %u"),
                 (unsigned)mouse_polled_count());
+    term_printf(st, C_NORMAL, tr("  Pakete verworfen: %u"),
+                (unsigned)mouse_resync_count());
     term_printf(st, C_NORMAL, tr("  Zeiger          : %d, %d"),
                 (int)ms.x, (int)ms.y);
     bool usb_mouse = false;

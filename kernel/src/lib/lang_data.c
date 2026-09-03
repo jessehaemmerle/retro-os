@@ -127,6 +127,8 @@ const struct lang_entry {
       "  PS/2 controller : none" },
     { "  PS/2-Maus       : %s",
       "  PS/2 mouse      : %s" },
+    { "  Pakete verworfen: %u",
+      "  Packets dropped : %u" },
     { "  Paketlaenge     : %u Byte",
       "  Packet length   : %u bytes" },
     { "  Rechte    : %s (%04o)",

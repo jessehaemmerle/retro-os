@@ -24,6 +24,19 @@
  * Drittens wird das vierte Byte nur genommen, wenn die Maus sauber
  * gesagt hat, dass sie eines schickt. Wer hier falsch liegt, verschiebt
  * jedes Paket um ein Byte, und dann bewegt sich gar nichts mehr.
+ *
+ * Alle Wege herein gehen durch dieselbe Tuer, und die ist gesperrt.
+ * Das ist keine Vorsicht, sondern noetig: Auf mehreren Kernen koennen
+ * der Tastatur-Interrupt auf dem einen und die Hauptschleife auf dem
+ * anderen gleichzeitig am selben Anschluss lesen. Wer sich dabei ein
+ * Byte wegschnappt, verschiebt den Rest des Pakets - und ein
+ * verschobenes Paket sieht man nicht als Fehler, sondern als Zeiger,
+ * der ruckelt und danebenzeigt.
+ *
+ * Aus demselben Grund wird beim Lesen gleich leergeraeumt und nicht
+ * ein Byte je Unterbrechung: Der 8042 hat genau ein Byte Platz. Wer zu
+ * langsam abholt, verliert das naechste - und wieder ist das Paket
+ * verschoben.
  */
 
 #include "input.h"
@@ -50,6 +63,8 @@ static int32_t limit_x = 1023, limit_y = 767;
 static bool     attached;
 static uint32_t irq_count;
 static uint32_t polled_count;
+static uint32_t resync_count;
+static uint64_t last_byte_ms;
 
 /* Zwei Wege lesen am selben Anschluss - der Interrupt und die
  * Hauptschleife. Ohne Sperre koennten beide dasselbe Byte holen, und
@@ -141,15 +156,30 @@ void mouse_inject_absolute(int32_t x, int32_t y, int8_t scroll,
     dirty = true;
 }
 
-/* Ein Byte in die Zustandsmaschine geben. Von hier aus gibt es drei
- * Wege herein: der eigene Interrupt, der der Tastatur und die
- * Hauptschleife. */
-void mouse_feed_byte(uint8_t byte)
+/* Ein Byte in die Zustandsmaschine geben. Nur unter der Sperre. */
+static void feed_byte(uint8_t byte)
 {
+    uint64_t now = timer_ms();
+
+    /* Ein angefangenes Paket, das haengengeblieben ist, wird
+     * weggeworfen. Fehlt einmal ein Byte, waere sonst jedes weitere
+     * Paket um eines verschoben - und das bleibt so, bis jemand neu
+     * startet. */
+    if (packet_index > 0 && now - last_byte_ms > 100) {
+        packet_index = 0;
+        resync_count++;
+    }
+    last_byte_ms = now;
+
     packet[packet_index] = byte;
 
-    if (packet_index == 0 && !(packet[0] & 0x08))
-        return;   /* nicht synchron - Byte verwerfen */
+    /* Bit 3 ist im ersten Byte jedes gueltigen Pakets gesetzt. Steht es
+     * nicht, sind wir nicht am Anfang - das Byte gehoert zu einem
+     * Paket, dessen Anfang verlorenging. */
+    if (packet_index == 0 && !(packet[0] & 0x08)) {
+        resync_count++;
+        return;
+    }
 
     if (++packet_index >= packet_size) {
         packet_index = 0;
@@ -170,18 +200,42 @@ static bool take_byte(uint8_t *out)
     return true;
 }
 
+/* Raeumt alles ab, was gerade an Mausbytes bereitliegt. Die einzige
+ * Stelle, an der 0x60 fuer die Maus gelesen wird. */
+static void drain(bool from_irq)
+{
+    uint64_t flags = spin_lock_irq(&mouse_lock);
+
+    /* Mit Obergrenze: Ein Anschluss, der pausenlos nachliefert, soll
+     * weder die Unterbrechung noch die Oberflaeche festhalten. */
+    for (int i = 0; i < 64; i++) {
+        uint8_t byte;
+
+        if (!take_byte(&byte))
+            break;
+
+        if (from_irq)
+            irq_count++;
+        else
+            polled_count++;
+        feed_byte(byte);
+    }
+    spin_unlock_irq(&mouse_lock, flags);
+}
+
+/* Der Tastatur-Interrupt hat ein Byte gefunden, das der Maus gehoert.
+ * Er reicht es nicht selbst weiter, sondern laesst hier abraeumen -
+ * sonst schriebe er ohne Sperre in dieselben Felder. */
+void mouse_drain(void)
+{
+    drain(true);
+}
+
 static void mouse_irq(struct registers *regs)
 {
     UNUSED(regs);
 
-    uint64_t flags = spin_lock_irq(&mouse_lock);
-    uint8_t  byte;
-
-    if (take_byte(&byte)) {
-        irq_count++;
-        mouse_feed_byte(byte);
-    }
-    spin_unlock_irq(&mouse_lock, flags);
+    drain(true);
 }
 
 /* Nachsehen, ob ein Mausbyte im Controller liegt, das kein Interrupt
@@ -198,28 +252,14 @@ void mouse_pump(void)
     if (!ps2_present())
         return;
 
-    /* Die Schleife hat eine Obergrenze: Ein Anschluss, der pausenlos
-     * Bytes nachliefert, soll die Oberflaeche nicht anhalten. */
-    for (int i = 0; i < 64; i++) {
-        uint64_t flags = spin_lock_irq(&mouse_lock);
-        uint8_t  byte;
-        bool     got = take_byte(&byte);
-
-        if (got) {
-            polled_count++;
-            mouse_feed_byte(byte);
-        }
-        spin_unlock_irq(&mouse_lock, flags);
-
-        if (!got)
-            return;
-    }
+    drain(false);
 }
 
 bool mouse_attached(void) { return attached; }
 
 uint32_t mouse_irq_count(void)    { return irq_count; }
 uint32_t mouse_polled_count(void) { return polled_count; }
+uint32_t mouse_resync_count(void) { return resync_count; }
 uint8_t  mouse_packet_size(void)  { return packet_size; }
 
 /* Ein Zusatz fuer die Systeminformation, und zwar nur dann, wenn es

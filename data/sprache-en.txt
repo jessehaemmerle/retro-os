@@ -832,3 +832,4 @@ Es kommt nichts an.	Nothing is arriving.
 In VirtualBox: System - Mainboard - Zeigegeraet auf "PS/2-Maus" stellen.	In VirtualBox: System - Motherboard - Pointing Device to "PS/2 Mouse".
 Zeigegeraet und woran es haengt	the pointing device and what it hangs on
 Bewegt sich der Zeiger nicht, steht hier, ob ueberhaupt Bytes\nankommen und ueber welchen Weg.	If the pointer does not move, this says whether any bytes arrive\nat all, and by which route.
+  Pakete verworfen: %u	  Packets dropped : %u
