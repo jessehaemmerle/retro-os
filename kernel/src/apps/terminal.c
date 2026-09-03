@@ -2589,6 +2589,14 @@ static void cmd_font(struct term_state *st, const char *name)
 /* Zeigt, was der Zeiger gerade tut. Bewegt er sich nicht, steht hier,
  * woran es liegt: kein Controller, kein Geraet, kein Interrupt - oder
  * eben doch alles in Ordnung und der Fehler liegt woanders. */
+/* Das Foto wird nicht hier gemacht, sondern vorgemerkt: Sonst waere
+ * die Konsole mitten im Zeichnen auf dem Bild. */
+static void cmd_screenshot(struct term_state *st)
+{
+    screenshot_request();
+    term_line(st, C_NORMAL, tr("Das Bild wird im naechsten Bildaufbau gemacht."));
+}
+
 static void cmd_mouse(struct term_state *st)
 {
     struct mouse_state ms;
@@ -3101,6 +3109,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "maus") || !strcasecmp(cmd, "mouse")) {
         cmd_mouse(st);
+
+    } else if (!strcasecmp(cmd, "foto") || !strcasecmp(cmd, "screenshot")) {
+        cmd_screenshot(st);
 
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);

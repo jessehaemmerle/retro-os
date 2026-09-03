@@ -46,6 +46,18 @@ LANG := ../kernel/src/lib/lang.c \
 
 SPRACHE := sprache_test.c shim.c $(LANG)
 
+PNGSCHREIBEN := pngschreiben_test.c shim.c \
+                ../kernel/src/gfx/pngwrite.c \
+                ../kernel/src/gfx/png.c \
+                ../kernel/src/gfx/image.c \
+                ../kernel/src/gfx/inflate.c \
+                ../kernel/src/gfx/jpeg.c \
+                ../kernel/src/gfx/gif.c \
+                ../kernel/src/lib/crc32.c
+
+RECHNER := rechner_test.c shim.c \
+           ../kernel/src/apps/calc.c
+
 BILDSCHIRM := bildschirm_test.c shim.c \
               ../kernel/src/gui/displayutil.c
 
@@ -85,10 +97,11 @@ BAUM := dom_test.c shim.c \
         ../kernel/src/js/jsmain.c
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
-        protokoll netzfilter kaefig konsole sprache bildschirm \
+        protokoll netzfilter kaefig konsole sprache bildschirm rechner \
+        pngschreiben \
         testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
-     netzfilter kaefig konsole sprache bildschirm
+     netzfilter kaefig konsole sprache bildschirm rechner pngschreiben
 
 krypto: krypto-test
 	@./krypto-test
@@ -116,6 +129,18 @@ konsole: konsole-test
 
 konsole-test: $(KONSOLE)
 	@$(CC) $(CFLAGS) $(KONSOLE) -o $@
+
+pngschreiben: pngschreiben-test
+	@./pngschreiben-test
+
+pngschreiben-test: $(PNGSCHREIBEN)
+	@$(CC) $(CFLAGS) $(PNGSCHREIBEN) -o $@
+
+rechner: rechner-test
+	@./rechner-test
+
+rechner-test: $(RECHNER)
+	@$(CC) $(CFLAGS) $(RECHNER) -o $@
 
 bildschirm: bildschirm-test
 	@./bildschirm-test

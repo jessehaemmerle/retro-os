@@ -26,6 +26,12 @@ bool image_scale(const struct image *src, int32_t w, int32_t h,
 /* Zeichnet mit Alphaueberblendung. */
 void image_draw(struct canvas *c, int32_t x, int32_t y, const struct image *img);
 
+/* Schreibt ein Bild als PNG. Der Aufrufer gibt den Puffer mit kfree()
+ * wieder frei. stride ist der Abstand zweier Zeilen in Punkten - beim
+ * Backbuffer ist das nicht dasselbe wie die Breite. */
+bool png_encode(const uint32_t *pixels, int32_t w, int32_t h, int32_t stride,
+                uint8_t **out, size_t *out_size);
+
 /* Nennt das erkannte Format, etwa "PNG" - NULL wenn unbekannt. */
 const char *image_format(const uint8_t *data, size_t length);
 

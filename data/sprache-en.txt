@@ -833,3 +833,20 @@ In VirtualBox: System - Mainboard - Zeigegeraet auf "PS/2-Maus" stellen.	In Virt
 Zeigegeraet und woran es haengt	the pointing device and what it hangs on
 Bewegt sich der Zeiger nicht, steht hier, ob ueberhaupt Bytes\nankommen und ueber welchen Weg.	If the pointer does not move, this says whether any bytes arrive\nat all, and by which route.
   Pakete verworfen: %u	  Packets dropped : %u
+
+# --- Rechner, Bilder, Bildschirmfoto ---
+Rechner	Calculator
+Bilder	Images
+Bildschirmfoto	Screenshot
+Wurzel	Sqrt
+Nicht durch null	Cannot divide by zero
+Zu gross	Too large
+Keine Wurzel	No square root
+%s ist kein Bild.	%s is not an image.
+Es gibt kein Bild zum Speichern.	There is nothing to save.
+Zu wenig Speicher fuer das Bild.	Not enough memory for the image.
+Es gibt keinen Ordner fuer Bilder.	There is no folder for images.
+Die Datei liess sich nicht anlegen.	The file could not be created.
+Das Bild wird im naechsten Bildaufbau gemacht.	The picture is taken with the next frame.
+Bildschirmfoto aufnehmen	take a screenshot
+Das Bild landet als PNG im eigenen Bilder-Ordner.	The picture lands as a PNG in your own image folder.

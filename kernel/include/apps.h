@@ -35,6 +35,17 @@ void app_users(void);
 void app_monitor(void);
 void app_log(void);
 void app_tasks(void);
+void app_images(void);
+void app_calculator(void);
+void app_screenshot(void);
+
+/* --- Bildschirmfoto ---
+ * Aufgenommen wird erst im naechsten fertigen Bild; sonst waere das
+ * Menue mit darauf, aus dem heraus es angestossen wurde. */
+void screenshot_request(void);
+bool screenshot_pending(void);
+bool screenshot_take(char *path_out, size_t path_size,
+                     char *error, size_t error_size);
 
 /* Der Dateimanager laesst sich auch in einem bestimmten Ordner
  * oeffnen - der Papierkorb auf dem Desktop tut genau das. */
@@ -52,6 +63,8 @@ void browser_open(const char *url);
 
 /* Oeffnet eine Datei im Editor (auch aus dem Dateimanager heraus). */
 void editor_open(struct fs_node *file);
+/* Zeigt ein Bild an. */
+void image_open(struct fs_node *file);
 
 /* Kleine Standarddialoge, von mehreren Programmen genutzt. */
 typedef void (*dialog_text_fn)(const char *text, void *user);

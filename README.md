@@ -251,6 +251,26 @@ er inzwischen fehlt. Endgültig wird es erst beim zweiten Löschen oder beim
 Leeren. Der Korb liegt im Arbeitsspeicher: Was darin liegt, ist nach einem
 Neustart weg.
 
+**Fenster:** Neben Schließen und Ablegen gibt es jetzt Maximieren – als
+Knopf, per Doppelklick auf die Titelleiste oder mit `Alt`+`Eingabe`.
+`Alt`+`←` und `Alt`+`→` docken ein Fenster an die linke oder rechte
+Hälfte an, `Alt`+`Tab` holt reihum das nächste nach vorne, `Alt`+`F4`
+schließt. Ein maximiertes Fenster lässt sich nicht verschieben – es
+würde beim ersten Zucken vom Bildschirm rutschen.
+
+**Rechner:** Ziffernblock und Tastatur tun dasselbe. Gerechnet wird in
+Festkomma mit sechs Nachkommastellen, also gibt `0,1 + 0,2` genau `0,3`.
+Und wie jeder Taschenrechner kennt er keinen Vorrang: `2 + 3 * 4 =` sind
+zwanzig. Wer vierzehn will, tippt `rechne` in die Konsole.
+
+**Bilder:** Doppelklick auf ein PNG, JPEG, GIF oder BMP im Dateimanager.
+Das Bild wird eingepasst, das Mausrad und `+`/`−` vergrößern, `0` passt
+wieder ein, `1` zeigt in Originalgröße. Die Pfeiltasten blättern durch
+die übrigen Bilder desselben Ordners.
+
+**Bildschirmfoto:** Im Startmenü oder mit `foto` in der Konsole. Die
+Aufnahme landet als PNG im eigenen Bilder-Ordner.
+
 **Hintergrund:** Neben den fünf Verläufen lässt sich ein eigenes Bild
 einsetzen – in den Einstellungen unter *Hintergrundbild*, das die Bilder
 aus `/Medien` und aus dem eigenen `Bilder`-Ordner durchblättert, oder im
@@ -310,6 +330,7 @@ gewohnten englischen als Zweitnamen (`kopiere`/`cp`, `suche`/`grep`). Neben
 | `besitzer <datei> [name[:gruppe]]` | Eigentümer zeigen oder setzen |
 | `sperren` | Bildschirm sperren |
 | `maus` / `mouse` | Zeigegerät: was erkannt wurde und ob Bytes ankommen |
+| `foto` / `screenshot` | Bildschirmfoto als PNG im eigenen Bilder-Ordner |
 | `firewall [an\|aus\|standard\|regel\|weg\|leeren\|speichern]` | Paketfilter zeigen und regeln |
 | `pruefspur [alle\|abgewiesen\|speichern]` | Sicherheitsereignisse ansehen |
 | `kaefig [<profil> <programm> [text]]` | Profile zeigen oder ein Programm eingesperrt starten |
@@ -355,6 +376,8 @@ also so, wie es ein Betriebssystem tut.
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
 | **IPC** | Röhren zwischen Eltern und Kind (Ringpuffer im Kern, werden beim Abspalten vererbt) und geteilter Speicher (derselbe Seitenrahmen in mehreren Adressräumen, `PTE_SHARED` hält ihn aus Kopie-beim-Schreiben und Abräumen heraus) |
 | **Sprache** | 46 Prüfungen: Sortierung und Lückenlosigkeit der Tabelle, jeder Eintrag wird auch gefunden, gleiche Platzhalter auf beiden Seiten, Umschalten und Rückfall aufs Deutsche |
+| **Rechner** | 56 Prüfungen: Grundrechnen und Ketten, Festkomma und Runden, jeder Übergang des Zustandsautomaten, Teilen durch null, Überlauf, Prozent und Wurzel |
+| **PNG schreiben** | 40 Prüfungen: geschriebene Bilder mit dem eigenen Leser zurückgelesen, Punkt für Punkt – dazu Aufbau, Prüfsumme und die Blockgrenze bei 65535 Bytes |
 | **Bildschirm** | 152 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
@@ -374,6 +397,8 @@ also so, wie es ein Betriebssystem tut.
 | **Textverarbeitung** | Absatzformate, fett und unterstrichen je Zeichen, Ausrichtung, Umbruch, Speichern und Laden als HTML |
 | **Präsentation** | Folien mit drei Anordnungen, Übersichtsleiste, Vollbild ohne Fensterrahmen, Schrift passt sich der Folie an |
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
+| **Fenster** | Maximieren über Knopf, Doppelklick oder `Alt`+`Eingabe`; Andocken an eine Bildschirmhälfte mit `Alt`+`←`/`→`; `Alt`+`Tab` reihum, `Alt`+`F4` schließt |
+| **Zubehör** | Rechner mit Festkomma-Arithmetik, Bildbetrachter für PNG/JPEG/GIF/BMP, Bildschirmfoto als PNG |
 | **Bildschirm** | Auflösung zur Laufzeit umschaltbar, wo es die Bochs-Schnittstelle gibt (QEMU, VirtualBox, Bochs); ganzzahlige Vergrößerung 1×–4× überall, automatisch nach Bildschirmgröße |
 | **Sprache** | Deutsch und Englisch, systemweit und im laufenden Betrieb umschaltbar; 741 Einträge, aus `data/sprache-en.txt` erzeugt |
 | **Einstellungen** | Sprache, Tastaturbelegung (de/us/uk/ch), Zeitzone, Rechnername, Hintergrund samt eigenem Bild und Schriftart in `/Festplatte/retroos.conf` |
@@ -517,6 +542,32 @@ liefert darum das Doppelkreuz.
 Nicht übersetzt ist, was auch auf Deutsch niemand liest: die Meldungen
 des Kerns auf der seriellen Schnittstelle, die Einträge im Systemprotokoll
 und in der Prüfspur. Sie gehören der Fehlersuche und nicht der Bedienung.
+
+### PNG schreiben, ohne einen Packer zu schreiben
+
+Zum Lesen gehört ein vollständiger DEFLATE-Entpacker – der steht seit
+den Bildern im Browser da. Zum Schreiben braucht es ihn nicht: DEFLATE
+kennt einen Blocktyp, der gar nicht packt, sondern die Bytes
+unverändert weiterreicht, und den versteht jeder Leser.
+
+Ein Bildschirmfoto wird damit etwa so groß wie das Bild selbst – 2,9 MB
+bei 1280×800. Dafür sind es zweihundert Zeilen statt zweitausend, und
+ein Packer, den niemand prüft, wäre die schlechtere Wahl: Ein Fehler
+darin fällt erst auf, wenn ein fremdes Programm die Datei nicht mehr
+lesen kann.
+
+Genau das ist beinahe passiert. Der Schreiber rechnete die Prüfsumme
+jedes Abschnitts von Hand mit `0xFFFFFFFF` an und drehte am Ende noch
+einmal die Bits – beides steckt in `crc32_update()` aber schon drin. Der
+eigene Leser prüft die Summen nicht und nahm die Dateien anstandslos;
+erst die Prüfung, die sie nachrechnet, brachte es heraus. Ein
+Bildschirmfoto, das RetroOS anzeigt und sonst niemand, wäre eine
+unangenehme Art, das zu erfahren.
+
+Geprüft wird darum zweifach: Bilder werden geschrieben und mit dem
+eigenen Leser Punkt für Punkt zurückgelesen – auch an der Blockgrenze
+bei 65535 Bytes und mit einem Zeilenabstand, der nicht die Breite ist –,
+und die Prüfsumme wird unabhängig nachgerechnet.
 
 ### Auflösung wechseln, nachdem der Bootloader gegangen ist
 
@@ -902,7 +953,8 @@ kernel/
                       TCP, TLS, HTTP, Paketfilter
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
-    gfx/              DEFLATE, PNG, JPEG, GIF, BMP, Skalieren und Zeichnen
+    gfx/              DEFLATE, PNG lesen und schreiben, JPEG, GIF, BMP,
+                      Skalieren und Zeichnen
     lib/              Zeichenketten, Ausgabe, Systemprotokoll, Prüfspur,
                       Sprachtabelle, 128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop,
@@ -913,8 +965,8 @@ kernel/
                       Benutzerverwaltung, Systemmonitor, Protokoll, Aufgaben,
                       Dokumentbaum, HTML-Leser, CSS, Umbruch, Editor,
                       Programmieren, Tabelle, Schreiben, Vortrag,
-                      Konsole samt Werkzeugkasten, Systeminformation,
-                      Dialoge
+                      Konsole samt Werkzeugkasten, Rechner, Bildbetrachter,
+                      Bildschirmfoto, Systeminformation, Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate, Beispielbilder, Sprachtabelle
 third_party/lucide/   Symbolvorlagen (ISC) samt Lizenz

@@ -96,6 +96,10 @@ ICONS = [
     ("ICON_PLUS",        "plus",             "#7BE08C"),
     ("ICON_PREV",        "chevron-left",     "#8FB8E8"),
     ("ICON_NEXT",        "chevron-right",    "#8FB8E8"),
+
+    # Rechner und Bildschirmfoto.
+    ("ICON_CALC",        "calculator",       "#C3CBD3"),
+    ("ICON_CAMERA",      "camera",           "#9BD1E8"),
 ]
 
 # Groesse -> (Strichbreite, Breite der Umrandung). Kleine Bilder

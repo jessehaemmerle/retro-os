@@ -23,6 +23,8 @@ const struct app_entry app_list[] = {
     { "Systemmonitor",     ICON_MONITOR,     app_monitor,     true,  NULL },
     { "Protokoll",         ICON_LOG,         app_log,         true,  NULL },
     { "Aufgaben",          ICON_TASKS,       app_tasks,       true,  NULL },
+    { "Rechner",           ICON_CALC,        app_calculator,  true,  NULL },
+    { "Bilder",            ICON_IMAGE,       app_images,      true,  NULL },
     { "Tabelle",           ICON_TABLE,       app_sheet,       true,  NULL },
     { "Schreiben",         ICON_DOCUMENT,    app_write,       true,  NULL },
     { "Vortrag",           ICON_SLIDES,      app_slides,      true,  NULL },
@@ -31,6 +33,7 @@ const struct app_entry app_list[] = {
     { "Benutzer",          ICON_USERS,       app_users,       true,  NULL },
     { "Installieren",      ICON_DISK,        app_setup,       true,  NULL },
     { "Papierkorb",        ICON_TRASH,       app_trash,       true,  trash_icon },
+    { "Bildschirmfoto",    ICON_CAMERA,      app_screenshot,  false, NULL },
     { "Ueber RetroOS",     ICON_INFO,        app_about,       false, NULL },
 };
 

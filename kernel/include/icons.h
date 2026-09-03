@@ -86,6 +86,10 @@ enum icon_id {
     ICON_PREV,
     ICON_NEXT,
 
+    /* Rechner und Bildschirmfoto */
+    ICON_CALC,
+    ICON_CAMERA,
+
     ICON_COUNT
 };
 

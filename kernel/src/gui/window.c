@@ -23,6 +23,7 @@
 #include "lock.h"
 #include "thread.h"
 #include "displayutil.h"
+#include "apps.h"
 #include "lang.h"
 #include "theme.h"
 
@@ -159,6 +160,78 @@ void gui_invalidate(void) { dirty = true; }
  * liegt, waere sonst nur noch ueber die Taskleiste erreichbar - und
  * ein rahmenloses, das den ganzen Schirm beansprucht, muss die neue
  * Groesse annehmen. */
+static void send(struct window *win, struct gui_event *ev);
+
+/* Die Flaeche, ueber die ein Fenster gehen darf: der Bildschirm ohne
+ * die Taskleiste. */
+static struct rect work_area(void)
+{
+    struct canvas *c = gfx_screen();
+
+    return rect_make(0, 0, c->w, desktop_work_height());
+}
+
+void gui_toggle_maximize(struct window *win)
+{
+    if (!win || !win->used)
+        return;
+
+    if (win->maximized) {
+        win->frame = win->restore;
+        win->maximized = false;
+    } else {
+        win->restore = win->frame;
+        win->frame = work_area();
+        win->maximized = true;
+    }
+
+    struct gui_event ev = { .type = EV_RESIZED };
+
+    send(win, &ev);
+    dirty = true;
+}
+
+void gui_snap(struct window *win, bool left)
+{
+    if (!win || !win->used || !(win->flags & WF_RESIZABLE))
+        return;
+
+    struct rect area = work_area();
+
+    /* Aus dem maximierten Zustand heraus wird angedockt, ohne dass die
+     * gemerkte Groesse verlorengeht - der Weg zurueck bleibt derselbe. */
+    if (!win->maximized)
+        win->restore = win->frame;
+
+    win->maximized = false;
+    win->frame = rect_make(left ? 0 : area.w / 2, 0, area.w / 2, area.h);
+
+    struct gui_event ev = { .type = EV_RESIZED };
+
+    send(win, &ev);
+    dirty = true;
+}
+
+void gui_cycle_windows(void)
+{
+    /* Das unterste sichtbare Fenster nach vorne: Wer die Tasten
+     * wiederholt drueckt, kommt so reihum durch alle. Minimierte
+     * kommen dabei zurueck - sonst waeren sie nur ueber die Maus
+     * erreichbar. */
+    for (size_t i = 0; i < stack_count; i++) {
+        struct window *win = stack[i];
+
+        if (!win || !win->used || !win->visible)
+            continue;
+        if (win->flags & WF_NO_TASKBAR)
+            continue;
+
+        win->minimized = false;
+        gui_focus_window(win);
+        return;
+    }
+}
+
 void gui_screen_resized(int32_t width, int32_t height)
 {
     for (size_t i = 0; i < stack_count; i++) {
@@ -169,6 +242,16 @@ void gui_screen_resized(int32_t width, int32_t height)
 
         if (win->flags & WF_BARE) {
             win->frame = rect_make(0, 0, width, height);
+            continue;
+        }
+
+        /* Ein maximiertes Fenster war ueber den ganzen Bildschirm - es
+         * soll das auch nach dem Wechsel sein und nicht als Rest der
+         * alten Groesse dastehen. */
+        if (win->maximized) {
+            win->frame = rect_make(0, 0, width, height - TASKBAR_HEIGHT);
+            disp_fit_window(&win->restore.x, &win->restore.y,
+                            &win->restore.w, &win->restore.h, width, height);
             continue;
         }
 
@@ -423,6 +506,29 @@ static void draw_minimize_glyph(struct canvas *c, struct rect r)
     gfx_fill(c, rect_make(r.x + 4, r.y + r.h - 7, r.w - 8, 2), COL_BLACK);
 }
 
+/* Ein Kasten, und beim maximierten Fenster zwei versetzte - so
+ * unterscheidet man auf einen Blick, ob der Knopf gross macht oder
+ * zurueckholt. */
+static void draw_maximize_glyph(struct canvas *c, struct rect r, bool restore)
+{
+    struct rect box = rect_make(r.x + 4, r.y + 4, r.w - 9, r.h - 9);
+
+    if (restore) {
+        gfx_frame(c, rect_make(box.x + 3, box.y, box.w, box.h), COL_BLACK);
+        gfx_fill(c, rect_make(box.x, box.y + 3, box.w, box.h), COL_FACE);
+    }
+    gfx_frame(c, rect_make(box.x, box.y + (restore ? 3 : 0), box.w, box.h),
+              COL_BLACK);
+    gfx_hline(c, box.x, box.y + (restore ? 4 : 1), box.w, COL_BLACK);
+}
+
+/* Darf das Fenster ueber den ganzen Bildschirm? */
+static bool can_maximize(const struct window *win)
+{
+    return (win->flags & WF_RESIZABLE) &&
+           !(win->flags & (WF_NO_MAX | WF_BARE));
+}
+
 static void window_paint(struct canvas *c, struct window *win, bool focused)
 {
     struct rect f = win->frame;
@@ -455,6 +561,7 @@ static void window_paint(struct canvas *c, struct window *win, bool focused)
     int32_t buttons = 0;
     if (!(win->flags & WF_NO_CLOSE)) buttons++;
     if (!(win->flags & WF_NO_MIN))   buttons++;
+    if (can_maximize(win))           buttons++;
 
     int32_t text_room = title.w - 26 - buttons * (TITLEBAR_HEIGHT - 4) - 8;
     gfx_set_clip(c, rect_intersect(c->clip, title));
@@ -468,6 +575,12 @@ static void window_paint(struct canvas *c, struct window *win, bool focused)
         gfx_fill(c, r, COL_FACE);
         gfx_bevel_thin(c, r, true);
         draw_close_glyph(c, r);
+    }
+    if (can_maximize(win)) {
+        struct rect r = button_rect(win, index++);
+        gfx_fill(c, r, COL_FACE);
+        gfx_bevel_thin(c, r, true);
+        draw_maximize_glyph(c, r, win->maximized);
     }
     if (!(win->flags & WF_NO_MIN)) {
         struct rect r = button_rect(win, index++);
@@ -616,6 +729,18 @@ static void present(void)
             cursor_draw(c, cursor_x, cursor_y);
             gfx_flush();
             dirty = false;
+
+            /* Genau hier steht auf dem Schirm, was der Benutzer
+             * sieht - der richtige Zeitpunkt fuer ein Foto. */
+            if (screenshot_pending()) {
+                char path[FS_PATH_MAX];
+                char error[80];
+
+                if (screenshot_take(path, sizeof(path), error, sizeof(error)))
+                    dialog_message(tr("Bildschirmfoto"), path);
+                else
+                    dialog_message(tr("Bildschirmfoto"), error);
+            }
             return;
         }
     }
@@ -730,6 +855,13 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
         }
         index++;
     }
+    if (can_maximize(win)) {
+        if (rect_contains(button_rect(win, index), x, y)) {
+            gui_toggle_maximize(win);
+            return;
+        }
+        index++;
+    }
     if (!(win->flags & WF_NO_MIN)) {
         if (rect_contains(button_rect(win, index), x, y)) {
             win->minimized = true;
@@ -739,6 +871,18 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
     }
 
     if (rect_contains(title, x, y)) {
+        /* Doppelklick auf die Leiste ist ueberall dasselbe wie der
+         * Knopf daneben. */
+        if (dbl && can_maximize(win)) {
+            gui_toggle_maximize(win);
+            return;
+        }
+
+        /* Ein maximiertes Fenster laesst sich nicht schieben - es
+         * wuerde beim ersten Zucken vom Bildschirm rutschen. */
+        if (win->maximized)
+            return;
+
         drag_win    = win;
         drag_resize = false;
         drag_off_x  = x - f.x;
@@ -840,6 +984,57 @@ static void handle_mouse_move(int32_t x, int32_t y, bool pressed)
     send(win, &ev);
 }
 
+/* Tastenkuerzel, die dem Fenstersystem gehoeren und nicht dem Fenster.
+ * Sie werden vor allem anderen geprueft; was hier verbraucht wird,
+ * kommt beim Programm nicht mehr an. Alle liegen auf Alt, damit sie
+ * keinem Editor eine Tastenkombination wegnehmen. */
+static bool window_shortcut(const struct key_event *ke)
+{
+    if (!ke->pressed || !(ke->mods & MOD_ALT))
+        return false;
+
+    struct window *win = gui_focused();
+
+    switch (ke->key) {
+    case KEY_TAB:
+        gui_cycle_windows();
+        return true;
+    case KEY_F4:
+        if (win && !(win->flags & WF_NO_CLOSE))
+            gui_close_window(win);
+        return true;
+    case KEY_ENTER:
+        if (win)
+            gui_toggle_maximize(win);
+        return true;
+    case KEY_LEFT:
+        if (win)
+            gui_snap(win, true);
+        return true;
+    case KEY_RIGHT:
+        if (win)
+            gui_snap(win, false);
+        return true;
+    case KEY_DOWN:
+        /* Ein maximiertes Fenster zuerst zurueckholen, erst das
+         * zweite Mal ablegen - so ist der Weg nach unten immer
+         * derselbe wie der nach oben, nur rueckwaerts. */
+        if (win && win->maximized) {
+            gui_toggle_maximize(win);
+        } else if (win && !(win->flags & WF_NO_MIN)) {
+            win->minimized = true;
+            gui_invalidate();
+        }
+        return true;
+    case KEY_UP:
+        if (win && !win->maximized)
+            gui_toggle_maximize(win);
+        return true;
+    default:
+        return false;
+    }
+}
+
 static void handle_key(struct key_event *ke)
 {
     if (lock_active()) {
@@ -851,6 +1046,9 @@ static void handle_key(struct key_event *ke)
         gui_close_menu();
         return;
     }
+
+    if (!menu_active && window_shortcut(ke))
+        return;
 
     struct window *win = gui_focused();
     if (!win)

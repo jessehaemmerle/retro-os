@@ -63,6 +63,7 @@ struct fm_state {
 };
 
 static void fm_refresh(struct window *win);
+static bool is_image(const struct fs_node *node);
 
 /* ------------------------------------------------------------------ */
 /* Hilfsfunktionen                                                     */
@@ -238,6 +239,8 @@ static void fm_open_selected(struct window *win)
         sheet_open(node);
     } else if (strcasecmp(dot, ".folien") == 0) {
         slides_open(node);
+    } else if (is_image(node)) {
+        image_open(node);
     } else if (strcasecmp(dot, ".html") == 0 || strcasecmp(dot, ".htm") == 0) {
         /* Anschauen ist der haeufigere Wunsch als aendern - zum
          * Bearbeiten gibt es "Oeffnen" in Schreiben. */

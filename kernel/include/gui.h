@@ -59,6 +59,9 @@ enum window_flags {
      * ganze Fenster. Gedacht fuer den Vollbildmodus eines Programms,
      * das den Bildschirm fuer sich braucht. */
     WF_BARE      = 1 << 5,
+    /* Fenster, die ihre Groesse nicht selbst bestimmen sollen -
+     * Rueckfragen etwa. Sie bekommen keinen Knopf zum Maximieren. */
+    WF_NO_MAX    = 1 << 6,
 };
 
 struct window {
@@ -70,6 +73,10 @@ struct window {
     bool          used;
     bool          visible;
     bool          minimized;
+    bool          maximized;
+    /* Wohin es beim Wiederherstellen zurueckgeht. Gilt nur, solange
+     * maximized oder snapped steht. */
+    struct rect   restore;
 
     int32_t       min_w, min_h;
 
@@ -108,6 +115,15 @@ size_t gui_window_count(void);
 /* Der Bildschirm ist ein anderer geworden: Alle Fenster in die neue
  * Flaeche zurueckholen und alles neu zeichnen. */
 void gui_screen_resized(int32_t width, int32_t height);
+
+/* --- Fenster ordnen --- */
+
+/* Ueber die ganze Arbeitsflaeche und wieder zurueck. */
+void gui_toggle_maximize(struct window *win);
+/* An die linke oder rechte Haelfte andocken. */
+void gui_snap(struct window *win, bool left);
+/* Das naechste Fenster nach vorne holen - Alt+Tabulator. */
+void gui_cycle_windows(void);
 struct window *gui_window_at(size_t index);
 
 /* Findet ein bereits offenes Fenster derselben Anwendung. */

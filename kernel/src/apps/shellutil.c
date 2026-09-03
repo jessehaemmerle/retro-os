@@ -426,6 +426,9 @@ static const struct sh_command commands[] = {
     { "warte", "sleep", "System", "warte <millisekunden>",
       "eine Weile nichts tun", NULL },
     { "version", "ver", "System", "version", "Systemversion", NULL },
+    { "foto", "screenshot", "System", "foto",
+      "Bildschirmfoto aufnehmen",
+      "Das Bild landet als PNG im eigenen Bilder-Ordner." },
     { "maus", "mouse", "System", "maus",
       "Zeigegeraet und woran es haengt",
       "Bewegt sich der Zeiger nicht, steht hier, ob ueberhaupt Bytes\n"
