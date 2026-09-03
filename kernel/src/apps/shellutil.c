@@ -353,6 +353,16 @@ static const struct sh_command commands[] = {
     { "info", "stat", "Dateien", "info <pfad>",
       "alles ueber einen Eintrag",
       "Art, Groesse, Eigentuemer, Rechte, Zeitpunkt und wo er liegt." },
+    { "packe", "zip", "Dateien", "packe <datei-oder-ordner>",
+      "in ein ZIP-Archiv packen",
+      "Das Archiv entsteht daneben und heisst wie das Gepackte, mit\n"
+      ".zip dahinter. Ordner kommen mit allem Inhalt hinein." },
+    { "entpacke", "unzip", "Dateien", "entpacke <archiv.zip>",
+      "ein Archiv auspacken",
+      "Ausgepackt wird in einen Ordner daneben, der wie das Archiv\n"
+      "heisst. Eintraege mit Pfaden nach draussen werden uebergangen." },
+    { "archiv", NULL, "Dateien", "archiv <archiv.zip>",
+      "hineinsehen, ohne auszupacken", NULL },
     { "papierkorb", NULL, "Dateien", "papierkorb [zurueck <n>|leeren]",
       "Geloeschtes ansehen und zurueckholen", NULL },
     { "platte", NULL, "Dateien", "platte",

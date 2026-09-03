@@ -1,20 +1,17 @@
 /* pngwrite.c - PNG schreiben.
  *
- * Zum Lesen gehoert ein vollstaendiger DEFLATE-Entpacker (inflate.c);
- * zum Schreiben braucht es den nicht. DEFLATE kennt einen Blocktyp,
- * der gar nicht packt, sondern die Bytes unveraendert weiterreicht -
- * und den versteht jeder Leser, auch der eigene.
- *
- * Ein Bildschirmfoto wird damit etwa so gross wie das Bild selbst.
- * Dafuer sind es zweihundert Zeilen statt zweitausend, und ein Packer,
- * den niemand prueft, waere die schlechtere Wahl: Ein Fehler darin
- * faellt erst auf, wenn ein fremdes Programm die Datei nicht mehr
- * lesen kann.
+ * Gepackt wird mit deflate.c - demselben Packer, der auch die Archive
+ * macht. Anfangs standen hier ungepackte Bloecke, weil es ohne Packer
+ * nicht anders ging; ein Bildschirmfoto war damit so gross wie das
+ * Bild selbst. Jetzt ist es ein Bruchteil davon, und der Packer ist an
+ * einer Stelle geprueft statt an zweien halb.
  *
  * Eine Pruefung im Testlauf schreibt Bilder und liest sie mit dem
- * eigenen Leser wieder ein - Punkt fuer Punkt.
+ * eigenen Leser wieder ein - Punkt fuer Punkt. Eine zweite rechnet die
+ * Pruefsummen nach, denn der eigene Leser prueft sie nicht.
  */
 
+#include "deflate.h"
 #include "image.h"
 #include "kstring.h"
 #include "mm.h"
@@ -62,11 +59,6 @@ static void put(struct sink *s, const void *bytes, size_t length)
     s->used += length;
 }
 
-static void put8(struct sink *s, uint8_t value)
-{
-    put(s, &value, 1);
-}
-
 static void put32(struct sink *s, uint32_t value)
 {
     uint8_t bytes[4] = { (uint8_t)(value >> 24), (uint8_t)(value >> 16),
@@ -92,18 +84,6 @@ static void put_chunk(struct sink *s, const char *type,
     uint32_t crc = crc32_update(0, type, 4);
 
     put32(s, crc32_update(crc, data, length));
-}
-
-/* Adler-32 - die Pruefsumme, die zlib um die gepackten Daten legt. */
-static uint32_t adler32(const uint8_t *data, size_t length)
-{
-    uint32_t a = 1, b = 0;
-
-    for (size_t i = 0; i < length; i++) {
-        a = (a + data[i]) % 65521;
-        b = (b + a) % 65521;
-    }
-    return (b << 16) | a;
 }
 
 bool png_encode(const uint32_t *pixels, int32_t w, int32_t h, int32_t stride,
@@ -164,47 +144,20 @@ bool png_encode(const uint32_t *pixels, int32_t w, int32_t h, int32_t stride,
     header[12] = 0;     /* nicht verschraenkt           */
     put_chunk(&s, "IHDR", header, sizeof(header));
 
-    /* Der zlib-Kopf: Verfahren 8, Fenstergroesse 32 KB, keine
-     * Vorgabe. Die beiden Bytes muessen zusammen durch 31 teilbar
-     * sein - 0x78 0x01 erfuellt das. */
-    struct sink z = { 0 };
+    /* Die Zeilen wandern als Ganzes durch den Packer; PNG erwartet
+     * sie in einer zlib-Huelle. */
+    size_t packed_length = 0;
+    uint8_t *packed = deflate_zlib(raw, raw_size, &packed_length);
 
-    put8(&z, 0x78);
-    put8(&z, 0x01);
-
-    /* Ungepackte Bloecke zu hoechstens 65535 Bytes: ein Kopfbyte mit
-     * dem Endekennzeichen, dann die Laenge zweimal - einmal gerade,
-     * einmal verkehrt herum. */
-    size_t at = 0;
-
-    while (at < raw_size) {
-        size_t chunk = raw_size - at;
-
-        if (chunk > 65535)
-            chunk = 65535;
-
-        bool last = (at + chunk) >= raw_size;
-
-        put8(&z, last ? 1 : 0);
-        put8(&z, (uint8_t)chunk);
-        put8(&z, (uint8_t)(chunk >> 8));
-        put8(&z, (uint8_t)~chunk);
-        put8(&z, (uint8_t)(~chunk >> 8));
-        put(&z, raw + at, chunk);
-        at += chunk;
-    }
-
-    put32(&z, adler32(raw, raw_size));
     kfree(raw);
 
-    if (z.failed) {
-        kfree(z.data);
+    if (!packed) {
         kfree(s.data);
         return false;
     }
 
-    put_chunk(&s, "IDAT", z.data, z.used);
-    kfree(z.data);
+    put_chunk(&s, "IDAT", packed, packed_length);
+    kfree(packed);
 
     put_chunk(&s, "IEND", NULL, 0);
 

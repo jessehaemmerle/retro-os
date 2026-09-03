@@ -850,3 +850,47 @@ Die Datei liess sich nicht anlegen.	The file could not be created.
 Das Bild wird im naechsten Bildaufbau gemacht.	The picture is taken with the next frame.
 Bildschirmfoto aufnehmen	take a screenshot
 Das Bild landet als PNG im eigenen Bilder-Ordner.	The picture lands as a PNG in your own image folder.
+
+# --- Archiv, Kalender, Uhr ---
+Archiv	Archive
+Kalender	Calendar
+Uhr	Clock
+Packen	Pack
+Auspacken	Unpack
+gepackt	packed
+roh	stored
+Das ist kein Archiv.	That is not an archive.
+Das laesst sich nicht packen.	That cannot be packed.
+Zu wenig Speicher.	Not enough memory.
+Das Archiv liess sich nicht fuellen.	The archive could not be filled.
+Das Archiv liess sich nicht abschliessen.	The archive could not be closed.
+Der Zielordner liess sich nicht anlegen.	The target folder could not be created.
+Das Archiv ist nicht mehr da.	The archive is gone.
+%u ausgepackt, %u uebergangen.	%u unpacked, %u skipped.
+%u Eintraege ausgepackt.	%u entries unpacked.
+%u Eintraege	%u entries
+Heute	Today
+Mo	Mo
+Di	Tu
+Mi	We
+Do	Th
+Fr	Fr
+Sa	Sa
+So	Su
+Nichts an diesem Tag.	Nothing on this day.
+Keine Aufgabenliste gefunden.	No task list found.
+%u offene Aufgaben	%u open tasks
+Stoppuhr	Stopwatch
+Kurzzeit	Timer
+Halt	Stop
+Zwischenzeit	Lap
+Nullstellen	Reset
+Die Zeit ist um.	Time is up.
+Die Uhr kommt aus der Batterieuhr des Rechners.	The time comes from the machine's hardware clock.
+Gemessen wird nach dem Systemtakt.	Measured against the system timer.
+in ein ZIP-Archiv packen	pack into a ZIP archive
+Das Archiv entsteht daneben und heisst wie das Gepackte, mit\n.zip dahinter. Ordner kommen mit allem Inhalt hinein.	The archive appears next to it, named after what was packed with\n.zip appended. Folders go in with everything inside.
+ein Archiv auspacken	unpack an archive
+Ausgepackt wird in einen Ordner daneben, der wie das Archiv\nheisst. Eintraege mit Pfaden nach draussen werden uebergangen.	Unpacked into a folder next to it, named after the archive.\nEntries with paths leading outside are skipped.
+hineinsehen, ohne auszupacken	look inside without unpacking
+Eine offene Aufgabe	One open task

@@ -45,6 +45,8 @@ enum context_id {
     CTX_NEW_FILE,
     CTX_PROPS,
     CTX_WALLPAPER,
+    CTX_PACK,
+    CTX_UNPACK,
 };
 
 struct fm_state {
@@ -239,6 +241,8 @@ static void fm_open_selected(struct window *win)
         sheet_open(node);
     } else if (strcasecmp(dot, ".folien") == 0) {
         slides_open(node);
+    } else if (strcasecmp(dot, ".zip") == 0) {
+        archive_open(node);
     } else if (is_image(node)) {
         image_open(node);
     } else if (strcasecmp(dot, ".html") == 0 || strcasecmp(dot, ".htm") == 0) {
@@ -518,6 +522,49 @@ static void fm_set_wallpaper(struct window *win)
     gui_invalidate();
 }
 
+static bool is_archive(const struct fs_node *node)
+{
+    const char *dot = node ? strrchr(node->name, '.') : NULL;
+
+    return dot && node->type == FS_FILE && strcasecmp(dot, ".zip") == 0;
+}
+
+static void fm_pack(struct window *win)
+{
+    struct fm_state *st = win->user;
+    struct fs_node *sel = (st->selection >= 0) ? st->entries[st->selection]
+                                               : NULL;
+    char path[FS_PATH_MAX];
+    char error[96];
+
+    if (!sel)
+        return;
+
+    if (archive_pack(sel, path, sizeof(path), error, sizeof(error))) {
+        fm_refresh(win);
+        dialog_message(tr("Packen"), path);
+    } else {
+        dialog_message(tr("Packen"), error);
+    }
+}
+
+static void fm_unpack(struct window *win)
+{
+    struct fm_state *st = win->user;
+    struct fs_node *sel = (st->selection >= 0) ? st->entries[st->selection]
+                                               : NULL;
+    char path[FS_PATH_MAX];
+    char message[96];
+
+    if (!is_archive(sel))
+        return;
+
+    bool ok = archive_unpack(sel, path, sizeof(path), message, sizeof(message));
+
+    fm_refresh(win);
+    dialog_message(tr("Auspacken"), ok ? path : message);
+}
+
 static void context_selected(int id, void *user)
 {
     struct window *win = user;
@@ -530,6 +577,8 @@ static void context_selected(int id, void *user)
     case CTX_NEW_FILE: fm_action(win, TB_NEW_FILE);  break;
     case CTX_PROPS:    fm_properties(win);           break;
     case CTX_WALLPAPER: fm_set_wallpaper(win);       break;
+    case CTX_PACK:      fm_pack(win);                break;
+    case CTX_UNPACK:    fm_unpack(win);              break;
     }
 }
 
@@ -548,6 +597,8 @@ static void open_context_menu(struct window *win, int32_t sx, int32_t sy)
         { tr("Neue Datei"),   ICON_NEW_FILE,    true, true,        CTX_NEW_FILE },
         { NULL,           ICON_FILE,        false, false,      0 },
         { tr("Als Hintergrund"), ICON_IMAGE,   true, is_image(sel), CTX_WALLPAPER },
+        { tr("Packen"),       ICON_ARCHIVE,     true, sel != NULL,   CTX_PACK },
+        { tr("Auspacken"),    ICON_DOWNLOAD,    true, is_archive(sel), CTX_UNPACK },
         { tr("Eigenschaften"), ICON_KEY,        true, sel != NULL, CTX_PROPS },
     };
 
@@ -878,7 +929,7 @@ void filemanager_open(struct fs_node *dir)
     static int32_t cascade;
     int32_t offset = (cascade++ % 5) * 24;
 
-    struct window *win = gui_create_window("Dateimanager",
+    struct window *win = gui_create_window(tr("Dateimanager"),
                                            90 + offset, 60 + offset, 640, 420,
                                            WF_RESIZABLE, ICON_FOLDER_OPEN);
     if (!win) {

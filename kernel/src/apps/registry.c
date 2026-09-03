@@ -25,6 +25,8 @@ const struct app_entry app_list[] = {
     { "Aufgaben",          ICON_TASKS,       app_tasks,       true,  NULL },
     { "Rechner",           ICON_CALC,        app_calculator,  true,  NULL },
     { "Bilder",            ICON_IMAGE,       app_images,      true,  NULL },
+    { "Kalender",          ICON_CALENDAR,    app_calendar,    true,  NULL },
+    { "Uhr",               ICON_ALARM,       app_clock,       true,  NULL },
     { "Tabelle",           ICON_TABLE,       app_sheet,       true,  NULL },
     { "Schreiben",         ICON_DOCUMENT,    app_write,       true,  NULL },
     { "Vortrag",           ICON_SLIDES,      app_slides,      true,  NULL },

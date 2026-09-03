@@ -100,6 +100,10 @@ ICONS = [
     # Rechner und Bildschirmfoto.
     ("ICON_CALC",        "calculator",       "#C3CBD3"),
     ("ICON_CAMERA",      "camera",           "#9BD1E8"),
+
+    # Archiv, Kalender und Uhr.
+    ("ICON_ARCHIVE",     "file-archive",     "#F2C14E"),
+    ("ICON_ALARM",       "alarm-clock",      "#E08A6A"),
 ]
 
 # Groesse -> (Strichbreite, Breite der Umrandung). Kleine Bilder

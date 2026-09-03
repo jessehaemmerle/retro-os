@@ -38,6 +38,21 @@ void app_tasks(void);
 void app_images(void);
 void app_calculator(void);
 void app_screenshot(void);
+void app_archive(void);
+void app_calendar(void);
+void app_clock(void);
+
+/* --- Archive --- */
+/* Oeffnet ein ZIP-Archiv in seinem Fenster. */
+void archive_open(struct fs_node *file);
+/* Packt einen Eintrag in ein Archiv daneben; out_path bekommt dessen
+ * Pfad. */
+bool archive_pack(struct fs_node *node, char *out_path, size_t out_size,
+                  char *error, size_t error_size);
+/* Packt ein Archiv in einen Ordner daneben aus. error traegt in beiden
+ * Faellen eine Meldung. */
+bool archive_unpack(struct fs_node *file, char *out_path, size_t out_size,
+                    char *error, size_t error_size);
 
 /* --- Bildschirmfoto ---
  * Aufgenommen wird erst im naechsten fertigen Bild; sonst waere das

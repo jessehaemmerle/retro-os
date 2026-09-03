@@ -41,3 +41,10 @@ tests/sprache-test
 tests/bildschirm-test
 tests/rechner-test
 tests/pngschreiben-test
+tests/packen-test
+tests/archiv-test
+tests/winkel-test
+tests/probe.zip
+tests/probe.zlib
+tests/probe.txt
+tests/fremd.zip

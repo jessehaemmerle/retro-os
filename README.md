@@ -271,6 +271,19 @@ die übrigen Bilder desselben Ordners.
 **Bildschirmfoto:** Im Startmenü oder mit `foto` in der Konsole. Die
 Aufnahme landet als PNG im eigenen Bilder-Ordner.
 
+**Archive:** Rechte Maustaste auf eine Datei oder einen Ordner →
+*Packen* legt ein ZIP daneben. Doppelklick auf ein `.zip` zeigt, was
+darin steckt; *Auspacken* legt einen Ordner daneben an. In der Konsole
+heißen die drei `packe`, `entpacke` und `archiv`.
+
+**Kalender:** Monatsansicht, `←`/`→` blättern, `Bild ↑`/`Bild ↓` um ein
+Jahr, `Pos1` springt zu heute. Tage mit Terminen aus der Aufgabenliste
+bekommen einen Punkt; ein Klick zeigt rechts, was ansteht.
+
+**Uhr:** Zifferblatt und Ziffern nebeneinander, dazu eine Stoppuhr mit
+Zwischenzeit und ein Kurzzeitmesser. `Tab` wechselt, die Leertaste
+startet und hält an.
+
 **Hintergrund:** Neben den fünf Verläufen lässt sich ein eigenes Bild
 einsetzen – in den Einstellungen unter *Hintergrundbild*, das die Bilder
 aus `/Medien` und aus dem eigenen `Bilder`-Ordner durchblättert, oder im
@@ -331,6 +344,9 @@ gewohnten englischen als Zweitnamen (`kopiere`/`cp`, `suche`/`grep`). Neben
 | `sperren` | Bildschirm sperren |
 | `maus` / `mouse` | Zeigegerät: was erkannt wurde und ob Bytes ankommen |
 | `foto` / `screenshot` | Bildschirmfoto als PNG im eigenen Bilder-Ordner |
+| `packe <pfad>` / `zip` | Datei oder Ordner in ein ZIP-Archiv daneben packen |
+| `entpacke <archiv>` / `unzip` | Archiv in einen Ordner daneben auspacken |
+| `archiv <archiv>` | hineinsehen, ohne auszupacken |
 | `firewall [an\|aus\|standard\|regel\|weg\|leeren\|speichern]` | Paketfilter zeigen und regeln |
 | `pruefspur [alle\|abgewiesen\|speichern]` | Sicherheitsereignisse ansehen |
 | `kaefig [<profil> <programm> [text]]` | Profile zeigen oder ein Programm eingesperrt starten |
@@ -376,6 +392,9 @@ also so, wie es ein Betriebssystem tut.
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
 | **IPC** | Röhren zwischen Eltern und Kind (Ringpuffer im Kern, werden beim Abspalten vererbt) und geteilter Speicher (derselbe Seitenrahmen in mehreren Adressräumen, `PTE_SHARED` hält ihn aus Kopie-beim-Schreiben und Abräumen heraus) |
 | **Sprache** | 46 Prüfungen: Sortierung und Lückenlosigkeit der Tabelle, jeder Eintrag wird auch gefunden, gleiche Platzhalter auf beiden Seiten, Umschalten und Rückfall aufs Deutsche |
+| **Packen** | 42 Prüfungen: Grenzfälle von null Bytes bis über die Blockgrenze, Übereinstimmungen bei 3 und 258 Bytes, Abstände bis ans Fenster, Rückfall auf ungepackt bei Zufall – dazu liest zlib die Ausgabe gegen |
+| **Archiv** | 37 Prüfungen: Hin und zurück durch das eigene Format, Ordner und leere Dateien, MS-DOS-Datum, beschädigte Archive – dazu liest Python eines von uns und wir eines von Python |
+| **Winkel** | 26 Prüfungen: bekannte Werte, Pythagoras über 1441 Grad, die Vorzeichen aller vier Quadranten, die Zeigerrichtungen der Uhr |
 | **Rechner** | 56 Prüfungen: Grundrechnen und Ketten, Festkomma und Runden, jeder Übergang des Zustandsautomaten, Teilen durch null, Überlauf, Prozent und Wurzel |
 | **PNG schreiben** | 40 Prüfungen: geschriebene Bilder mit dem eigenen Leser zurückgelesen, Punkt für Punkt – dazu Aufbau, Prüfsumme und die Blockgrenze bei 65535 Bytes |
 | **Bildschirm** | 152 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm |
@@ -398,7 +417,8 @@ also so, wie es ein Betriebssystem tut.
 | **Präsentation** | Folien mit drei Anordnungen, Übersichtsleiste, Vollbild ohne Fensterrahmen, Schrift passt sich der Folie an |
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
 | **Fenster** | Maximieren über Knopf, Doppelklick oder `Alt`+`Eingabe`; Andocken an eine Bildschirmhälfte mit `Alt`+`←`/`→`; `Alt`+`Tab` reihum, `Alt`+`F4` schließt |
-| **Zubehör** | Rechner mit Festkomma-Arithmetik, Bildbetrachter für PNG/JPEG/GIF/BMP, Bildschirmfoto als PNG |
+| **Zubehör** | Rechner mit Festkomma-Arithmetik, Bildbetrachter für PNG/JPEG/GIF/BMP, Bildschirmfoto als PNG, Kalender mit den Terminen der Aufgabenliste, Uhr mit Zifferblatt, Stoppuhr und Kurzzeitmesser |
+| **Archive** | ZIP lesen und schreiben, mit eigenem DEFLATE-Packer; Pfade aus dem Archiv werden geprüft, bevor sie zu Dateien werden |
 | **Bildschirm** | Auflösung zur Laufzeit umschaltbar, wo es die Bochs-Schnittstelle gibt (QEMU, VirtualBox, Bochs); ganzzahlige Vergrößerung 1×–4× überall, automatisch nach Bildschirmgröße |
 | **Sprache** | Deutsch und Englisch, systemweit und im laufenden Betrieb umschaltbar; 741 Einträge, aus `data/sprache-en.txt` erzeugt |
 | **Einstellungen** | Sprache, Tastaturbelegung (de/us/uk/ch), Zeitzone, Rechnername, Hintergrund samt eigenem Bild und Schriftart in `/Festplatte/retroos.conf` |
@@ -543,18 +563,75 @@ Nicht übersetzt ist, was auch auf Deutsch niemand liest: die Meldungen
 des Kerns auf der seriellen Schnittstelle, die Einträge im Systemprotokoll
 und in der Prüfspur. Sie gehören der Fehlersuche und nicht der Bedienung.
 
-### PNG schreiben, ohne einen Packer zu schreiben
+### Ein Packer in zweihundert Zeilen
 
-Zum Lesen gehört ein vollständiger DEFLATE-Entpacker – der steht seit
-den Bildern im Browser da. Zum Schreiben braucht es ihn nicht: DEFLATE
-kennt einen Blocktyp, der gar nicht packt, sondern die Bytes
-unverändert weiterreicht, und den versteht jeder Leser.
+Anfangs schrieb RetroOS Bildschirmfotos in DEFLATE-Blöcken, die gar
+nicht packen – der Blocktyp, der die Bytes unverändert weiterreicht.
+Für ein Foto ging das; für ein Archiv wäre es eine Frechheit gewesen.
+Also doch ein Packer.
 
-Ein Bildschirmfoto wird damit etwa so groß wie das Bild selbst – 2,9 MB
-bei 1280×800. Dafür sind es zweihundert Zeilen statt zweitausend, und
-ein Packer, den niemand prüft, wäre die schlechtere Wahl: Ein Fehler
-darin fällt erst auf, wenn ein fremdes Programm die Datei nicht mehr
-lesen kann.
+Gepackt wird mit den **festen Huffman-Bäumen** aus der Norm und einem
+gierigen Suchlauf über 32 KB. Eigene Bäume brächten bei Text noch
+einmal ein Fünftel, kosteten aber die halbe Umsetzung: zwei Durchläufe,
+Häufigkeiten zählen, Bäume bauen, sie selbst wieder packen. Der
+Unterschied zwischen *gar nicht gepackt* und *ordentlich gepackt* ist
+der große; der zwischen *ordentlich* und *sehr gut* der kleine.
+
+Gefunden werden Übereinstimmungen über eine Hashkette: drei Bytes
+ergeben einen Schlüssel, und dahinter hängt jede Stelle, die denselben
+Anfang hatte. Verfolgt werden höchstens hundert davon – weiter heißt
+kleiner und langsamer, und hundert ist der Punkt, an dem beides noch
+stimmt. Auch die übersprungenen Stellen kommen in die Kette; wer das
+vergisst, findet später die Hälfte nicht mehr.
+
+An Zufall ist nichts zu holen, und feste Bäume würden ihn sogar
+aufblähen: Jedes Byte oberhalb von 143 bekommt neun statt acht Bit.
+Wird die Ausgabe größer als die Eingabe, schreibt der Packer darum
+ungepackt. Ein Packer, der Zufall aufbläht, ist ein schlechter Packer.
+
+Geprüft wird beides zugleich: der eigene Entpacker liest zurück, was
+der Packer geschrieben hat, und das Testskript legt dasselbe daneben
+noch **zlib** vor. Ein Packer, den nur das eigene Haus liest, ist kein
+Packer, sondern ein Geheimcode.
+
+### Archive, und was aus ihnen herauskommt
+
+ZIP ist rückwärts gedacht, und das aus gutem Grund: Am Ende steht das
+Verzeichnis aller Einträge, davor die Daten. Wer ein Archiv liest,
+sucht also zuerst das Ende – so lässt sich etwas anhängen, ohne alles
+umzuschreiben, und so bleibt ein Archiv lesbar, dem vorne etwas
+vorangestellt wurde.
+
+Zwei Dinge entscheiden darüber, ob das gutgeht.
+
+Erstens die **Prüfsumme**. Jeder Eintrag trägt seine eigene, und sie
+wird beim Auspacken nachgerechnet. Ein Archiv, das unterwegs gelitten
+hat, entpackt sonst still zu Unsinn – und still ist hier das Problem,
+nicht der Unsinn.
+
+Zweitens der **Name**. Ein Eintrag, der mit einem Schrägstrich anfängt
+oder `..` enthält, wird übergangen. Sonst landet er irgendwo im System
+statt im Zielordner – ein alter und immer noch beliebter Weg, ein
+Archiv als Waffe zu benutzen. Geprüft wird der Name und nicht der
+fertige Pfad: Wer erst zusammensetzt und dann hinsieht, hat schon
+verloren.
+
+Ausgepackt wird in einen Ordner neben dem Archiv, und gibt es dessen
+Namen schon, kommt eine Zahl dahinter. Das klingt nach Kleinigkeit, ist
+aber keine: `Dokumente` gepackt ergibt `Dokumente.zip`, und das wieder
+ausgepackt wollte sonst genau in den Ordner zurück, aus dem es kam –
+der Inhalt läge danach doppelt darin.
+
+Auch hier prüft ein fremdes Programm gegen: Das Testskript legt ein
+geschriebenes Archiv Pythons `zipfile` vor, und umgekehrt liest
+RetroOS eines, das Python gepackt hat.
+
+### PNG schreiben
+
+Anfangs standen hier ungepackte Blöcke, weil es ohne Packer nicht
+anders ging; ein Bildschirmfoto war damit so groß wie das Bild selbst.
+Seit es den Packer für die Archive gibt, geht beides durch denselben –
+und der ist an einer Stelle geprüft statt an zweien halb.
 
 Genau das ist beinahe passiert. Der Schreiber rechnete die Prüfsumme
 jedes Abschnitts von Hand mit `0xFFFFFFFF` an und drehte am Ende noch
@@ -953,10 +1030,10 @@ kernel/
                       TCP, TLS, HTTP, Paketfilter
     crypto/           SHA-2, HKDF, ChaCha20, AES, X25519, Großzahlen,
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
-    gfx/              DEFLATE, PNG lesen und schreiben, JPEG, GIF, BMP,
-                      Skalieren und Zeichnen
+    gfx/              DEFLATE packen und entpacken, PNG lesen und
+                      schreiben, JPEG, GIF, BMP, Skalieren und Zeichnen
     lib/              Zeichenketten, Ausgabe, Systemprotokoll, Prüfspur,
-                      Sprachtabelle, 128-Bit-Division
+                      Sprachtabelle, Winkelfunktionen, 128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop,
                       Aufloesung und Vergroesserung, Hintergrundbild,
                       Anmeldebildschirm, Bedienelemente
@@ -966,7 +1043,8 @@ kernel/
                       Dokumentbaum, HTML-Leser, CSS, Umbruch, Editor,
                       Programmieren, Tabelle, Schreiben, Vortrag,
                       Konsole samt Werkzeugkasten, Rechner, Bildbetrachter,
-                      Bildschirmfoto, Systeminformation, Dialoge
+                      Bildschirmfoto, Archive, Kalender, Uhr,
+                      Systeminformation, Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
 data/                 Wurzelzertifikate, Beispielbilder, Sprachtabelle
 third_party/lucide/   Symbolvorlagen (ISC) samt Lizenz

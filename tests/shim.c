@@ -73,6 +73,7 @@ void memset32(void *dst, uint32_t value, size_t count)
 /* ------------------------------------------------------------------ */
 
 void *kmalloc(size_t size)              { return malloc(size ? size : 1); }
+void *kzalloc(size_t size)              { return calloc(1, size ? size : 1); }
 void *krealloc(void *ptr, size_t size)  { return realloc(ptr, size ? size : 1); }
 void  kfree(void *ptr)                  { free(ptr); }
 

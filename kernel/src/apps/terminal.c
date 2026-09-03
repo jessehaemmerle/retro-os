@@ -20,6 +20,7 @@
 #include "perm.h"
 #include "sandbox.h"
 #include "shellutil.h"
+#include "zip.h"
 #include "tasks.h"
 #include "user.h"
 #include "nic.h"
@@ -2589,6 +2590,100 @@ static void cmd_font(struct term_state *st, const char *name)
 /* Zeigt, was der Zeiger gerade tut. Bewegt er sich nicht, steht hier,
  * woran es liegt: kein Controller, kein Geraet, kein Interrupt - oder
  * eben doch alles in Ordnung und der Fehler liegt woanders. */
+static void cmd_pack(struct term_state *st, const char *name)
+{
+    if (!name || !name[0]) {
+        term_line(st, C_ERROR, "packe <datei-oder-ordner>");
+        return;
+    }
+
+    struct fs_node *node = fs_lookup(st->cwd, name);
+
+    if (!node) {
+        term_printf(st, C_ERROR, "packe: \"%s\" nicht gefunden", name);
+        return;
+    }
+
+    char path[FS_PATH_MAX];
+    char error[96];
+
+    if (archive_pack(node, path, sizeof(path), error, sizeof(error)))
+        term_printf(st, C_NORMAL, "Gepackt: %s", path);
+    else
+        term_printf(st, C_ERROR, "packe: %s", error);
+}
+
+static void cmd_unpack(struct term_state *st, const char *name)
+{
+    if (!name || !name[0]) {
+        term_line(st, C_ERROR, "entpacke <archiv.zip>");
+        return;
+    }
+
+    struct fs_node *file = fs_lookup(st->cwd, name);
+
+    if (!file) {
+        term_printf(st, C_ERROR, "entpacke: \"%s\" nicht gefunden", name);
+        return;
+    }
+
+    char path[FS_PATH_MAX];
+    char message[96];
+
+    if (archive_unpack(file, path, sizeof(path), message, sizeof(message)))
+        term_printf(st, C_NORMAL, "%s -> %s", message, path);
+    else
+        term_printf(st, C_ERROR, "entpacke: %s", message);
+}
+
+/* Listet, was in einem Archiv steckt, ohne es auszupacken. */
+static void cmd_archive_list(struct term_state *st, const char *name)
+{
+    if (!name || !name[0]) {
+        term_line(st, C_ERROR, "archiv <archiv.zip>");
+        return;
+    }
+
+    struct fs_node *file = fs_lookup(st->cwd, name);
+
+    if (!file || file->type != FS_FILE || !fs_load(file) || !file->data) {
+        term_printf(st, C_ERROR, "archiv: \"%s\" nicht gefunden", name);
+        return;
+    }
+
+    size_t count = 0;
+
+    if (!zip_read(file->data, file->size, &count)) {
+        term_printf(st, C_ERROR, "archiv: \"%s\" ist kein Archiv", name);
+        return;
+    }
+
+    uint64_t total = 0, packed = 0;
+
+    for (size_t i = 0; i < count; i++) {
+        struct zip_entry e;
+
+        if (!zip_entry(file->data, file->size, i, &e))
+            break;
+
+        char size[24];
+
+        fs_format_size(size, sizeof(size), (size_t)e.size);
+        term_printf(st, C_NORMAL, "  %-40s %10s  %s", e.name,
+                    e.is_dir ? "" : size,
+                    e.is_dir ? "" : (e.method == 8 ? tr("gepackt") : tr("roh")));
+        total += e.size;
+        packed += e.packed;
+    }
+
+    char a[24], b[24];
+
+    fs_format_size(a, sizeof(a), (size_t)total);
+    fs_format_size(b, sizeof(b), (size_t)packed);
+    term_printf(st, C_HIGHLIGHT, "  %u Eintraege, %s -> %s",
+                (unsigned)count, a, b);
+}
+
 /* Das Foto wird nicht hier gemacht, sondern vorgemerkt: Sonst waere
  * die Konsole mitten im Zeichnen auf dem Bild. */
 static void cmd_screenshot(struct term_state *st)
@@ -3112,6 +3207,15 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "foto") || !strcasecmp(cmd, "screenshot")) {
         cmd_screenshot(st);
+
+    } else if (!strcasecmp(cmd, "packe") || !strcasecmp(cmd, "zip")) {
+        cmd_pack(st, a1);
+
+    } else if (!strcasecmp(cmd, "entpacke") || !strcasecmp(cmd, "unzip")) {
+        cmd_unpack(st, a1);
+
+    } else if (!strcasecmp(cmd, "archiv")) {
+        cmd_archive_list(st, a1);
 
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);

@@ -90,6 +90,10 @@ enum icon_id {
     ICON_CALC,
     ICON_CAMERA,
 
+    /* Archiv, Kalender und Uhr */
+    ICON_ARCHIVE,
+    ICON_ALARM,
+
     ICON_COUNT
 };
 

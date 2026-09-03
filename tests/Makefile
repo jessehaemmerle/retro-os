@@ -46,8 +46,22 @@ LANG := ../kernel/src/lib/lang.c \
 
 SPRACHE := sprache_test.c shim.c $(LANG)
 
+WINKEL := winkel_test.c shim.c \
+          ../kernel/src/lib/trig.c
+
+ARCHIV := archiv_test.c shim.c \
+          ../kernel/src/apps/zip.c \
+          ../kernel/src/gfx/deflate.c \
+          ../kernel/src/gfx/inflate.c \
+          ../kernel/src/lib/crc32.c
+
+PACKEN := packen_test.c shim.c \
+          ../kernel/src/gfx/deflate.c \
+          ../kernel/src/gfx/inflate.c
+
 PNGSCHREIBEN := pngschreiben_test.c shim.c \
                 ../kernel/src/gfx/pngwrite.c \
+                ../kernel/src/gfx/deflate.c \
                 ../kernel/src/gfx/png.c \
                 ../kernel/src/gfx/image.c \
                 ../kernel/src/gfx/inflate.c \
@@ -98,10 +112,11 @@ BAUM := dom_test.c shim.c \
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
         protokoll netzfilter kaefig konsole sprache bildschirm rechner \
-        pngschreiben \
+        pngschreiben packen archiv winkel \
         testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
-     netzfilter kaefig konsole sprache bildschirm rechner pngschreiben
+     netzfilter kaefig konsole sprache bildschirm rechner pngschreiben \
+     packen archiv winkel
 
 krypto: krypto-test
 	@./krypto-test
@@ -129,6 +144,40 @@ konsole: konsole-test
 
 konsole-test: $(KONSOLE)
 	@$(CC) $(CFLAGS) $(KONSOLE) -o $@
+
+winkel: winkel-test
+	@./winkel-test
+
+winkel-test: $(WINKEL)
+	@$(CC) $(CFLAGS) $(WINKEL) -o $@
+
+archiv: archiv-test
+	@python3 -c "import zipfile; \
+	  z=zipfile.ZipFile('fremd.zip','w',zipfile.ZIP_DEFLATED); \
+	  z.writestr('gepackt.txt','Python hat das gepackt und noch etwas dazu, '*4); \
+	  z.writestr('roh.txt','kurz'); z.close()"
+	@./archiv-test
+	@python3 -c "import zipfile,sys; \
+	  z=zipfile.ZipFile('probe.zip'); \
+	  bad=z.testzip(); \
+	  sys.exit(0 if bad is None and len(z.namelist())==5 and \
+	    z.read('lang.txt').startswith(b'Eine Zeile') else 1)" \
+	  && echo "  Python liest es auch" \
+	  || (echo '  FEHLER: Python kann das Archiv nicht lesen'; exit 1)
+
+archiv-test: $(ARCHIV)
+	@$(CC) $(CFLAGS) $(ARCHIV) -o $@
+
+packen: packen-test
+	@./packen-test
+	@python3 -c "import zlib,sys; \
+	  d=open('probe.zlib','rb').read(); t=open('probe.txt','rb').read(); \
+	  sys.exit(0 if zlib.decompress(d)==t else 1)" \
+	  && echo "  zlib liest es auch" \
+	  || (echo '  FEHLER: zlib kann es nicht lesen'; exit 1)
+
+packen-test: $(PACKEN)
+	@$(CC) $(CFLAGS) $(PACKEN) -o $@
 
 pngschreiben: pngschreiben-test
 	@./pngschreiben-test
