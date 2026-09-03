@@ -302,6 +302,7 @@ gewohnten englischen als Zweitnamen (`kopiere`/`cp`, `suche`/`grep`). Neben
 | `papierkorb [zurueck <n>\|leeren]` | Geloeschtes ansehen, zurueckholen, endgueltig entfernen |
 | `schrift [name]` | Schriftarten mit Lizenz auflisten oder sofort umschalten |
 | `sprache [de\|en]` / `lang` | Sprache und Tastaturbelegung zeigen oder umschalten |
+| `bildschirm [1280x800\|2x\|auto]` / `display` | Auflösung und Vergrößerung zeigen oder setzen |
 | `wer` | angemeldeter Benutzer, seine Nummer, sein Heim und seine Gruppen |
 | `gruppen` | Gruppen mit Nummer und Mitgliedern |
 | `benutzer [neu\|loeschen\|passwort\|verwalter <name> [wert]]` | Konten zeigen und verwalten |
@@ -353,6 +354,7 @@ also so, wie es ein Betriebssystem tut.
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
 | **IPC** | Röhren zwischen Eltern und Kind (Ringpuffer im Kern, werden beim Abspalten vererbt) und geteilter Speicher (derselbe Seitenrahmen in mehreren Adressräumen, `PTE_SHARED` hält ihn aus Kopie-beim-Schreiben und Abräumen heraus) |
 | **Sprache** | 46 Prüfungen: Sortierung und Lückenlosigkeit der Tabelle, jeder Eintrag wird auch gefunden, gleiche Platzhalter auf beiden Seiten, Umschalten und Rückfall aufs Deutsche |
+| **Bildschirm** | 152 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
 | **Rollen** | Sechs Fähigkeiten (Konten, Netz, Platte, Protokoll, Strom, Einstellungen) statt „Verwalter ja/nein"; eine Rolle ist ein Name für eine Menge davon |
@@ -371,6 +373,7 @@ also so, wie es ein Betriebssystem tut.
 | **Textverarbeitung** | Absatzformate, fett und unterstrichen je Zeichen, Ausrichtung, Umbruch, Speichern und Laden als HTML |
 | **Präsentation** | Folien mit drei Anordnungen, Übersichtsleiste, Vollbild ohne Fensterrahmen, Schrift passt sich der Folie an |
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
+| **Bildschirm** | Auflösung zur Laufzeit umschaltbar, wo es die Bochs-Schnittstelle gibt (QEMU, VirtualBox, Bochs); ganzzahlige Vergrößerung 1×–4× überall, automatisch nach Bildschirmgröße |
 | **Sprache** | Deutsch und Englisch, systemweit und im laufenden Betrieb umschaltbar; 741 Einträge, aus `data/sprache-en.txt` erzeugt |
 | **Einstellungen** | Sprache, Tastaturbelegung (de/us/uk/ch), Zeitzone, Rechnername, Hintergrund samt eigenem Bild und Schriftart in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
@@ -513,6 +516,62 @@ liefert darum das Doppelkreuz.
 Nicht übersetzt ist, was auch auf Deutsch niemand liest: die Meldungen
 des Kerns auf der seriellen Schnittstelle, die Einträge im Systemprotokoll
 und in der Prüfspur. Sie gehören der Fehlersuche und nicht der Bedienung.
+
+### Auflösung wechseln, nachdem der Bootloader gegangen ist
+
+Der Bootloader setzt einen Grafikmodus und verschwindet. Danach ist
+Schluss: kein BIOS-Aufruf mehr, kein GOP, nichts. Wer die Auflösung
+später noch ändern will, muss die Karte selbst ansprechen.
+
+Für genau diesen Fall haben Bochs, QEMU und VirtualBox eine gemeinsame
+kleine Schnittstelle geerbt: ein Indexregister auf `0x01CE`, ein
+Datenregister auf `0x01CF`, ein Dutzend Register dahinter. Abschalten,
+Breite und Höhe setzen, wieder einschalten – und weil der lineare
+Speicher dabei liegen bleibt, wo er war, muss nur noch der Framebuffer
+seine neuen Maße erfahren. Es ist die einzige Adresse, die ohnehin schon
+abgebildet ist; die physische aus dem PCI-Register wäre hier ein Zeiger
+ins Leere.
+
+Was die Karte wirklich gesetzt hat, wird nachgelesen und nicht
+geglaubt: Wer einen Modus nicht kann, setzt einen anderen und meldet
+ihn – und wer das nicht prüft, zeichnet danach an der falschen Stelle.
+Auf echter Hardware gibt es die Schnittstelle nicht; dort bleibt es bei
+dem, was der Bootloader eingestellt hat, und das Einstellungsfenster
+schreibt *(fest)* neben die Auflösung, statt einen Knopf anzubieten,
+der nichts tut.
+
+### Vergrößern, ohne dass ein Programm davon weiß
+
+Die Vergrößerung ist etwas ganz anderes als die Auflösung, und sie geht
+überall. Der Backbuffer wird dabei kleiner als der Bildschirm – bei
+zweifacher Vergrößerung halb so breit und halb so hoch –, und beim
+Ausgeben wird jeder Punkt zu einem Quadrat. Die ganze Oberfläche rechnet
+weiter in Punkten dieses Backbuffers und merkt nichts davon.
+
+Genau darum ist es so billig zu haben: Ein Zeichen bleibt 8×16 Punkte
+groß, jedes Fenster rechnet weiter wie bisher, und auf einem
+4K-Bildschirm ist die Schrift trotzdem wieder zu lesen. Kein Programm
+musste dafür angefasst werden.
+
+Vergrößert wird **ganzzahlig**. Alles andere hieße, zwischen Punkten zu
+mitteln, und aus einer gestochenen Kante würde Matsch – bei einer
+Oberfläche, die aus ein Pixel breiten Linien besteht, ist das kein
+Schönheitsfehler, sondern das Ende der Lesbarkeit. Das Aufblasen selbst
+kostet fast nichts: Die erste Zeile wird Punkt für Punkt verbreitert,
+die übrigen sind nur noch `memcpy` davon.
+
+Die Grenze ist die Arbeitsfläche und nicht der Geschmack: Unter 640×400
+logischen Punkten passt kein Fenster mehr sinnvoll hin. `1024×768`
+lässt darum gar keine Vergrößerung zu, `1920×1200` drei Stufen. Ohne
+eigene Einstellung wird nach der Bildschirmhöhe entschieden – ab
+etwa 1400 Zeilen doppelt, ab 2000 dreifach –, und die Automatik geht
+dabei nie über das Mögliche hinaus.
+
+Nach jeder Änderung stimmt nichts mehr, was sich die Oberfläche über
+die Bildschirmgröße gemerkt hat: Der Zeiger wird neu begrenzt, und jedes
+Fenster kommt in die Fläche zurück. Ein Fenster, das gerade noch passt,
+behält dabei seine Größe – kleiner wird es nur, wenn es anders nicht
+geht.
 
 ### Ein Bild statt eines Verlaufs
 
@@ -830,7 +889,8 @@ kernel/
     sched/            Threads und präemptiver Scheduler auf allen Kernen
     proc/             ELF64-Lader, Prozesse in Ring 3, Käfig, Röhren,
                       geteilter Speicher, Fenster für Programme
-    drivers/          Framebuffer, PS/2, Tastatur, Maus, RTC, UART, PCI,
+    drivers/          Framebuffer, Moduswechsel, PS/2, Tastatur, Maus,
+                      RTC, UART, PCI,
                       NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID,
                       USB-Speicher, virtio-net, igb, e1000e, e1000,
                       RTL8169, RTL8139
@@ -845,7 +905,8 @@ kernel/
     lib/              Zeichenketten, Ausgabe, Systemprotokoll, Prüfspur,
                       Sprachtabelle, 128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop,
-                      Hintergrundbild, Anmeldebildschirm, Bedienelemente
+                      Aufloesung und Vergroesserung, Hintergrundbild,
+                      Anmeldebildschirm, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
     apps/             Dateimanager, Browser, Installation, Einstellungen,
                       Benutzerverwaltung, Systemmonitor, Protokoll, Aufgaben,
@@ -901,6 +962,11 @@ an die Hardware-Virtualisierung: VT-x/AMD-V im Firmware-Setup des Wirts
 einschalten, und unter Windows Hyper-V, *Windows Hypervisor Platform*,
 WSL2 und die Speicherintegrität abschalten – die belegen VT-x sonst
 selbst (`bcdedit /set hypervisorlaunchtype off`, danach neu starten).
+
+Für die Auflösung gilt: `VBoxVGA` und `VBoxSVGA` bringen die
+Bochs-Schnittstelle mit, RetroOS kann dort also umschalten. `VMSVGA`
+kann das nicht – dort bleibt es bei dem, was der Bootloader gesetzt hat,
+und das Einstellungsfenster schreibt *(fest)* daneben.
 
 **Das Zeigergerät muss eine PS/2-Maus sein.** *System → Mainboard →
 Zeigegerät* auf `PS/2-Maus` stellen. Ab Werk steht dort ein

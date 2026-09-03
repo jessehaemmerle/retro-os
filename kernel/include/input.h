@@ -69,6 +69,8 @@ bool mouse_attached(void);
  * fuer die Systeminformation. */
 const char *mouse_note(void);
 void mouse_set_position(int32_t x, int32_t y);
+/* Neue Bildschirmgroesse - begrenzt den Zeiger neu. */
+void mouse_set_limits(int32_t screen_w, int32_t screen_h);
 
 /* Bewegung von einem anderen Treiber - etwa der USB-Maus. */
 void mouse_inject(int32_t dx, int32_t dy, int8_t scroll,

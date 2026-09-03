@@ -304,6 +304,17 @@ bool mouse_poll(struct mouse_state *out)
     return changed;
 }
 
+/* Der Bildschirm ist ein anderer geworden - der Zeiger darf nicht
+ * ausserhalb stehenbleiben. */
+void mouse_set_limits(int32_t screen_w, int32_t screen_h)
+{
+    limit_x = screen_w - 1;
+    limit_y = screen_h - 1;
+    pos_x = CLAMP(pos_x, 0, limit_x);
+    pos_y = CLAMP(pos_y, 0, limit_y);
+    dirty = true;
+}
+
 void mouse_set_position(int32_t x, int32_t y)
 {
     pos_x = CLAMP(x, 0, limit_x);

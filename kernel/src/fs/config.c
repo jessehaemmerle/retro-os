@@ -5,6 +5,7 @@
 #include "gfx.h"
 #include "perm.h"
 #include "user.h"
+#include "display.h"
 #include "keymap.h"
 #include "lang.h"
 #include "kstring.h"
@@ -109,6 +110,14 @@ static void apply_pair(const char *key, const char *value)
 
         if (n >= 0 && (size_t)n < ARRAY_LEN(backgrounds))
             current.background = (uint32_t)n;
+    } else if (strcasecmp(key, "aufloesung") == 0) {
+        strlcpy(current.resolution, value, sizeof(current.resolution));
+    } else if (strcasecmp(key, "skalierung") == 0) {
+        /* "auto" ist keine Zahl und soll auch keine sein: Wer nichts
+         * einstellt, soll auf einem anderen Bildschirm wieder etwas
+         * Passendes bekommen. */
+        current.scale = strcasecmp(value, "auto") == 0
+                            ? 0 : (uint32_t)to_number(value);
     } else if (strcasecmp(key, "hintergrundbild") == 0) {
         strlcpy(current.wallpaper, value, sizeof(current.wallpaper));
     } else if (strcasecmp(key, "schrift") == 0) {
@@ -178,7 +187,14 @@ bool config_load(void)
 
 bool config_save(void)
 {
-    char text[512];
+    char text[640];
+    char scale_text[8];
+
+    if (current.scale == 0)
+        strlcpy(scale_text, "auto", sizeof(scale_text));
+    else
+        ksnprintf(scale_text, sizeof(scale_text), "%u",
+                  (unsigned)current.scale);
 
     ksnprintf(text, sizeof(text),
               "# Einstellungen von RetroOS\n"
@@ -191,6 +207,8 @@ bool config_save(void)
               "rechnername = %s\n"
               "hintergrund = %u\n"
               "hintergrundbild = %s\n"
+              "aufloesung = %s\n"
+              "skalierung = %s\n"
               "schrift = %s\n",
               current.language,
               current.keymap,
@@ -199,6 +217,8 @@ bool config_save(void)
               current.hostname,
               (unsigned)current.background,
               current.wallpaper,
+              current.resolution,
+              scale_text,
               current.font);
 
     /* Das Schreiben selbst erledigt das System; wer es anstossen darf,
@@ -228,6 +248,19 @@ bool config_save(void)
 void config_apply(void)
 {
     lang_select_by_code(current.language);
+
+    /* Erst der Bildschirm: Was danach kommt, rechnet mit seiner
+     * Groesse. Ein Modus, den die Karte nicht kann, faellt aus der
+     * Einstellung heraus - sonst stuende bei jedem Start derselbe
+     * unmoegliche Wunsch da. */
+    int32_t mode_w, mode_h;
+
+    if (current.resolution[0] &&
+        disp_parse_mode(current.resolution, &mode_w, &mode_h)) {
+        if (!display_set_mode(mode_w, mode_h))
+            current.resolution[0] = '\0';
+    }
+    display_set_scale(current.scale);
     keymap_select(current.keymap);
     strlcpy(g_netif.hostname, current.hostname, sizeof(g_netif.hostname));
 

@@ -46,6 +46,9 @@ LANG := ../kernel/src/lib/lang.c \
 
 SPRACHE := sprache_test.c shim.c $(LANG)
 
+BILDSCHIRM := bildschirm_test.c shim.c \
+              ../kernel/src/gui/displayutil.c
+
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c
 
@@ -82,9 +85,10 @@ BAUM := dom_test.c shim.c \
         ../kernel/src/js/jsmain.c
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
-        protokoll netzfilter kaefig konsole sprache testbilder clean
+        protokoll netzfilter kaefig konsole sprache bildschirm \
+        testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
-     netzfilter kaefig konsole sprache
+     netzfilter kaefig konsole sprache bildschirm
 
 krypto: krypto-test
 	@./krypto-test
@@ -112,6 +116,12 @@ konsole: konsole-test
 
 konsole-test: $(KONSOLE)
 	@$(CC) $(CFLAGS) $(KONSOLE) -o $@
+
+bildschirm: bildschirm-test
+	@./bildschirm-test
+
+bildschirm-test: $(BILDSCHIRM)
+	@$(CC) $(CFLAGS) $(BILDSCHIRM) -o $@
 
 sprache: sprache-test
 	@./sprache-test

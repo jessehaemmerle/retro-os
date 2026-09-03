@@ -14,6 +14,7 @@
 #include "config.h"
 #include "boot.h"
 #include "cpu.h"
+#include "display.h"
 #include "fb.h"
 #include "gui.h"
 #include "input.h"
@@ -85,13 +86,15 @@ NORETURN void kmain(void)
     storage_init();
     xhci_init();
 
-    /* Grafik */
+    /* Grafik. Die Vergroesserung kommt hier noch automatisch zustande -
+     * was in der Einstellungsdatei steht, ist erst nach fs_init()
+     * lesbar und wird dann von config_apply() nachgezogen. */
     if (!fb_init())
         panic("Es wurde kein nutzbarer Framebuffer gefunden.");
-    if (!gfx_init())
+    if (!display_init(0))
         panic("Der Bildpuffer laesst sich nicht anlegen.");
 
-    mouse_init((int32_t)bi->fb_width, (int32_t)bi->fb_height);
+    mouse_init(display_logical_width(), display_logical_height());
 
     /* Daten und Oberflaeche */
     config_defaults();

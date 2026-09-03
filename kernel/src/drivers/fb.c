@@ -27,20 +27,62 @@ bool fb_init(void)
     return true;
 }
 
-void fb_present(const uint32_t *back, uint32_t x, uint32_t y,
-                uint32_t w, uint32_t h)
+void fb_set_mode(uint64_t addr, uint32_t width, uint32_t height,
+                 uint32_t pitch_pixels)
 {
-    if (x >= g_fb.width || y >= g_fb.height)
+    g_fb.pixels = (uint32_t *)addr;
+    g_fb.width  = width;
+    g_fb.height = height;
+    g_fb.pitch  = pitch_pixels ? pitch_pixels : width;
+    g_fb.bpp    = 32;
+}
+
+void fb_present(const uint32_t *back, uint32_t back_stride,
+                uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                uint32_t scale)
+{
+    if (scale < 1)
+        scale = 1;
+
+    uint32_t px = x * scale;
+    uint32_t py = y * scale;
+
+    if (px >= g_fb.width || py >= g_fb.height)
         return;
 
-    if (x + w > g_fb.width)
-        w = g_fb.width - x;
-    if (y + h > g_fb.height)
-        h = g_fb.height - y;
+    /* Der Ausschnitt wird am Rand des Schirms abgeschnitten - und zwar
+     * in ganzen Backbuffer-Punkten, damit kein halbes Quadrat
+     * uebrigbleibt. */
+    if (px + w * scale > g_fb.width)
+        w = (g_fb.width - px) / scale;
+    if (py + h * scale > g_fb.height)
+        h = (g_fb.height - py) / scale;
 
+    if (scale == 1) {
+        for (uint32_t row = 0; row < h; row++)
+            memcpy(&g_fb.pixels[(py + row) * g_fb.pitch + px],
+                   &back[(y + row) * back_stride + x],
+                   (size_t)w * 4);
+        return;
+    }
+
+    /* Vergroessert: Die erste Zeile wird Punkt fuer Punkt aufgeblasen,
+     * die restlichen scale-1 sind dann nur noch eine Kopie davon. Das
+     * ist der ganze Trick - memcpy ist um ein Vielfaches schneller als
+     * eine Schleife ueber einzelne Punkte. */
     for (uint32_t row = 0; row < h; row++) {
-        memcpy(&g_fb.pixels[(y + row) * g_fb.pitch + x],
-               &back[(y + row) * g_fb.width + x],
-               (size_t)w * 4);
+        const uint32_t *src = &back[(y + row) * back_stride + x];
+        uint32_t *first = &g_fb.pixels[(py + row * scale) * g_fb.pitch + px];
+
+        for (uint32_t i = 0; i < w; i++) {
+            uint32_t value = src[i];
+
+            for (uint32_t k = 0; k < scale; k++)
+                first[i * scale + k] = value;
+        }
+
+        for (uint32_t k = 1; k < scale; k++)
+            memcpy(&g_fb.pixels[(py + row * scale + k) * g_fb.pitch + px],
+                   first, (size_t)w * scale * 4);
     }
 }

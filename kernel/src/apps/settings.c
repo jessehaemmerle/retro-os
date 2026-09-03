@@ -1,6 +1,6 @@
 /* settings.c - das Einstellungsfenster.
  *
- * Acht Dinge lassen sich hier aendern; alle landen in derselben
+ * Zehn Dinge lassen sich hier aendern; alle landen in derselben
  * Textdatei auf der Festplatte. Ohne Festplatte gilt jede Aenderung
  * nur bis zum Ausschalten - das sagt das Fenster dann auch.
  *
@@ -13,6 +13,7 @@
 
 #include "apps.h"
 #include "config.h"
+#include "display.h"
 #include "font.h"
 #include "user.h"
 #include "keymap.h"
@@ -33,6 +34,8 @@
 enum row_id {
     ROW_LANGUAGE,
     ROW_KEYMAP,
+    ROW_RESOLUTION,
+    ROW_SCALE,
     ROW_CLOCK,
     ROW_TIMEZONE,
     ROW_BACKGROUND,
@@ -183,6 +186,20 @@ static void row_value(int row, char *out, size_t size)
         strlcpy(out, tr(map->name), size);
         break;
     }
+    case ROW_RESOLUTION:
+        if (display_can_switch())
+            disp_format_mode(out, size, display_width(), display_height());
+        else
+            ksnprintf(out, size, "%dx%d %s", (int)display_width(),
+                      (int)display_height(), tr("(fest)"));
+        break;
+    case ROW_SCALE:
+        if (display_scale_is_auto())
+            ksnprintf(out, size, "%ux %s", (unsigned)display_scale(),
+                      tr("(automatisch)"));
+        else
+            ksnprintf(out, size, "%ux", (unsigned)display_scale());
+        break;
     case ROW_CLOCK:
         strlcpy(out, c->clock == CLOCK_UTC ? "UTC" : tr("Ortszeit"), size);
         break;
@@ -213,6 +230,8 @@ static const char *row_label(int row)
     switch (row) {
     case ROW_LANGUAGE:   return tr("Sprache");
     case ROW_KEYMAP:     return tr("Tastatur");
+    case ROW_RESOLUTION: return tr("Aufloesung");
+    case ROW_SCALE:      return tr("Vergroesserung");
     case ROW_CLOCK:      return tr("Batterieuhr");
     case ROW_TIMEZONE:   return tr("Zeitzone");
     case ROW_BACKGROUND: return tr("Hintergrund");
@@ -259,6 +278,52 @@ static void row_step(struct settings_ui *ui, int row, int delta)
 
         keymap_select_index(next);
         strlcpy(c->keymap, keymap_at(next)->code, sizeof(c->keymap));
+        break;
+    }
+    case ROW_RESOLUTION: {
+        size_t count = display_mode_count();
+
+        if (!display_can_switch() || count < 2) {
+            strlcpy(ui->status,
+                    tr("Diese Grafikkarte laesst den Modus nicht wechseln."),
+                    sizeof(ui->status));
+            break;
+        }
+
+        /* Reihum, bis einer klappt: Eine Karte darf einen Modus
+         * ablehnen, den sie in der Liste stehen hat. */
+        size_t at = display_current_mode();
+
+        for (size_t tries = 0; tries < count; tries++) {
+            at = (at + count + (size_t)(delta > 0 ? 1 : count - 1)) % count;
+
+            const struct disp_mode *mode = display_mode_at(at);
+
+            if (mode && display_set_mode(mode->w, mode->h)) {
+                disp_format_mode(c->resolution, sizeof(c->resolution),
+                                 mode->w, mode->h);
+                gui_invalidate();
+                break;
+            }
+        }
+        break;
+    }
+    case ROW_SCALE: {
+        /* Der Reigen ist 1x, 2x, ... bis zum Moeglichen und dann
+         * "automatisch" - so kommt man in beide Richtungen ohne
+         * Umweg zu jeder Stufe. */
+        uint32_t highest = disp_max_scale(display_width(), display_height());
+        uint32_t steps = highest + 1;
+        uint32_t now = display_scale_is_auto() ? 0 : display_scale();
+        uint32_t next = (now + steps + (uint32_t)(delta > 0 ? 1 : steps - 1)) %
+                        steps;
+
+        if (display_set_scale(next)) {
+            c->scale = next;
+        } else {
+            strlcpy(ui->status, tr("Diese Vergroesserung geht hier nicht."),
+                    sizeof(ui->status));
+        }
         break;
     }
     case ROW_CLOCK:
@@ -514,7 +579,7 @@ void app_settings(void)
         strlcpy(ui->status, tr("Ohne Festplatte bleibt nichts gespeichert."),
                 sizeof(ui->status));
 
-    struct window *win = gui_create_window("Einstellungen", 0, 0, 620, 382,
+    struct window *win = gui_create_window(tr("Einstellungen"), 0, 0, 620, 442,
                                            WF_CENTER, ICON_SETTINGS);
     if (!win) {
         kfree(ui);

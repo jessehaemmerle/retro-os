@@ -14,6 +14,12 @@
 
 static struct canvas screen;
 
+/* Was fuer den Backbuffer belegt wurde - beim naechsten Moduswechsel
+ * wird es wieder freigegeben. */
+static uint64_t screen_phys;
+static size_t   screen_pages;
+static uint32_t screen_scale = 1;
+
 bool rect_contains(struct rect r, int32_t x, int32_t y)
 {
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
@@ -37,23 +43,42 @@ struct rect rect_intersect(struct rect a, struct rect b)
     return rect_make(x0, y0, x1 - x0, y1 - y0);
 }
 
-bool gfx_init(void)
+/* Legt den Backbuffer in der gewuenschten Groesse an. Wird auch beim
+ * Wechsel von Aufloesung oder Vergroesserung gerufen; der alte Puffer
+ * wird dabei erst freigegeben, wenn der neue steht - sonst stuende die
+ * Oberflaeche bei knappem Speicher ohne beides da. */
+bool gfx_init(int32_t width, int32_t height, uint32_t scale)
 {
-    size_t pixels = (size_t)g_fb.width * g_fb.height;
-    uint64_t phys = pmm_alloc_pages(ALIGN_UP(pixels * 4, PAGE_SIZE) / PAGE_SIZE);
+    if (width <= 0 || height <= 0 || scale < 1)
+        return false;
+
+    size_t pixels = (size_t)width * (size_t)height;
+    size_t pages = ALIGN_UP(pixels * 4, PAGE_SIZE) / PAGE_SIZE;
+    uint64_t phys = pmm_alloc_pages(pages);
 
     if (!phys)
         return false;
 
+    uint64_t old_phys = screen_phys;
+    size_t   old_pages = screen_pages;
+
     screen.px     = phys_to_virt(phys);
-    screen.w      = (int32_t)g_fb.width;
-    screen.h      = (int32_t)g_fb.height;
-    screen.stride = (int32_t)g_fb.width;
+    screen.w      = width;
+    screen.h      = height;
+    screen.stride = width;
+    screen_phys   = phys;
+    screen_pages  = pages;
+    screen_scale  = scale;
     gfx_reset_clip(&screen);
 
     memset32(screen.px, 0, pixels);
+
+    if (old_phys)
+        pmm_free_pages(old_phys, old_pages);
     return true;
 }
+
+uint32_t gfx_scale(void) { return screen_scale; }
 
 struct canvas *gfx_screen(void)
 {
@@ -62,7 +87,8 @@ struct canvas *gfx_screen(void)
 
 void gfx_flush(void)
 {
-    fb_present(screen.px, 0, 0, (uint32_t)screen.w, (uint32_t)screen.h);
+    fb_present(screen.px, (uint32_t)screen.stride, 0, 0,
+               (uint32_t)screen.w, (uint32_t)screen.h, screen_scale);
 }
 
 void gfx_flush_rect(struct rect r)
@@ -71,8 +97,8 @@ void gfx_flush_rect(struct rect r)
     if (r.w <= 0 || r.h <= 0)
         return;
 
-    fb_present(screen.px, (uint32_t)r.x, (uint32_t)r.y,
-               (uint32_t)r.w, (uint32_t)r.h);
+    fb_present(screen.px, (uint32_t)screen.stride, (uint32_t)r.x,
+               (uint32_t)r.y, (uint32_t)r.w, (uint32_t)r.h, screen_scale);
 }
 
 void gfx_set_clip(struct canvas *c, struct rect r)

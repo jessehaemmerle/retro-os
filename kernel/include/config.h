@@ -15,6 +15,8 @@
  *     rechnername = retroos
  *     hintergrund = 2
  *     hintergrundbild = /Medien/muster.png
+ *     aufloesung = 1280x800
+ *     skalierung = auto
  *     schrift = DejaVu Sans Mono
  *
  * Textform, weil man sie dann mit dem Editor des Systems selbst
@@ -42,6 +44,8 @@ struct config {
     char            hostname[32];
     uint32_t        background;      /* Nummer des Verlaufs         */
     char            wallpaper[64];   /* eigenes Bild, leer = keins  */
+    char            resolution[16];  /* "1280x800", leer = so lassen */
+    uint32_t        scale;           /* 0 = automatisch              */
     char            font[24];        /* Name der Bildschirmschrift  */
 };
 

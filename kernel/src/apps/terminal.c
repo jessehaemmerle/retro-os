@@ -39,6 +39,7 @@
 
 #include <stdarg.h>
 #include "lang.h"
+#include "display.h"
 #include "keymap.h"
 
 int kvsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
@@ -2584,6 +2585,86 @@ static void cmd_font(struct term_state *st, const char *name)
                     font_name(i), font_license(i));
 }
 
+static void cmd_display(struct term_state *st, const char *arg)
+{
+    struct config *cfg = config_current();
+
+    if (arg && arg[0]) {
+        int32_t  w, h;
+        uint32_t factor = 0;
+
+        /* Ein "2x" ist die Vergroesserung, ein "1280x800" die
+         * Aufloesung - beides passt in dieselbe Zeile, weil sich die
+         * zwei Formen nicht verwechseln lassen. */
+        if ((arg[0] >= '1' && arg[0] <= '9') &&
+            (arg[1] == 'x' || arg[1] == 'X') && arg[2] == '\0') {
+            factor = (uint32_t)(arg[0] - '0');
+        } else if (!strcasecmp(arg, "auto")) {
+            factor = 0;
+        } else if (disp_parse_mode(arg, &w, &h)) {
+            if (!display_can_switch()) {
+                term_line(st, C_ERROR,
+                          tr("Diese Grafikkarte laesst den Modus nicht wechseln."));
+                return;
+            }
+            if (!display_set_mode(w, h)) {
+                term_printf(st, C_ERROR, tr("%dx%d ging nicht"), (int)w, (int)h);
+                return;
+            }
+            disp_format_mode(cfg->resolution, sizeof(cfg->resolution), w, h);
+            term_printf(st, C_NORMAL, tr("Aufloesung: %dx%d"),
+                        (int)display_width(), (int)display_height());
+            term_line(st, C_NORMAL,
+                      tr("Dauerhaft wird das erst mit Speichern in den Einstellungen."));
+            gui_invalidate();
+            return;
+        } else {
+            term_printf(st, C_ERROR, tr("Unbekannte Angabe: %s"), arg);
+            return;
+        }
+
+        if (!display_set_scale(factor)) {
+            term_line(st, C_ERROR, tr("Diese Vergroesserung geht hier nicht."));
+            return;
+        }
+        cfg->scale = factor;
+        term_printf(st, C_NORMAL, tr("Vergroesserung: %ux%s"),
+                    (unsigned)display_scale(),
+                    display_scale_is_auto() ? tr(" (automatisch)") : "");
+        term_line(st, C_NORMAL,
+                  tr("Dauerhaft wird das erst mit Speichern in den Einstellungen."));
+        gui_invalidate();
+        return;
+    }
+
+    term_printf(st, C_HIGHLIGHT, tr("Bildschirm: %dx%d, %ux vergroessert"),
+                (int)display_width(), (int)display_height(),
+                (unsigned)display_scale());
+    term_printf(st, C_NORMAL, tr("  Arbeitsflaeche : %dx%d Punkte"),
+                (int)display_logical_width(), (int)display_logical_height());
+
+    if (!display_can_switch()) {
+        term_line(st, C_NORMAL,
+                  "  Die Aufloesung setzt der Bootloader; sie laesst sich "
+                  "hier nicht aendern.");
+    } else {
+        term_line(st, C_NORMAL, "");
+        term_line(st, C_HIGHLIGHT, tr("Aufloesungen:"));
+        for (size_t i = 0; i < display_mode_count(); i++) {
+            const struct disp_mode *m = display_mode_at(i);
+
+            term_printf(st, C_NORMAL, "  %c %dx%d",
+                        i == display_current_mode() ? '*' : ' ',
+                        (int)m->w, (int)m->h);
+        }
+    }
+
+    term_line(st, C_NORMAL, "");
+    term_printf(st, C_NORMAL,
+                tr("Vergroesserung: 1x bis %ux, dazu \"auto\"."),
+                (unsigned)disp_max_scale(display_width(), display_height()));
+}
+
 static void cmd_language(struct term_state *st, const char *code)
 {
     if (code && code[0]) {
@@ -2961,6 +3042,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "sprache") || !strcasecmp(cmd, "lang")) {
         cmd_language(st, a1);
+
+    } else if (!strcasecmp(cmd, "bildschirm") || !strcasecmp(cmd, "display")) {
+        cmd_display(st, a1);
 
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);

@@ -29,7 +29,11 @@ bool rect_intersects(struct rect a, struct rect b);
 struct rect rect_intersect(struct rect a, struct rect b);
 
 /* --- Bildschirm --- */
-bool gfx_init(void);
+/* Legt den Backbuffer an. width/height sind die Punkte, in denen die
+ * Oberflaeche rechnet; scale sagt, wie gross so ein Punkt auf dem
+ * Schirm wird. Darf erneut gerufen werden. */
+bool gfx_init(int32_t width, int32_t height, uint32_t scale);
+uint32_t gfx_scale(void);
 struct canvas *gfx_screen(void);       /* Backbuffer                        */
 void gfx_flush(void);                  /* Backbuffer -> Framebuffer         */
 void gfx_flush_rect(struct rect r);

@@ -426,6 +426,11 @@ static const struct sh_command commands[] = {
     { "warte", "sleep", "System", "warte <millisekunden>",
       "eine Weile nichts tun", NULL },
     { "version", "ver", "System", "version", "Systemversion", NULL },
+    { "bildschirm", "display", "System", "bildschirm [1280x800|2x|auto]",
+      "Aufloesung und Vergroesserung",
+      "Ohne Angabe stehen die moeglichen Aufloesungen da. Die\n"
+      "Vergroesserung blaest jeden Punkt zum Quadrat auf - auf einem\n"
+      "sehr feinen Bildschirm ist die Schrift damit wieder lesbar." },
     { "sprache", "lang", "System", "sprache [de|en]",
       "Sprache zeigen oder umschalten",
       "Ohne Angabe stehen die verfuegbaren Sprachen da. Die Tastatur\n"

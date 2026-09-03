@@ -104,6 +104,10 @@ int32_t        gui_client_height(const struct window *win);
 
 /* Zaehlt und liefert die Fenster in Stapelreihenfolge (unten nach oben). */
 size_t gui_window_count(void);
+
+/* Der Bildschirm ist ein anderer geworden: Alle Fenster in die neue
+ * Flaeche zurueckholen und alles neu zeichnen. */
+void gui_screen_resized(int32_t width, int32_t height);
 struct window *gui_window_at(size_t index);
 
 /* Findet ein bereits offenes Fenster derselben Anwendung. */

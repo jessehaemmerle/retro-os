@@ -22,6 +22,7 @@
 #include "net.h"
 #include "lock.h"
 #include "thread.h"
+#include "displayutil.h"
 #include "lang.h"
 #include "theme.h"
 
@@ -151,6 +152,32 @@ int32_t gui_client_height(const struct window *win)
 }
 
 void gui_invalidate(void) { dirty = true; }
+
+/* Nach einem Wechsel von Aufloesung oder Vergroesserung: Jedes Fenster
+ * zurueck in die Flaeche holen. Ein Fenster, das ganz ausserhalb
+ * liegt, waere sonst nur noch ueber die Taskleiste erreichbar - und
+ * ein rahmenloses, das den ganzen Schirm beansprucht, muss die neue
+ * Groesse annehmen. */
+void gui_screen_resized(int32_t width, int32_t height)
+{
+    for (size_t i = 0; i < stack_count; i++) {
+        struct window *win = stack[i];
+
+        if (!win || !win->used)
+            continue;
+
+        if (win->flags & WF_BARE) {
+            win->frame = rect_make(0, 0, width, height);
+            continue;
+        }
+
+        disp_fit_window(&win->frame.x, &win->frame.y,
+                        &win->frame.w, &win->frame.h, width, height);
+    }
+
+    cursor_valid = false;
+    dirty = true;
+}
 
 struct window *gui_create_window(const char *title, int32_t x, int32_t y,
                                  int32_t w, int32_t h, uint32_t flags,

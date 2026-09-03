@@ -792,3 +792,23 @@ RetroOS-Konsole 1.0	RetroOS console 1.0
 # --- PS/2 ---
 nur Tastatur - keine Maus an Port 2	keyboard only - no mouse on port 2
  (abgefragt)	 (polled)
+
+# --- Bildschirm ---
+Aufloesung	Resolution
+Vergroesserung	Scaling
+(automatisch)	(automatic)
+(fest)	(fixed)
+Diese Grafikkarte laesst den Modus nicht wechseln.	This graphics adapter does not allow a mode change.
+Diese Vergroesserung geht hier nicht.	That scaling does not work here.
+Bildschirm: %dx%d, %ux vergroessert	Display: %dx%d, scaled %ux
+  Arbeitsflaeche : %dx%d Punkte	  Work area      : %dx%d points
+  Die Aufloesung setzt der Bootloader; sie laesst sich hier nicht aendern.	  The bootloader sets the resolution; it cannot be changed here.
+Aufloesungen:	Resolutions:
+Vergroesserung: 1x bis %ux, dazu "auto".	Scaling: 1x to %ux, plus "auto".
+Aufloesung: %dx%d	Resolution: %dx%d
+%dx%d ging nicht	%dx%d did not work
+Unbekannte Angabe: %s	Unknown value: %s
+Vergroesserung: %ux%s	Scaling: %ux%s
+ (automatisch)	 (automatic)
+Aufloesung und Vergroesserung	resolution and scaling
+Ohne Angabe stehen die moeglichen Aufloesungen da. Die\nVergroesserung blaest jeden Punkt zum Quadrat auf - auf einem\nsehr feinen Bildschirm ist die Schrift damit wieder lesbar.	Without arguments the possible resolutions are listed. Scaling\nblows every point up into a square - on a very fine display that\nmakes the text readable again.
