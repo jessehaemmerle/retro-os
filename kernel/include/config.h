@@ -8,11 +8,13 @@
  * Abgelegt wird es als Text unter /Festplatte/retroos.conf, ein
  * Schluessel je Zeile:
  *
+ *     sprache = de
  *     tastatur = de
  *     uhr = lokal
  *     zeitzone = 60
  *     rechnername = retroos
  *     hintergrund = 2
+ *     hintergrundbild = /Medien/muster.png
  *     schrift = DejaVu Sans Mono
  *
  * Textform, weil man sie dann mit dem Editor des Systems selbst
@@ -33,11 +35,13 @@ enum clock_mode {
 };
 
 struct config {
-    char            keymap[8];       /* "de", "us", "ch"            */
+    char            language[8];     /* "de", "en"                  */
+    char            keymap[8];       /* "de", "us", "uk", "ch"      */
     enum clock_mode clock;
     int32_t         timezone;        /* Minuten gegenueber UTC      */
     char            hostname[32];
-    uint32_t        background;      /* Nummer des Hintergrunds     */
+    uint32_t        background;      /* Nummer des Verlaufs         */
+    char            wallpaper[64];   /* eigenes Bild, leer = keins  */
     char            font[24];        /* Name der Bildschirmschrift  */
 };
 
@@ -54,8 +58,8 @@ bool config_load(void);
 /* Schreibt die Datei. Ohne eingehaengte Festplatte geht das nicht. */
 bool config_save(void);
 
-/* Uebertraegt die Werte dorthin, wo sie wirken: Tastaturbelegung,
- * Rechnername, Hintergrund, Schriftart. */
+/* Uebertraegt die Werte dorthin, wo sie wirken: Sprache,
+ * Tastaturbelegung, Rechnername, Hintergrund, Schriftart. */
 void config_apply(void);
 
 /* Die waehlbaren Hintergruende. */

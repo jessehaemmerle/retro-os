@@ -4,6 +4,7 @@
 #   make            Kernel und bootfaehiges ISO-Image bauen
 #   make run        ISO in QEMU starten (BIOS)
 #   make run-uefi   ISO in QEMU starten (UEFI, benoetigt OVMF)
+#   make sprache    Uebersetzungstabelle aus data/sprache-en.txt erzeugen
 #   make clean      Build-Artefakte entfernen
 # ---------------------------------------------------------------------------
 
@@ -69,7 +70,8 @@ OBJS   := $(patsubst kernel/src/%.c,$(BUILD)/obj/%.c.o,$(CFILES)) \
           $(UEMBED) $(BLOBOBJ) $(LIMINE_HDD_OBJ)
 DEPS   := $(OBJS:.o=.d)
 
-.PHONY: all kernel iso run run-uefi run-plain disk clean distclean limine
+.PHONY: all kernel iso run run-uefi run-plain disk clean distclean limine \
+        sprache
 
 # Die uebersetzten Programme nicht nach dem Einbetten wegwerfen.
 .SECONDARY: $(UELF) $(ULIB_OBJ)
@@ -78,6 +80,11 @@ all: iso
 
 limine:
 	@scripts/fetch-limine.sh
+
+# Die Uebersetzungstabelle wird erzeugt und mit eingecheckt - so baut
+# das System auch ohne Python.
+sprache: data/sprache-en.txt scripts/gen_sprache.py
+	@python3 scripts/gen_sprache.py
 
 kernel: limine $(KERNEL)
 

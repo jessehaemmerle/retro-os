@@ -30,6 +30,7 @@
 #include "mm.h"
 #include "theme.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define CO_TOOLBAR_H 34
 #define CO_STATUS_H  24
@@ -464,7 +465,7 @@ static void co_run(struct window *win)
     co_out_clear(st);
 
     if (st->len == 0) {
-        co_out_add(st, "Es steht noch nichts da.\n");
+        co_out_add(st, tr("Es steht noch nichts da.\n"));
         gui_invalidate();
         return;
     }
@@ -495,8 +496,8 @@ static void co_run(struct window *win)
         st->out_failed = true;
         if (st->out_len > 0 && st->out[st->out_len - 1] != '\n')
             co_out_add(st, "\n");
-        co_out_add(st, "Fehler: ");
-        co_out_add(st, why && why[0] ? why : "unbekannt");
+        co_out_add(st, tr("Fehler: "));
+        co_out_add(st, why && why[0] ? why : tr("unbekannt"));
         co_out_add(st, "\n");
     } else if (st->out_len == 0) {
         co_out_add(st, "Durchgelaufen - aber ohne Ausgabe. "
@@ -519,8 +520,8 @@ static void co_update_title(struct window *win, struct co_state *st)
 {
     char title[WIN_TITLE_MAX + 1];
 
-    ksnprintf(title, sizeof(title), "Programmieren - %s%s",
-              st->file ? st->file->name : "Unbenannt",
+    ksnprintf(title, sizeof(title), tr("Programmieren - %s%s"),
+              st->file ? st->file->name : tr("Unbenannt"),
               st->modified ? " *" : "");
     gui_set_title(win, title);
 }
@@ -529,7 +530,7 @@ static void co_update_title(struct window *win, struct co_state *st)
 static struct fs_node *code_dir(void)
 {
     struct fs_node *base = fs_disk_root() ? fs_disk_root() : fs_root();
-    struct fs_node *dir = fs_find_child(base, "Programme");
+    struct fs_node *dir = fs_find_child(base, tr("Programme"));
 
     if (dir && dir->type == FS_DIR)
         return dir;
@@ -551,11 +552,11 @@ static void on_save_as(const char *name, void *user)
         file = fs_create(dir, name, FS_FILE);
 
     if (!file || file->type != FS_FILE || file->readonly) {
-        dialog_message("Speichern", "Unter diesem Namen geht es nicht.");
+        dialog_message(tr("Speichern"), tr("Unter diesem Namen geht es nicht."));
         return;
     }
     if (!fs_write(file, st->text, st->len)) {
-        dialog_message("Speichern", "Die Datei liess sich nicht schreiben.");
+        dialog_message(tr("Speichern"), tr("Die Datei liess sich nicht schreiben."));
         return;
     }
 
@@ -573,14 +574,14 @@ static void co_save(struct window *win)
         st->file = NULL;
 
     if (!st->file || st->file->readonly) {
-        dialog_input("Speichern unter", "Dateiname:",
+        dialog_input(tr("Speichern unter"), tr("Dateiname:"),
                      st->file ? st->file->name : "programm.js",
                      on_save_as, win);
         return;
     }
 
     if (!fs_write(st->file, st->text, st->len)) {
-        dialog_message("Speichern", "Die Datei liess sich nicht schreiben.");
+        dialog_message(tr("Speichern"), tr("Die Datei liess sich nicht schreiben."));
         return;
     }
 
@@ -607,7 +608,7 @@ static void on_open(const char *path, void *user)
     }
 
     if (!file || file->type != FS_FILE || !fs_load(file)) {
-        dialog_message("Oeffnen", "Diese Datei gibt es nicht.");
+        dialog_message(tr("Oeffnen"), tr("Diese Datei gibt es nicht."));
         return;
     }
 
@@ -756,7 +757,7 @@ static void paint_output(struct window *win, struct canvas *c)
 
     if (st->out_len == 0) {
         gfx_text(&text, area.x + CO_MARGIN, area.y + 4,
-                 "Ausgabe erscheint hier. F5 fuehrt aus.", CO_LINENO);
+                 tr("Ausgabe erscheint hier. F5 fuehrt aus."), CO_LINENO);
         return;
     }
 
@@ -793,13 +794,13 @@ static void co_paint(struct window *win, struct canvas *c)
     widget_toolbar(&local, rect_make(0, 0, local.w, CO_TOOLBAR_H));
 
     widget_icon_button(&local, co_button_rect(CO_OPEN), ICON_FOLDER_OPEN,
-                       "Oeffnen", st->pressed == CO_OPEN, true);
+                       tr("Oeffnen"), st->pressed == CO_OPEN, true);
     widget_icon_button(&local, co_button_rect(CO_SAVE), ICON_SAVE,
-                       "Speichern", st->pressed == CO_SAVE, true);
+                       tr("Speichern"), st->pressed == CO_SAVE, true);
     widget_icon_button(&local, co_button_rect(CO_RUN), ICON_PLAY,
-                       "Ausfuehren", st->pressed == CO_RUN, st->len > 0);
+                       tr("Ausfuehren"), st->pressed == CO_RUN, st->len > 0);
     widget_icon_button(&local, co_button_rect(CO_CLEAR), ICON_TRASH,
-                       "Leeren", st->pressed == CO_CLEAR, st->out_len > 0);
+                       tr("Leeren"), st->pressed == CO_CLEAR, st->out_len > 0);
 
     paint_code(win, &local);
     paint_output(win, &local);
@@ -808,14 +809,14 @@ static void co_paint(struct window *win, struct canvas *c)
     int32_t cur_col  = (int32_t)st->cursor - st->line_start[cur_line];
     char left[96], right[64];
 
-    ksnprintf(left, sizeof(left), "Zeile %d von %d, Spalte %d",
+    ksnprintf(left, sizeof(left), tr("Zeile %d von %d, Spalte %d"),
               cur_line + 1, st->line_count, cur_col + 1);
     if (st->run_ms)
         ksnprintf(right, sizeof(right), "%s in %u ms",
-                  st->out_failed ? "abgebrochen" : "gelaufen",
+                  st->out_failed ? tr("abgebrochen") : tr("gelaufen"),
                   (unsigned)st->run_ms);
     else
-        ksnprintf(right, sizeof(right), "F5 fuehrt aus");
+        ksnprintf(right, sizeof(right), tr("F5 fuehrt aus"));
 
     widget_statusbar(&local, rect_make(0, local.h - CO_STATUS_H,
                                        local.w, CO_STATUS_H), left, right);
@@ -1010,7 +1011,7 @@ static void co_action(struct window *win, int action)
 
     switch (action) {
     case CO_OPEN:
-        dialog_input("Oeffnen", "Datei:", "programm.js", on_open, win);
+        dialog_input(tr("Oeffnen"), tr("Datei:"), "programm.js", on_open, win);
         break;
     case CO_SAVE:
         co_save(win);

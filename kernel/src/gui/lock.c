@@ -23,7 +23,9 @@
 #include "net.h"
 #include "perm.h"
 #include "rtc.h"
+#include "lang.h"
 #include "theme.h"
+#include "wallpaper.h"
 #include "thread.h"
 #include "user.h"
 #include "widgets.h"
@@ -177,10 +179,10 @@ void lock_show(enum lock_reason why)
 static const char *headline(void)
 {
     switch (reason) {
-    case LOCK_LOCKED: return "Gesperrt";
-    case LOCK_SWITCH: return "Benutzer wechseln";
-    case LOCK_LOGOUT: return "Abgemeldet";
-    default:          return "Anmelden";
+    case LOCK_LOCKED: return tr("Gesperrt");
+    case LOCK_SWITCH: return tr("Benutzer wechseln");
+    case LOCK_LOGOUT: return tr("Abgemeldet");
+    default:          return tr("Anmelden");
     }
 }
 
@@ -204,7 +206,7 @@ static void attempt(void)
 
     if (now < blocked_until) {
         ksnprintf(message, sizeof(message),
-                  "Noch %u Sekunden warten.",
+                  tr("Noch %u Sekunden warten."),
                   (unsigned)((blocked_until - now + 999) / 1000));
         return;
     }
@@ -226,9 +228,9 @@ static void attempt(void)
      * in Serie sind sie das Interessanteste, was der Rechner zu
      * erzaehlen hat. */
     log_warn("anmeldung", "Fehlversuch fuer \"%s\"",
-             name_text[0] ? name_text : "(ohne Namen)");
+             name_text[0] ? name_text : tr("(ohne Namen)"));
     audit(AUDIT_LOGIN, false, "%s",
-          name_text[0] ? name_text : "(ohne Namen)");
+          name_text[0] ? name_text : tr("(ohne Namen)"));
 
     pass_text[0] = '\0';
     focus = F_PASS;
@@ -236,12 +238,12 @@ static void attempt(void)
     if (++tries >= TRY_LIMIT) {
         tries = 0;
         blocked_until = timer_ms() + TRY_PAUSE_MS;
-        log_warn("anmeldung", "Drei Fehlversuche - %u Sekunden Pause",
+        log_warn("anmeldung", tr("Drei Fehlversuche - %u Sekunden Pause"),
                  (unsigned)(TRY_PAUSE_MS / 1000));
-        strlcpy(message, "Zu viele Versuche - bitte kurz warten.",
+        strlcpy(message, tr("Zu viele Versuche - bitte kurz warten."),
                 sizeof(message));
     } else {
-        strlcpy(message, "Name oder Passwort stimmt nicht.", sizeof(message));
+        strlcpy(message, tr("Name oder Passwort stimmt nicht."), sizeof(message));
     }
 }
 
@@ -271,11 +273,16 @@ void lock_paint(struct canvas *c)
     struct rect screen = rect_make(0, 0, c->w, c->h);
     uint32_t top, bottom;
 
-    /* Derselbe Verlauf wie auf dem Desktop, nur dunkler: Man soll
+    /* Derselbe Hintergrund wie auf dem Desktop, nur dunkler: Man soll
      * sehen, dass es der eigene Rechner ist, und zugleich, dass er
-     * gerade nicht bedienbar ist. */
+     * gerade nicht bedienbar ist. Beim Bild wird abgedunkelt statt
+     * ersetzt - sonst waere der eigene Rechner nicht wiederzuerkennen. */
     background_colors(config_current()->background, &top, &bottom);
     gfx_gradient_v(c, screen, top / 2 & 0x7F7F7F, bottom / 2 & 0x7F7F7F);
+
+    /* Der Verlauf liegt auch unter dem Bild - siehe desktop.c. */
+    if (wallpaper_draw(c, screen))
+        gfx_fill_blend(c, screen, 0x80000000u);
 
     struct rect p = panel_rect();
 
@@ -288,7 +295,7 @@ void lock_paint(struct canvas *c)
 
     char right[64];
 
-    ksnprintf(right, sizeof(right), "RetroOS auf %s",
+    ksnprintf(right, sizeof(right), tr("RetroOS auf %s"),
               g_netif.hostname[0] ? g_netif.hostname : "retroos");
     gfx_text(c, p.x + p.w - gfx_text_width(right) - 14, p.y + 15, right,
              COL_TITLE_TEXT);
@@ -317,7 +324,7 @@ void lock_paint(struct canvas *c)
     struct rect nr = name_rect();
     struct rect pr = pass_rect();
 
-    gfx_text(c, nr.x, nr.y - 16, "Benutzer", COL_TEXT_DIM);
+    gfx_text(c, nr.x, nr.y - 16, tr("Benutzer"), COL_TEXT_DIM);
     widget_field(c, nr, name_text,
                  focus == F_NAME && caret ? (int32_t)strlen(name_text) : -1,
                  focus == F_NAME);
@@ -331,12 +338,12 @@ void lock_paint(struct canvas *c)
         stars[i] = '*';
     stars[len] = '\0';
 
-    gfx_text(c, pr.x, pr.y - 16, "Passwort", COL_TEXT_DIM);
+    gfx_text(c, pr.x, pr.y - 16, tr("Passwort"), COL_TEXT_DIM);
     widget_field(c, pr, stars,
                  focus == F_PASS && caret ? (int32_t)len : -1,
                  focus == F_PASS);
 
-    widget_button(c, button_rect(), "Anmelden", hover_button, true);
+    widget_button(c, button_rect(), tr("Anmelden"), hover_button, true);
 
     /* Die Meldung steht zwischen Feld und Knopf - dort, wo der Blick
      * nach der Eingabe ohnehin hinwandert, und ohne den Knopf zu
@@ -356,8 +363,8 @@ void lock_paint(struct canvas *c)
     gfx_text(c, p.x, p.y + p.h + 12, clock, COL_WHITE);
 
     const char *hint = user_store_exists()
-        ? "Tabulator wechselt das Feld, Eingabe meldet an."
-        : "Es gibt noch keine Benutzerdatenbank - melde dich als root an.";
+        ? tr("Tabulator wechselt das Feld, Eingabe meldet an.")
+        : tr("Es gibt noch keine Benutzerdatenbank - melde dich als root an.");
 
     gfx_text(c, p.x + p.w - gfx_text_width(hint), p.y + p.h + 12, hint,
              COL_WHITE);

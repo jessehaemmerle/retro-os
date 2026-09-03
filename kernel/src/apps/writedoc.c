@@ -16,6 +16,7 @@
 #include "dom.h"
 #include "htmlparse.h"
 #include "kstring.h"
+#include "lang.h"
 
 void wdoc_clear(struct wdoc *doc)
 {
@@ -155,11 +156,11 @@ int wdoc_join(struct wdoc *doc, int para)
 const char *wdoc_style_name(uint8_t style)
 {
     switch (style) {
-    case STYLE_H1:    return "Ueberschrift 1";
-    case STYLE_H2:    return "Ueberschrift 2";
-    case STYLE_LIST:  return "Aufzaehlung";
-    case STYLE_QUOTE: return "Zitat";
-    default:          return "Textkoerper";
+    case STYLE_H1:    return tr("Ueberschrift 1");
+    case STYLE_H2:    return tr("Ueberschrift 2");
+    case STYLE_LIST:  return tr("Aufzaehlung");
+    case STYLE_QUOTE: return tr("Zitat");
+    default:          return tr("Textkoerper");
     }
 }
 

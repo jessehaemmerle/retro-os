@@ -19,6 +19,7 @@
 #include "sheet.h"
 #include "theme.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define TK_TOOLBAR_H 34
 #define TK_EDIT_H    26
@@ -109,8 +110,8 @@ static void update_title(struct window *win)
     struct tk_state *st = win->user;
     char title[WIN_TITLE_MAX + 1];
 
-    ksnprintf(title, sizeof(title), "Tabelle - %s%s",
-              st->file ? st->file->name : "Unbenannt",
+    ksnprintf(title, sizeof(title), tr("Tabelle - %s%s"),
+              st->file ? st->file->name : tr("Unbenannt"),
               st->modified ? " *" : "");
     gui_set_title(win, title);
 }
@@ -219,7 +220,7 @@ static void on_save_as(const char *name, void *user)
     if (!file)
         file = fs_create(dir, name, FS_FILE);
     if (!file || file->type != FS_FILE || file->readonly) {
-        dialog_message("Speichern", "Unter diesem Namen geht es nicht.");
+        dialog_message(tr("Speichern"), tr("Unter diesem Namen geht es nicht."));
         return;
     }
 
@@ -227,7 +228,7 @@ static void on_save_as(const char *name, void *user)
     char *csv = kmalloc(room);
 
     if (!csv) {
-        dialog_message("Speichern", "Zu wenig Speicher.");
+        dialog_message(tr("Speichern"), tr("Zu wenig Speicher."));
         return;
     }
 
@@ -237,7 +238,7 @@ static void on_save_as(const char *name, void *user)
     kfree(csv);
 
     if (!ok) {
-        dialog_message("Speichern", "Die Datei liess sich nicht schreiben.");
+        dialog_message(tr("Speichern"), tr("Die Datei liess sich nicht schreiben."));
         return;
     }
 
@@ -257,7 +258,7 @@ static void do_save(struct window *win)
         st->file = NULL;
 
     if (!st->file || st->file->readonly) {
-        dialog_input("Speichern unter", "Dateiname:",
+        dialog_input(tr("Speichern unter"), tr("Dateiname:"),
                      st->file ? st->file->name : "tabelle.csv",
                      on_save_as, win);
         return;
@@ -278,7 +279,7 @@ static void on_open(const char *path, void *user)
         file = fs_find_child(sheet_dir(), path);
 
     if (!file || file->type != FS_FILE || !fs_load(file)) {
-        dialog_message("Oeffnen", "Diese Datei gibt es nicht.");
+        dialog_message(tr("Oeffnen"), tr("Diese Datei gibt es nicht."));
         return;
     }
 
@@ -315,17 +316,17 @@ static void paint_toolbar(struct window *win, struct canvas *c)
     const struct cell *cell = sheet_cell(st->sh, st->row, st->col);
 
     widget_toolbar(c, rect_make(0, 0, c->w, TK_TOOLBAR_H));
-    widget_icon_button(c, tool_rect(TK_OPEN), ICON_FOLDER_OPEN, "Oeffnen",
+    widget_icon_button(c, tool_rect(TK_OPEN), ICON_FOLDER_OPEN, tr("Oeffnen"),
                        st->pressed == TK_OPEN, true);
-    widget_icon_button(c, tool_rect(TK_SAVE), ICON_SAVE, "Speichern",
+    widget_icon_button(c, tool_rect(TK_SAVE), ICON_SAVE, tr("Speichern"),
                        st->pressed == TK_SAVE, true);
-    widget_icon_button(c, tool_rect(TK_SUM), ICON_SUM, "Summe",
+    widget_icon_button(c, tool_rect(TK_SUM), ICON_SUM, tr("Summe"),
                        st->pressed == TK_SUM,
                        st->row > 0 && sheet_is_numeric(st->sh, st->row - 1,
                                                        st->col));
-    widget_icon_button(c, tool_rect(TK_BOLD), ICON_BOLD, "Fett",
+    widget_icon_button(c, tool_rect(TK_BOLD), ICON_BOLD, tr("Fett"),
                        st->pressed == TK_BOLD || (cell && cell->bold), true);
-    widget_icon_button(c, tool_rect(TK_CLEAR), ICON_TRASH, "Leeren",
+    widget_icon_button(c, tool_rect(TK_CLEAR), ICON_TRASH, tr("Leeren"),
                        st->pressed == TK_CLEAR,
                        cell && cell->kind != CELL_EMPTY);
 }
@@ -514,7 +515,7 @@ static void tk_paint(struct window *win, struct canvas *c)
         ksnprintf(left, sizeof(left), "%s", name);
     }
 
-    ksnprintf(right, sizeof(right), "%u Zellen belegt",
+    ksnprintf(right, sizeof(right), tr("%u Zellen belegt"),
               (unsigned)sheet_used(st->sh));
     widget_statusbar(&local, rect_make(0, local.h - TK_STATUS_H,
                                        local.w, TK_STATUS_H), left, right);
@@ -530,7 +531,7 @@ static void tk_action(struct window *win, int action)
 
     switch (action) {
     case TK_OPEN:
-        dialog_input("Oeffnen", "Datei:", "tabelle.csv", on_open, win);
+        dialog_input(tr("Oeffnen"), tr("Datei:"), "tabelle.csv", on_open, win);
         break;
     case TK_SAVE:
         do_save(win);

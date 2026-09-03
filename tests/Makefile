@@ -39,6 +39,13 @@ TABELLE := tabellen_test.c shim.c \
 KONSOLE := konsole_test.c shim.c \
            ../kernel/src/apps/shellutil.c
 
+# Die Sprachtabelle haengt an allem, was Text fuer die Oberflaeche
+# liefert - auf dem Entwicklungsrechner ebenso wie im Kern.
+LANG := ../kernel/src/lib/lang.c \
+        ../kernel/src/lib/lang_data.c
+
+SPRACHE := sprache_test.c shim.c $(LANG)
+
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c
 
@@ -48,7 +55,7 @@ NETZFILTER := netzfilter_test.c shim.c \
 PROTOKOLL := protokoll_test.c shim.c \
              ../kernel/src/lib/log.c
 
-AUFGABEN := aufgaben_test.c shim.c \
+AUFGABEN := aufgaben_test.c shim.c $(LANG) \
             ../kernel/src/apps/tasks.c
 
 RECHTE := rechte_test.c shim.c \
@@ -57,7 +64,7 @@ RECHTE := rechte_test.c shim.c \
           ../kernel/src/crypto/sha2.c \
           ../kernel/src/crypto/hkdf.c
 
-SCHREIBEN := schreiben_test.c shim.c \
+SCHREIBEN := schreiben_test.c shim.c $(LANG) \
              ../kernel/src/apps/writedoc.c \
              ../kernel/src/apps/dom.c \
              ../kernel/src/apps/htmlparse.c
@@ -75,9 +82,9 @@ BAUM := dom_test.c shim.c \
         ../kernel/src/js/jsmain.c
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
-        protokoll netzfilter kaefig konsole testbilder clean
+        protokoll netzfilter kaefig konsole sprache testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
-     netzfilter kaefig konsole
+     netzfilter kaefig konsole sprache
 
 krypto: krypto-test
 	@./krypto-test
@@ -105,6 +112,12 @@ konsole: konsole-test
 
 konsole-test: $(KONSOLE)
 	@$(CC) $(CFLAGS) $(KONSOLE) -o $@
+
+sprache: sprache-test
+	@./sprache-test
+
+sprache-test: $(SPRACHE)
+	@$(CC) $(CFLAGS) $(SPRACHE) -o $@
 
 kaefig: kaefig-test
 	@./kaefig-test

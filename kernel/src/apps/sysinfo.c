@@ -17,6 +17,7 @@
 #include "thread.h"
 #include "theme.h"
 #include "widgets.h"
+#include "lang.h"
 
 struct sys_state {
     char cpu_vendor[13];
@@ -49,7 +50,7 @@ static void read_cpu(struct sys_state *st)
         }
         st->cpu_brand[48] = '\0';
     } else {
-        strlcpy(st->cpu_brand, "unbekannt", sizeof(st->cpu_brand));
+        strlcpy(st->cpu_brand, tr("unbekannt"), sizeof(st->cpu_brand));
     }
 }
 
@@ -85,25 +86,25 @@ static void sys_paint(struct window *win, struct canvas *c)
 
     gfx_fill(&local, rect_make(0, 0, local.w, local.h), COL_FACE);
 
-    gfx_text_bold(&local, 16, y, "Prozessor", COL_SELECT);
+    gfx_text_bold(&local, 16, y, tr("Prozessor"), COL_SELECT);
     y += 22;
-    row(&local, y, "Hersteller", st->cpu_vendor);           y += 18;
-    row(&local, y, "Modell", st->cpu_brand);                y += 18;
-    row(&local, y, "Betriebsart", "Long Mode (64 Bit)");    y += 18;
+    row(&local, y, tr("Hersteller"), st->cpu_vendor);           y += 18;
+    row(&local, y, tr("Modell"), st->cpu_brand);                y += 18;
+    row(&local, y, tr("Betriebsart"), tr("Long Mode (64 Bit)"));    y += 18;
 
     if (apic_available())
-        ksnprintf(buf, sizeof(buf), "APIC, %u Kern%s%s",
+        ksnprintf(buf, sizeof(buf), tr("APIC, %u Kern%s%s"),
                   (unsigned)apic_cpu_count(),
                   apic_cpu_count() == 1 ? "" : "e",
-                  timer_uses_apic() ? ", eigener Zeitgeber" : "");
+                  timer_uses_apic() ? tr(", eigener Zeitgeber") : "");
     else
-        strlcpy(buf, "8259A-PIC mit PIT", sizeof(buf));
-    row(&local, y, "Unterbrechungen", buf);                 y += 18;
+        strlcpy(buf, tr("8259A-PIC mit PIT"), sizeof(buf));
+    row(&local, y, tr("Unterbrechungen"), buf);                 y += 18;
 
     /* Was die Kerne tatsaechlich tun - nicht nur, wie viele es gibt. */
     if (cpu_count() > 1) {
-        ksnprintf(buf, sizeof(buf), "%u in Betrieb", (unsigned)cpu_count());
-        row(&local, y, "Kerne", buf);
+        ksnprintf(buf, sizeof(buf), tr("%u in Betrieb"), (unsigned)cpu_count());
+        row(&local, y, tr("Kerne"), buf);
         y += 18;
 
         for (uint32_t i = 0; i < cpu_count(); i++) {
@@ -113,8 +114,8 @@ static void sys_paint(struct window *win, struct canvas *c)
             if (!c)
                 continue;
 
-            ksnprintf(name, sizeof(name), "  Kern %u", (unsigned)i);
-            ksnprintf(buf, sizeof(buf), "%s, %u Wechsel",
+            ksnprintf(name, sizeof(name), tr("  Kern %u"), (unsigned)i);
+            ksnprintf(buf, sizeof(buf), tr("%s, %u Wechsel"),
                       c->current ? c->current->name : "-",
                       (unsigned)c->switches);
             row(&local, y, name, buf);
@@ -125,73 +126,73 @@ static void sys_paint(struct window *win, struct canvas *c)
         y += 10;
     }
 
-    gfx_text_bold(&local, 16, y, "Speicher", COL_SELECT);
+    gfx_text_bold(&local, 16, y, tr("Speicher"), COL_SELECT);
     y += 22;
 
-    ksnprintf(buf, sizeof(buf), "%u MiB von %u MiB belegt",
+    ksnprintf(buf, sizeof(buf), tr("%u MiB von %u MiB belegt"),
               (unsigned)(pmm_used_bytes() / (1024 * 1024)),
               (unsigned)(pmm_total_bytes() / (1024 * 1024)));
-    row(&local, y, "Arbeitsspeicher", buf);
+    row(&local, y, tr("Arbeitsspeicher"), buf);
     y += 18;
     draw_bar(&local, 176, y, MAX(local.w - 200, 80),
              pmm_used_bytes(), pmm_total_bytes(), RGB(0x30, 0x80, 0xC0));
     y += 26;
 
-    ksnprintf(buf, sizeof(buf), "%u KiB von %u KiB benutzt",
+    ksnprintf(buf, sizeof(buf), tr("%u KiB von %u KiB benutzt"),
               (unsigned)(heap_used_bytes() / 1024),
               (unsigned)(heap_total_bytes() / 1024));
-    row(&local, y, "Kernel-Heap", buf);
+    row(&local, y, tr("Kernel-Heap"), buf);
     y += 18;
     draw_bar(&local, 176, y, MAX(local.w - 200, 80),
              heap_used_bytes(), heap_total_bytes(), RGB(0x40, 0xA0, 0x60));
     y += 30;
 
-    gfx_text_bold(&local, 16, y, "Grafik und Dateien", COL_SELECT);
+    gfx_text_bold(&local, 16, y, tr("Grafik und Dateien"), COL_SELECT);
     y += 22;
 
-    ksnprintf(buf, sizeof(buf), "%u x %u, %u Bit",
+    ksnprintf(buf, sizeof(buf), tr("%u x %u, %u Bit"),
               (unsigned)bi->fb_width, (unsigned)bi->fb_height, bi->fb_bpp);
-    row(&local, y, "Bildschirm", buf);
+    row(&local, y, tr("Bildschirm"), buf);
     y += 18;
 
     char size[24];
     fs_format_size(size, sizeof(size), fs_bytes_used());
-    ksnprintf(buf, sizeof(buf), "%u Eintraege, %s",
+    ksnprintf(buf, sizeof(buf), tr("%u Eintraege, %s"),
               (unsigned)fs_node_count(), size);
-    row(&local, y, "Dateisystem", buf);
+    row(&local, y, tr("Dateisystem"), buf);
     y += 18;
 
     uint64_t ms = timer_ms();
     ksnprintf(buf, sizeof(buf), "%u:%02u:%02u",
               (unsigned)(ms / 3600000), (unsigned)(ms / 60000 % 60),
               (unsigned)(ms / 1000 % 60));
-    row(&local, y, "Laufzeit", buf);
+    row(&local, y, tr("Laufzeit"), buf);
     y += 18;
 
     ksnprintf(buf, sizeof(buf), "%u", (unsigned)gui_window_count());
-    row(&local, y, "Offene Fenster", buf);
+    row(&local, y, tr("Offene Fenster"), buf);
     y += 18;
 
-    ksnprintf(buf, sizeof(buf), "%u aktiv", (unsigned)thread_count());
-    row(&local, y, "Threads", buf);
+    ksnprintf(buf, sizeof(buf), tr("%u aktiv"), (unsigned)thread_count());
+    row(&local, y, tr("Threads"), buf);
     y += 18;
 
     if (process_count() > 0) {
         struct process *p0 = process_at(0);
 
-        ksnprintf(buf, sizeof(buf), "%u in Ring 3 (%s)",
+        ksnprintf(buf, sizeof(buf), tr("%u in Ring 3 (%s)"),
                   (unsigned)process_count(), p0 ? p0->name : "");
     } else {
-        strlcpy(buf, "keine", sizeof(buf));
+        strlcpy(buf, tr("keine"), sizeof(buf));
     }
-    row(&local, y, "Programme", buf);
+    row(&local, y, tr("Programme"), buf);
     y += 30;
 
-    gfx_text_bold(&local, 16, y, "Datentraeger", COL_SELECT);
+    gfx_text_bold(&local, 16, y, tr("Datentraeger"), COL_SELECT);
     y += 22;
 
     if (block_device_count() == 0) {
-        row(&local, y, "Laufwerk", "keines gefunden");
+        row(&local, y, tr("Laufwerk"), tr("keines gefunden"));
         y += 18;
     } else {
         /* Ein heutiger Rechner hat oft mehrere - NVMe und SATA
@@ -201,11 +202,11 @@ static void sys_paint(struct window *win, struct canvas *c)
             uint64_t mib = d->sector_count * d->sector_size / (1024 * 1024);
 
             if (mib >= 1024)
-                ksnprintf(buf, sizeof(buf), "%s (%u,%u GiB)", d->model,
+                ksnprintf(buf, sizeof(buf), tr("%s (%u,%u GiB)"), d->model,
                           (unsigned)(mib / 1024),
                           (unsigned)((mib % 1024) * 10 / 1024));
             else
-                ksnprintf(buf, sizeof(buf), "%s (%u MiB)", d->model,
+                ksnprintf(buf, sizeof(buf), tr("%s (%u MiB)"), d->model,
                           (unsigned)mib);
             row(&local, y, d->name, buf);
             y += 18;
@@ -216,29 +217,29 @@ static void sys_paint(struct window *win, struct canvas *c)
             uint64_t total = fat_total_bytes(vol);
             uint64_t used  = total - fat_free_bytes(vol);
 
-            ksnprintf(buf, sizeof(buf), "FAT32 \"%s\" unter /Festplatte",
+            ksnprintf(buf, sizeof(buf), tr("FAT32 \"%s\" unter /Festplatte"),
                       fs_disk_name());
-            row(&local, y, "Dateisystem", buf);
+            row(&local, y, tr("Dateisystem"), buf);
             y += 18;
             draw_bar(&local, 176, y, MAX(local.w - 200, 80), used, total,
                      RGB(0xC0, 0x80, 0x30));
             y += 24;
         } else {
-            row(&local, y, "Dateisystem", "nicht eingehaengt");
+            row(&local, y, tr("Dateisystem"), tr("nicht eingehaengt"));
             y += 18;
         }
     }
 
     y += 12;
-    gfx_text_bold(&local, 16, y, "Eingabe", COL_SELECT);
+    gfx_text_bold(&local, 16, y, tr("Eingabe"), COL_SELECT);
     y += 22;
 
-    row(&local, y, "PS/2-Anschluss",
-        ps2_present() ? "Tastatur und Maus" : "nicht vorhanden");
+    row(&local, y, tr("PS/2-Anschluss"),
+        ps2_present() ? tr("Tastatur und Maus") : tr("nicht vorhanden"));
     y += 18;
 
     if (usb_device_count() == 0) {
-        row(&local, y, "USB", "keine Geraete");
+        row(&local, y, "USB", tr("keine Geraete"));
         y += 18;
     } else {
         for (size_t i = 0; i < usb_device_count(); i++) {
@@ -248,23 +249,23 @@ static void sys_paint(struct window *win, struct canvas *c)
             if (!info)
                 continue;
 
-            const char *art = "Geraet";
+            const char *art = tr("Geraet");
 
             switch (info->interface_class) {
             case USB_CLASS_HID:
                 if (info->interface_protocol == HID_PROTOCOL_KEYBOARD)
-                    art = "Tastatur";
+                    art = tr("Tastatur");
                 else if (info->interface_protocol == HID_PROTOCOL_MOUSE)
-                    art = "Maus";
+                    art = tr("Maus");
                 break;
-            case USB_CLASS_STORAGE: art = "Speicher";  break;
-            case 0x09:              art = "Verteiler"; break;
+            case USB_CLASS_STORAGE: art = tr("Speicher");  break;
+            case 0x09:              art = tr("Verteiler"); break;
             default: break;
             }
             ksnprintf(buf, sizeof(buf), "%s, %04x:%04x, %s", art,
                       info->vendor_id, info->product_id,
                       usb_speed_name(info->speed));
-            ksnprintf(label, sizeof(label), "USB-Anschluss %u",
+            ksnprintf(label, sizeof(label), tr("USB-Anschluss %u"),
                       (unsigned)info->port);
             row(&local, y, label, buf);
             y += 18;
@@ -272,19 +273,19 @@ static void sys_paint(struct window *win, struct canvas *c)
     }
 
     y += 12;
-    gfx_text_bold(&local, 16, y, "Netzwerk", COL_SELECT);
+    gfx_text_bold(&local, 16, y, tr("Netzwerk"), COL_SELECT);
     y += 22;
 
     if (!g_netif.up) {
-        row(&local, y, "Karte", "keine gefunden");
+        row(&local, y, tr("Karte"), tr("keine gefunden"));
         return;
     }
 
-    row(&local, y, "Karte", nic_model());
+    row(&local, y, tr("Karte"), nic_model());
     y += 18;
 
     mac_format(&g_netif.mac, buf, sizeof(buf));
-    row(&local, y, "Hardware-Adresse", buf);
+    row(&local, y, tr("Hardware-Adresse"), buf);
     y += 18;
 
     if (net_ready()) {
@@ -292,15 +293,15 @@ static void sys_paint(struct window *win, struct canvas *c)
 
         ip_format(g_netif.ip, ip, sizeof(ip));
         ip_format(g_netif.gateway, gw, sizeof(gw));
-        ksnprintf(buf, sizeof(buf), "%s (Gateway %s)", ip, gw);
-        row(&local, y, "IP-Adresse", buf);
+        ksnprintf(buf, sizeof(buf), tr("%s (Gateway %s)"), ip, gw);
+        row(&local, y, tr("IP-Adresse"), buf);
         y += 18;
 
-        ksnprintf(buf, sizeof(buf), "%u empfangen, %u gesendet",
+        ksnprintf(buf, sizeof(buf), tr("%u empfangen, %u gesendet"),
                   (unsigned)g_netif.rx_packets, (unsigned)g_netif.tx_packets);
-        row(&local, y, "Pakete", buf);
+        row(&local, y, tr("Pakete"), buf);
     } else {
-        row(&local, y, "IP-Adresse", "keine (DHCP ohne Antwort)");
+        row(&local, y, tr("IP-Adresse"), tr("keine (DHCP ohne Antwort)"));
     }
 }
 
@@ -382,11 +383,11 @@ static void about_paint(struct window *win, struct canvas *c)
 
     icon_draw(&local, 16, 16, ICON_COMPUTER, 2);
     gfx_text_bold(&local, 64, 20, "RetroOS", COL_WHITE);
-    gfx_text(&local, 64, 38, "Version 1.0", RGB(0xC0, 0xD8, 0xF0));
+    gfx_text(&local, 64, 38, tr("Version 1.0"), RGB(0xC0, 0xD8, 0xF0));
 
     int32_t y = 80;
     for (size_t i = 0; i < ARRAY_LEN(about_text); i++) {
-        gfx_text(&local, 20, y, about_text[i],
+        gfx_text(&local, 20, y, tr(about_text[i]),
                  i == 0 ? COL_SELECT : COL_TEXT);
         y += FONT_HEIGHT + 2;
     }

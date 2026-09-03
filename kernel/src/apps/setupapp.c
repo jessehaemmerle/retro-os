@@ -20,6 +20,7 @@
 #include "theme.h"
 #include "thread.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define COL_DANGER  RGB(0xA0, 0x10, 0x10)
 #define COL_DONE    RGB(0x10, 0x70, 0x20)
@@ -174,11 +175,11 @@ static void draw_header(struct canvas *c, int32_t w, const char *title,
 
 static void paint_pick(struct setup_ui *ui, struct canvas *c, int32_t w)
 {
-    draw_header(c, w, "RetroOS installieren",
-                "Auf welchen Datentraeger soll das System?");
+    draw_header(c, w, tr("RetroOS installieren"),
+                tr("Auf welchen Datentraeger soll das System?"));
 
     if (ui->row_count == 0) {
-        gfx_text(c, 20, 100, "Es wurde kein Datentraeger gefunden.",
+        gfx_text(c, 20, 100, tr("Es wurde kein Datentraeger gefunden."),
                  COL_DANGER);
         return;
     }
@@ -204,7 +205,7 @@ static void paint_pick(struct setup_ui *ui, struct canvas *c, int32_t w)
         size_text(size, sizeof(size), row->dev->sector_count);
         ksnprintf(line, sizeof(line), "%s - %s (%s)%s", row->dev->name,
                   row->dev->model, size,
-                  row->plan.mode == SETUP_BESIDE ? "  -  daneben" : "");
+                  row->plan.mode == SETUP_BESIDE ? tr("  -  daneben") : "");
         gfx_text(c, r.x + 32, r.y + 6, line, row->usable ? text : dim);
 
         if (row->usable) {
@@ -213,11 +214,11 @@ static void paint_pick(struct setup_ui *ui, struct canvas *c, int32_t w)
             size_text(data, sizeof(data), row->plan.data_count);
             if (row->plan.mode == SETUP_BESIDE) {
                 ksnprintf(plan, sizeof(plan),
-                          "%s freier Platz - alles Vorhandene bleibt", data);
+                          tr("%s freier Platz - alles Vorhandene bleibt"), data);
             } else {
                 size_text(esp, sizeof(esp), row->plan.esp_count);
                 ksnprintf(plan, sizeof(plan),
-                          "alles loeschen: %s Startbereich, %s Ablage",
+                          tr("alles loeschen: %s Startbereich, %s Ablage"),
                           esp, data);
             }
             gfx_text(c, r.x + 32, r.y + 20, plan, dim);
@@ -234,14 +235,14 @@ static void paint_confirm(struct setup_ui *ui, struct canvas *c, int32_t w)
 
     bool beside = row->plan.mode == SETUP_BESIDE;
 
-    draw_header(c, w, beside ? "Daneben einrichten" : "Wirklich?",
-                beside ? "Alles Vorhandene bleibt stehen."
-                       : "Danach ist der Datentraeger leer.");
+    draw_header(c, w, beside ? tr("Daneben einrichten") : tr("Wirklich?"),
+                beside ? tr("Alles Vorhandene bleibt stehen.")
+                       : tr("Danach ist der Datentraeger leer."));
 
     char line[112], size[24];
 
     size_text(size, sizeof(size), row->dev->sector_count);
-    ksnprintf(line, sizeof(line), "Ziel: %s - %s (%s)", row->dev->name,
+    ksnprintf(line, sizeof(line), tr("Ziel: %s - %s (%s)"), row->dev->name,
               row->dev->model, size);
 
     int32_t y = 96;
@@ -257,47 +258,47 @@ static void paint_confirm(struct setup_ui *ui, struct canvas *c, int32_t w)
                       "Platz.", COL_DONE);
         y += 28;
 
-        ksnprintf(line, sizeof(line), "  Ablage        %s - unter /Festplatte",
+        ksnprintf(line, sizeof(line), tr("  Ablage        %s - unter /Festplatte"),
                   data);
         gfx_text(c, 20, y, line, COL_TEXT_DIM);       y += 18;
         gfx_text(c, 20, y,
-                 "  Startbereich  der vorhandene wird mitbenutzt",
+                 tr("  Startbereich  der vorhandene wird mitbenutzt"),
                  COL_TEXT_DIM);
         y += 28;
         gfx_text(c, 20, y,
-                 "Ist der uebliche Startpfad belegt, muss RetroOS im",
+                 tr("Ist der uebliche Startpfad belegt, muss RetroOS im"),
                  COL_TEXT_DIM);
         y += 16;
-        gfx_text(c, 20, y, "Startmenue der Firmware gewaehlt werden.",
+        gfx_text(c, 20, y, tr("Startmenue der Firmware gewaehlt werden."),
                  COL_TEXT_DIM);
         return;
     }
 
-    gfx_text_bold(c, 20, y, "Alles, was darauf steht, geht verloren.",
+    gfx_text_bold(c, 20, y, tr("Alles, was darauf steht, geht verloren."),
                   COL_DANGER);                        y += 28;
 
-    gfx_text(c, 20, y, "RetroOS legt zwei Abschnitte an:", COL_TEXT);
+    gfx_text(c, 20, y, tr("RetroOS legt zwei Abschnitte an:"), COL_TEXT);
     y += 20;
 
     size_text(esp, sizeof(esp), row->plan.esp_count);
 
-    ksnprintf(line, sizeof(line), "  Startbereich  %s - Bootloader und Kernel",
+    ksnprintf(line, sizeof(line), tr("  Startbereich  %s - Bootloader und Kernel"),
               esp);
     gfx_text(c, 20, y, line, COL_TEXT_DIM);           y += 18;
-    ksnprintf(line, sizeof(line), "  Ablage        %s - unter /Festplatte",
+    ksnprintf(line, sizeof(line), tr("  Ablage        %s - unter /Festplatte"),
               data);
     gfx_text(c, 20, y, line, COL_TEXT_DIM);           y += 28;
 
     gfx_text(c, 20, y,
-             "Der Rechner startet danach von dieser Platte - ueber UEFI",
+             tr("Der Rechner startet danach von dieser Platte - ueber UEFI"),
              COL_TEXT_DIM);
     y += 16;
-    gfx_text(c, 20, y, "wie ueber BIOS.", COL_TEXT_DIM);
+    gfx_text(c, 20, y, tr("wie ueber BIOS."), COL_TEXT_DIM);
 }
 
 static void paint_work(struct setup_ui *ui, struct canvas *c, int32_t w)
 {
-    draw_header(c, w, "Installation laeuft", "Bitte nicht ausschalten.");
+    draw_header(c, w, tr("Installation laeuft"), tr("Bitte nicht ausschalten."));
 
     struct rect bar = rect_make(20, 120, w - 40, 22);
 
@@ -322,24 +323,24 @@ static void paint_work(struct setup_ui *ui, struct canvas *c, int32_t w)
 
 static void paint_done(struct setup_ui *ui, struct canvas *c, int32_t w)
 {
-    draw_header(c, w, "Fertig", "RetroOS liegt jetzt auf der Platte.");
+    draw_header(c, w, tr("Fertig"), tr("RetroOS liegt jetzt auf der Platte."));
 
     int32_t y = 100;
 
-    gfx_text_bold(c, 20, y, "Die Installation ist abgeschlossen.", COL_DONE);
+    gfx_text_bold(c, 20, y, tr("Die Installation ist abgeschlossen."), COL_DONE);
     y += 30;
-    gfx_text(c, 20, y, "Startmedium entfernen und neu starten - der",
+    gfx_text(c, 20, y, tr("Startmedium entfernen und neu starten - der"),
              COL_TEXT);
     y += 18;
-    gfx_text(c, 20, y, "Rechner bootet dann von der Festplatte.", COL_TEXT);
+    gfx_text(c, 20, y, tr("Rechner bootet dann von der Festplatte."), COL_TEXT);
     y += 30;
-    gfx_text(c, 20, y, "Dateien unter /Festplatte bleiben ab jetzt liegen.",
+    gfx_text(c, 20, y, tr("Dateien unter /Festplatte bleiben ab jetzt liegen."),
              COL_TEXT_DIM);
     y += 18;
-    gfx_text(c, 20, y, "Konten legst du unter \"Benutzer\" an - ab dann",
+    gfx_text(c, 20, y, tr("Konten legst du unter \"Benutzer\" an - ab dann"),
              COL_TEXT_DIM);
     y += 16;
-    gfx_text(c, 20, y, "fragt RetroOS beim Start nach Name und Passwort.",
+    gfx_text(c, 20, y, tr("fragt RetroOS beim Start nach Name und Passwort."),
              COL_TEXT_DIM);
 
     if (ui->chosen >= 0 &&
@@ -347,26 +348,26 @@ static void paint_done(struct setup_ui *ui, struct canvas *c, int32_t w)
         !ui->rows[ui->chosen].plan.fallback_free) {
         y += 26;
         gfx_text(c, 20, y,
-                 "Der uebliche Startpfad war belegt: RetroOS steht unter",
+                 tr("Der uebliche Startpfad war belegt: RetroOS steht unter"),
                  COL_DANGER);
         y += 16;
         gfx_text(c, 20, y,
-                 "EFI\\RETROOS und muss im Startmenue gewaehlt werden.",
+                 tr("EFI\\RETROOS und muss im Startmenue gewaehlt werden."),
                  COL_DANGER);
     }
 }
 
 static void paint_error(struct setup_ui *ui, struct canvas *c, int32_t w)
 {
-    draw_header(c, w, "Fehlgeschlagen", "Die Platte wurde nicht fertig.");
+    draw_header(c, w, tr("Fehlgeschlagen"), tr("Die Platte wurde nicht fertig."));
 
-    gfx_text_bold(c, 20, 100, "Die Installation ist gescheitert:",
+    gfx_text_bold(c, 20, 100, tr("Die Installation ist gescheitert:"),
                   COL_DANGER);
     gfx_text(c, 20, 128, ui->error, COL_TEXT);
     gfx_text(c, 20, 164,
-             "Der Datentraeger ist jetzt in einem halben Zustand.",
+             tr("Der Datentraeger ist jetzt in einem halben Zustand."),
              COL_TEXT_DIM);
-    gfx_text(c, 20, 182, "Ein zweiter Versuch legt ihn neu an.",
+    gfx_text(c, 20, 182, tr("Ein zweiter Versuch legt ihn neu an."),
              COL_TEXT_DIM);
 }
 
@@ -377,11 +378,11 @@ static void button_labels(const struct setup_ui *ui, const char **left,
     switch (ui->phase) {
     case PHASE_PICK:
         *left = NULL;
-        *right = "Weiter";
+        *right = tr("Weiter");
         break;
     case PHASE_CONFIRM:
-        *left = "Zurueck";
-        *right = "Installieren";
+        *left = tr("Zurueck");
+        *right = tr("Installieren");
         break;
     case PHASE_WORK:
         *left = NULL;
@@ -389,11 +390,11 @@ static void button_labels(const struct setup_ui *ui, const char **left,
         break;
     case PHASE_DONE:
         *left = NULL;
-        *right = "Neu starten";
+        *right = tr("Neu starten");
         break;
     case PHASE_ERROR:
         *left = NULL;
-        *right = "Von vorn";
+        *right = tr("Von vorn");
         break;
     }
 }
@@ -443,10 +444,10 @@ static void start_install(struct setup_ui *ui)
     ui->percent = 0;
     ui->finished = false;
     ui->failed = false;
-    strlcpy(ui->status, "Wird vorbereitet ...", sizeof(ui->status));
+    strlcpy(ui->status, tr("Wird vorbereitet ..."), sizeof(ui->status));
 
     if (!thread_create("installation", setup_worker, ui, PRIO_NORMAL)) {
-        strlcpy(ui->error, "Der Arbeitsthread liess sich nicht starten.",
+        strlcpy(ui->error, tr("Der Arbeitsthread liess sich nicht starten."),
                 sizeof(ui->error));
         ui->phase = PHASE_ERROR;
     }
@@ -560,7 +561,7 @@ void app_setup(void)
     }
 
     if (!setup_sources_ready()) {
-        dialog_message("RetroOS installieren",
+        dialog_message(tr("RetroOS installieren"),
                        "Von diesem Startmedium laesst sich nicht "
                        "installieren.\nNoetig ist das RetroOS-Abbild "
                        "als ISO oder auf einem USB-Stick.");
@@ -576,7 +577,7 @@ void app_setup(void)
     ui->hover = -1;
     collect_targets(ui);
 
-    struct window *win = gui_create_window("RetroOS installieren", 0, 0,
+    struct window *win = gui_create_window(tr("RetroOS installieren"), 0, 0,
                                            560, 400, WF_CENTER, ICON_DISK);
     if (!win) {
         kfree(ui);

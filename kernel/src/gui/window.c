@@ -22,6 +22,7 @@
 #include "net.h"
 #include "lock.h"
 #include "thread.h"
+#include "lang.h"
 #include "theme.h"
 
 #define CURSOR_W 12
@@ -286,7 +287,7 @@ void gui_open_menu(int32_t x, int32_t y, const struct menu_item *items,
             continue;
         }
         height += MENU_ITEM_H;
-        int32_t w = gfx_text_width(items[i].label) + 56;
+        int32_t w = gfx_text_width(tr(items[i].label)) + 56;
         if (w > width)
             width = w;
     }
@@ -359,7 +360,7 @@ static void menu_paint(struct canvas *c)
         uint32_t color = !it->enabled ? COL_TEXT_DIM
                        : hovered      ? COL_SELECT_TEXT
                                       : COL_TEXT;
-        gfx_text(c, menu_rect.x + 28, row + 2, it->label, color);
+        gfx_text(c, menu_rect.x + 28, row + 2, tr(it->label), color);
         row += MENU_ITEM_H;
     }
 }
@@ -429,7 +430,7 @@ static void window_paint(struct canvas *c, struct window *win, bool focused)
 
     int32_t text_room = title.w - 26 - buttons * (TITLEBAR_HEIGHT - 4) - 8;
     gfx_set_clip(c, rect_intersect(c->clip, title));
-    gfx_text_clipped(c, title.x + 24, title.y + 3, win->title,
+    gfx_text_clipped(c, title.x + 24, title.y + 3, tr(win->title),
                      COL_TITLE_TEXT, text_room);
     gfx_reset_clip(c);
 

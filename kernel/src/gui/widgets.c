@@ -9,11 +9,17 @@
 #include "widgets.h"
 #include "font.h"
 #include "kstring.h"
+#include "lang.h"
 #include "theme.h"
 
+/* Die Beschriftung wird hier uebersetzt und nicht beim Aufrufer:
+ * Knoepfe gibt es in jedem Fenster, und sie beim Zeichnen zu
+ * uebersetzen heisst, dass ein Sprachwechsel sofort durchschlaegt -
+ * auch in Fenstern, die schon offen sind. */
 void widget_button(struct canvas *c, struct rect r, const char *label,
                    bool pressed, bool enabled)
 {
+    label = tr(label);
     gfx_fill(c, r, COL_FACE);
     gfx_bevel(c, r, !pressed);
 
@@ -33,6 +39,7 @@ void widget_button(struct canvas *c, struct rect r, const char *label,
 void widget_icon_button(struct canvas *c, struct rect r, enum icon_id icon,
                         const char *label, bool pressed, bool enabled)
 {
+    label = tr(label);
     gfx_fill(c, r, COL_FACE);
     gfx_bevel(c, r, !pressed);
 
@@ -138,6 +145,8 @@ int32_t widget_vscroll_click(struct rect r, int32_t y,
 void widget_statusbar(struct canvas *c, struct rect r, const char *left,
                       const char *right)
 {
+    left = tr(left);
+    right = tr(right);
     gfx_fill(c, r, COL_FACE);
     gfx_hline(c, r.x, r.y, r.w, COL_HILIGHT);
 

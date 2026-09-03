@@ -12,6 +12,7 @@
 #include "mm.h"
 #include "theme.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define ED_TOOLBAR_H 34
 #define ED_STATUS_H  24
@@ -144,8 +145,8 @@ static void ed_update_title(struct window *win, struct ed_state *st)
 {
     char title[WIN_TITLE_MAX + 1];
 
-    ksnprintf(title, sizeof(title), "Editor - %s%s",
-              st->file ? st->file->name : "Unbenannt",
+    ksnprintf(title, sizeof(title), tr("Editor - %s%s"),
+              st->file ? st->file->name : tr("Unbenannt"),
               st->modified ? " *" : "");
     gui_set_title(win, title);
 }
@@ -157,24 +158,24 @@ static void ed_save(struct window *win)
     if (st->file && !fs_node_alive(st->file)) {
         st->file = NULL;
         ed_update_title(win, st);
-        dialog_message("Speichern",
+        dialog_message(tr("Speichern"),
                        "Die Datei wurde inzwischen geloescht. "
                        "Der Text ist noch da, hat aber kein Ziel mehr.");
         return;
     }
 
     if (!st->file) {
-        dialog_message("Speichern", "Zu diesem Text gehoert keine Datei.");
+        dialog_message(tr("Speichern"), tr("Zu diesem Text gehoert keine Datei."));
         return;
     }
     if (st->file->readonly) {
-        dialog_message("Speichern",
-                       "Diese Datei gehoert zum System und ist schreibgeschuetzt.");
+        dialog_message(tr("Speichern"),
+                       tr("Diese Datei gehoert zum System und ist schreibgeschuetzt."));
         return;
     }
 
     if (!fs_write(st->file, st->text, st->len)) {
-        dialog_message("Speichern", "Die Datei konnte nicht geschrieben werden.");
+        dialog_message(tr("Speichern"), tr("Die Datei konnte nicht geschrieben werden."));
         return;
     }
 
@@ -199,7 +200,7 @@ static void ed_paint(struct window *win, struct canvas *c)
     gfx_fill(&local, rect_make(0, 0, local.w, local.h), COL_FACE);
 
     widget_toolbar(&local, rect_make(0, 0, local.w, ED_TOOLBAR_H));
-    widget_icon_button(&local, ed_button_rect(0), ICON_DISK, "Speichern",
+    widget_icon_button(&local, ed_button_rect(0), ICON_DISK, tr("Speichern"),
                        st->pressed == ED_SAVE, st->file && !st->file->readonly);
 
     gfx_fill(&local, area, COL_FIELD);
@@ -261,10 +262,10 @@ static void ed_paint(struct window *win, struct canvas *c)
                    st->scroll, st->line_count, rows);
 
     char left[96], right[48];
-    ksnprintf(left, sizeof(left), "Zeile %d von %d, Spalte %d",
+    ksnprintf(left, sizeof(left), tr("Zeile %d von %d, Spalte %d"),
               cur_line + 1, st->line_count, cur_col + 1);
-    ksnprintf(right, sizeof(right), "%u Zeichen%s",
-              (unsigned)st->len, st->modified ? " (geaendert)" : "");
+    ksnprintf(right, sizeof(right), tr("%u Zeichen%s"),
+              (unsigned)st->len, st->modified ? tr(" (geaendert)") : "");
     widget_statusbar(&local, rect_make(0, local.h - ED_STATUS_H,
                                        local.w, ED_STATUS_H), left, right);
 }
@@ -610,7 +611,7 @@ static struct window *editor_new(struct fs_node *file)
 
     if (file && !fs_load(file)) {
         gui_close_window(win);
-        dialog_message("Editor", "Die Datei laesst sich nicht lesen.");
+        dialog_message(tr("Editor"), tr("Die Datei laesst sich nicht lesen."));
         return NULL;
     }
 

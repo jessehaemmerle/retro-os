@@ -35,6 +35,7 @@
 #include "thread.h"
 #include "theme.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define BR_TOOLBAR_H 34
 #define BR_STATUS_H  24
@@ -559,7 +560,7 @@ static void load_start_page(struct br_state *st)
 {
     reset_document(st);
     html_build(&st->doc, start_page, sizeof(start_page) - 1);
-    strlcpy(st->status, "Startseite", sizeof(st->status));
+    strlcpy(st->status, tr("Startseite"), sizeof(st->status));
     st->security[0] = '\0';
 }
 
@@ -568,12 +569,12 @@ static bool load_local(struct br_state *st, const char *path)
     struct fs_node *node = fs_lookup(fs_root(), path);
 
     if (!node || node->type != FS_FILE) {
-        ksnprintf(st->status, sizeof(st->status), "Datei nicht gefunden: %s",
+        ksnprintf(st->status, sizeof(st->status), tr("Datei nicht gefunden: %s"),
                   path);
         return false;
     }
     if (!fs_load(node)) {
-        strlcpy(st->status, "Die Datei laesst sich nicht lesen.",
+        strlcpy(st->status, tr("Die Datei laesst sich nicht lesen."),
                 sizeof(st->status));
         return false;
     }
@@ -589,7 +590,7 @@ static bool load_local(struct br_state *st, const char *path)
     else
         html_build_plain(&st->doc, (const char *)node->data, node->size);
 
-    ksnprintf(st->status, sizeof(st->status), "%s - %u Byte", node->name,
+    ksnprintf(st->status, sizeof(st->status), tr("%s - %u Byte"), node->name,
               (unsigned)node->size);
     st->security[0] = '\0';
     return true;
@@ -701,7 +702,7 @@ static bool save_download(struct br_state *st,
     if (!file || !fs_write(file, response->body, response->body_length)) {
         if (file)
             fs_remove(file);
-        strlcpy(st->status, "Zu wenig Platz fuer den Download.",
+        strlcpy(st->status, tr("Zu wenig Platz fuer den Download."),
                 sizeof(st->status));
         return false;
     }
@@ -712,9 +713,9 @@ static bool save_download(struct br_state *st,
     fs_path(file, path, sizeof(path));
     fs_format_size(size, sizeof(size), response->body_length);
 
-    ksnprintf(st->status, sizeof(st->status), "Gespeichert: %s (%s)%s",
+    ksnprintf(st->status, sizeof(st->status), tr("Gespeichert: %s (%s)%s"),
               path, size,
-              response->truncated ? " - unvollstaendig!" : "");
+              response->truncated ? tr(" - unvollstaendig!") : "");
     return true;
 }
 
@@ -746,7 +747,7 @@ static bool finish_http(struct br_state *st)
     if (!st->job.ok) {
         strlcpy(st->status, response->error[0]
                     ? response->error
-                    : "Die Seite konnte nicht geladen werden.",
+                    : tr("Die Seite konnte nicht geladen werden."),
                 sizeof(st->status));
         return false;
     }
@@ -760,11 +761,11 @@ static bool finish_http(struct br_state *st)
         html_build(&st->doc, response->body, response->body_length);
 
     strlcpy(st->security, response->security[0] ? response->security
-                                                : "unverschluesselt",
+                                                : tr("unverschluesselt"),
             sizeof(st->security));
     ksnprintf(st->status, sizeof(st->status), "%d - %u Byte%s - %s - %s",
               response->status, (unsigned)response->body_length,
-              response->truncated ? " (unvollstaendig)" : "",
+              response->truncated ? tr(" (unvollstaendig)") : "",
               response->content_type, st->security);
 
     http_response_free(response);
@@ -857,7 +858,7 @@ static bool post_next_resource(struct window *win)
                 st->resources[k].state == RES_FAILED)
                 done++;
         ksnprintf(st->status, sizeof(st->status),
-                  "Lade Bestandteil %u von %u ...",
+                  tr("Lade Bestandteil %u von %u ..."),
                   (unsigned)(done + 1), (unsigned)st->resource_count);
         return true;
     }
@@ -872,7 +873,7 @@ static void document_ready(struct window *win)
     st->phase = PHASE_FERTIG;
     rebuild_page(win);
 
-    ksnprintf(title, sizeof(title), "Browser - %s",
+    ksnprintf(title, sizeof(title), tr("Browser - %s"),
               st->doc.title[0] ? st->doc.title : st->url);
     gui_set_title(win, title);
 
@@ -911,7 +912,7 @@ static void do_load(struct window *win, const char *url)
         if (!st->job.ok)
             strlcpy(st->status, st->job.response.error[0]
                         ? st->job.response.error
-                        : "Der Download ist fehlgeschlagen.",
+                        : tr("Der Download ist fehlgeschlagen."),
                     sizeof(st->status));
         else
             save_download(st, &st->job.response, url);
@@ -962,7 +963,7 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
     }
     if (strncasecmp(url, "mailto:", 7) == 0) {
         ksnprintf(st->status, sizeof(st->status),
-                  "Nachrichten kann RetroOS nicht verschicken: %s", url + 7);
+                  tr("Nachrichten kann RetroOS nicht verschicken: %s"), url + 7);
         gui_invalidate();
         return;
     }
@@ -993,7 +994,7 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
     }
 
     if (!net_ready()) {
-        strlcpy(st->status, "Keine Netzwerkverbindung.", sizeof(st->status));
+        strlcpy(st->status, tr("Keine Netzwerkverbindung."), sizeof(st->status));
         st->phase = PHASE_FERTIG;
         gui_invalidate();
         return;
@@ -1003,7 +1004,7 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
         st->worker = thread_create("browser", browser_worker, st, PRIO_NORMAL);
 
     if (!st->worker) {
-        strlcpy(st->status, "Kein freier Arbeits-Thread.", sizeof(st->status));
+        strlcpy(st->status, tr("Kein freier Arbeits-Thread."), sizeof(st->status));
         gui_invalidate();
         return;
     }
@@ -1013,7 +1014,7 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
     st->job.state = JOB_REQUESTED;
     wake_one(&st->job);
 
-    strlcpy(st->status, "Lade ...", sizeof(st->status));
+    strlcpy(st->status, tr("Lade ..."), sizeof(st->status));
     st->phase = PHASE_SEITE;
     gui_invalidate();
 }
@@ -1127,7 +1128,7 @@ static void paint_fragment(struct canvas *c, struct br_state *st,
         } else {
             gfx_frame(c, r, COL_PLACE);
             gfx_text_clipped(c, r.x + 4, r.y + MAX(r.h / 2 - 8, 2),
-                             f->text ? f->text : "Bild", COL_PLACE,
+                             f->text ? f->text : tr("Bild"), COL_PLACE,
                              MAX(r.w - 8, 8));
         }
         break;
@@ -1202,14 +1203,14 @@ static void paint_page(struct window *win, struct canvas *c)
 
     if (st->phase == PHASE_SEITE || st->phase == PHASE_BESTANDTEILE) {
         gfx_text_sized(&page, area.x + BR_MARGIN, area.y + BR_MARGIN,
-                       st->phase == PHASE_SEITE ? "Lade ..."
-                                                : "Lade Bestandteile ...",
+                       st->phase == PHASE_SEITE ? tr("Lade ...")
+                                                : tr("Lade Bestandteile ..."),
                        COL_TEXT_DIM, 24, true, false, 0);
         if (st->layout.count == 0)
             return;
     } else if (st->layout.count == 0) {
         gfx_text(&page, area.x + BR_MARGIN, area.y + BR_MARGIN,
-                 "Keine Seite geladen.", COL_TEXT_DIM);
+                 tr("Keine Seite geladen."), COL_TEXT_DIM);
         return;
     }
 
@@ -1265,7 +1266,7 @@ static void br_paint(struct window *win, struct canvas *c)
                                                        : -1,
                      st->address_focus);
     }
-    widget_button(&local, go_rect(win), "Los", st->pressed == BR_GO, true);
+    widget_button(&local, go_rect(win), tr("Los"), st->pressed == BR_GO, true);
 
     paint_page(win, &local);
 
@@ -1280,7 +1281,7 @@ static void br_paint(struct window *win, struct canvas *c)
     /* Statuszeile */
     char right[64];
 
-    ksnprintf(right, sizeof(right), "%u Stuecke",
+    ksnprintf(right, sizeof(right), tr("%u Stuecke"),
               (unsigned)st->layout.count);
     widget_statusbar(&local, rect_make(0, local.h - BR_STATUS_H,
                                        local.w, BR_STATUS_H),
@@ -1305,18 +1306,18 @@ static void browser_download(struct window *win, const char *url)
 
     if (strncasecmp(url, "http://", 7) != 0 &&
         strncasecmp(url, "https://", 8) != 0) {
-        strlcpy(st->status, "Herunterladen geht nur aus dem Netz.",
+        strlcpy(st->status, tr("Herunterladen geht nur aus dem Netz."),
                 sizeof(st->status));
         gui_invalidate();
         return;
     }
     if (!net_ready()) {
-        strlcpy(st->status, "Keine Netzwerkverbindung.", sizeof(st->status));
+        strlcpy(st->status, tr("Keine Netzwerkverbindung."), sizeof(st->status));
         gui_invalidate();
         return;
     }
     if (st->job.state != JOB_IDLE) {
-        strlcpy(st->status, "Es laeuft schon ein Auftrag.", sizeof(st->status));
+        strlcpy(st->status, tr("Es laeuft schon ein Auftrag."), sizeof(st->status));
         gui_invalidate();
         return;
     }
@@ -1324,7 +1325,7 @@ static void browser_download(struct window *win, const char *url)
     if (!st->worker)
         st->worker = thread_create("browser", browser_worker, st, PRIO_NORMAL);
     if (!st->worker) {
-        strlcpy(st->status, "Kein freier Arbeits-Thread.", sizeof(st->status));
+        strlcpy(st->status, tr("Kein freier Arbeits-Thread."), sizeof(st->status));
         gui_invalidate();
         return;
     }
@@ -1335,7 +1336,7 @@ static void browser_download(struct window *win, const char *url)
     st->job.state = JOB_REQUESTED;
     wake_one(&st->job);
 
-    ksnprintf(st->status, sizeof(st->status), "Lade herunter: %s", url);
+    ksnprintf(st->status, sizeof(st->status), tr("Lade herunter: %s"), url);
     st->phase = PHASE_SEITE;
     gui_invalidate();
 }
@@ -1388,7 +1389,7 @@ static void copy_page_text(struct window *win)
     clipboard_set(buffer, strlen(buffer));
     kfree(buffer);
 
-    ksnprintf(st->status, sizeof(st->status), "Seitentext kopiert (%u Zeichen)",
+    ksnprintf(st->status, sizeof(st->status), tr("Seitentext kopiert (%u Zeichen)"),
               (unsigned)strlen(clipboard_get(NULL) ? clipboard_get(NULL) : ""));
     gui_invalidate();
 }

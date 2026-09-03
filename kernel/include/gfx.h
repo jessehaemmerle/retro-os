@@ -45,6 +45,8 @@ void gfx_pixel(struct canvas *c, int32_t x, int32_t y, uint32_t color);
  * wird gemischt - das brauchen die weichen Kanten der Symbole. */
 void gfx_blend(struct canvas *c, int32_t x, int32_t y, uint32_t argb);
 void gfx_fill(struct canvas *c, struct rect r, uint32_t color);
+/* Wie gfx_fill, aber die oberen acht Bit sagen, wie deckend es wird. */
+void gfx_fill_blend(struct canvas *c, struct rect r, uint32_t argb);
 void gfx_frame(struct canvas *c, struct rect r, uint32_t color);
 void gfx_hline(struct canvas *c, int32_t x, int32_t y, int32_t len, uint32_t color);
 void gfx_vline(struct canvas *c, int32_t x, int32_t y, int32_t len, uint32_t color);

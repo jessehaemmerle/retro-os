@@ -10,7 +10,9 @@
 #include "power.h"
 #include "user.h"
 #include "rtc.h"
+#include "lang.h"
 #include "theme.h"
+#include "wallpaper.h"
 
 #define ICON_CELL_W    104
 #define ICON_CELL_H    88
@@ -94,8 +96,17 @@ static void paint_wallpaper(struct canvas *c)
 
     uint32_t top, bottom;
 
+    /* Der Verlauf wird immer gemalt, auch wenn ein Bild darueber
+     * kommt: Bilder duerfen durchsichtig sein, und was durchscheint,
+     * soll der Verlauf sein und nicht das Bild vom letzten
+     * Bildaufbau. */
     background_colors(config_current()->background, &top, &bottom);
     gfx_gradient_v(c, area, top, bottom);
+
+    /* Ein eigenes Bild ersetzt das Rautenmuster: Wer sein Foto auf den
+     * Schreibtisch legt, will kein Muster darueber. */
+    if (wallpaper_draw(c, area))
+        return;
 
     /* Ein dezentes Rautenmuster - kostet kaum Rechenzeit und nimmt der
      * Flaeche die Leere. */
@@ -145,7 +156,7 @@ static void paint_desktop_icons(struct canvas *c)
                   app->icon_now ? app->icon_now() : app->icon, 2);
 
         char    line[2][24];
-        int32_t lines = wrap_label(app->name, cell.w, line);
+        int32_t lines = wrap_label(tr(app->name), cell.w, line);
         int32_t ty = cell.y + 38;
 
         for (int32_t l = 0; l < lines; l++) {
@@ -255,7 +266,7 @@ static void paint_start_button(struct canvas *c)
     gfx_fill(c, rect_make(lx,     ly + 7, 6, 6), RGB(0x40, 0x80, 0xD0));
     gfx_fill(c, rect_make(lx + 7, ly + 7, 6, 6), RGB(0xE8, 0xC0, 0x40));
 
-    gfx_text_bold(c, r.x + 30 + off, r.y + 4 + off, "Start", COL_TEXT);
+    gfx_text_bold(c, r.x + 30 + off, r.y + 4 + off, tr("Start"), COL_TEXT);
 }
 
 static void paint_taskbar(struct canvas *c)
@@ -287,7 +298,7 @@ static void paint_taskbar(struct canvas *c)
         int32_t off = active ? 1 : 0;
         icon_draw(c, r.x + 4 + off, r.y + 3 + off, w->icon, 1);
         gfx_set_clip(c, rect_intersect(c->clip, r));
-        gfx_text_clipped(c, r.x + 24 + off, r.y + 4 + off, w->title,
+        gfx_text_clipped(c, r.x + 24 + off, r.y + 4 + off, tr(w->title),
                          COL_TEXT, r.w - 30);
         gfx_reset_clip(c);
     }
@@ -362,24 +373,24 @@ static void open_start_menu(void)
     /* Die Sitzung steht zwischen den Programmen und dem Ausschalten -
      * dort sucht man sie, und dort tut ein Fehlgriff am wenigsten weh. */
     items[n++] = (struct menu_item){ .label = NULL };
-    items[n++] = (struct menu_item){ .label = "Sperren", .icon = ICON_LOCK,
+    items[n++] = (struct menu_item){ .label = tr("Sperren"), .icon = ICON_LOCK,
                                      .has_icon = true,
                                      .enabled = session_user() != NULL,
                                      .id = MENU_ID_LOCK };
-    items[n++] = (struct menu_item){ .label = "Benutzer wechseln", .icon = ICON_USERS,
+    items[n++] = (struct menu_item){ .label = tr("Benutzer wechseln"), .icon = ICON_USERS,
                                      .has_icon = true,
                                      .enabled = user_store_exists(),
                                      .id = MENU_ID_SWITCH };
-    items[n++] = (struct menu_item){ .label = "Abmelden", .icon = ICON_LOGOUT,
+    items[n++] = (struct menu_item){ .label = tr("Abmelden"), .icon = ICON_LOGOUT,
                                      .has_icon = true,
                                      .enabled = user_store_exists(),
                                      .id = MENU_ID_LOGOUT };
 
     items[n++] = (struct menu_item){ .label = NULL };
-    items[n++] = (struct menu_item){ .label = "Neu starten", .icon = ICON_SETTINGS,
+    items[n++] = (struct menu_item){ .label = tr("Neu starten"), .icon = ICON_SETTINGS,
                                      .has_icon = true, .enabled = true,
                                      .id = MENU_ID_REBOOT };
-    items[n++] = (struct menu_item){ .label = "Herunterfahren", .icon = ICON_COMPUTER,
+    items[n++] = (struct menu_item){ .label = tr("Herunterfahren"), .icon = ICON_COMPUTER,
                                      .has_icon = true, .enabled = true,
                                      .id = MENU_ID_SHUTDOWN };
 

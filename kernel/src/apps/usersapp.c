@@ -22,6 +22,7 @@
 #include "user.h"
 #include "vfs.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define ROW_H      36
 #define LIST_W     330
@@ -85,14 +86,14 @@ static const char *button_label(struct users_ui *ui, int id)
     struct user *u = selected_user(ui);
 
     switch (id) {
-    case BTN_NEW:      return "Neuer Benutzer";
-    case BTN_PASSWORD: return "Passwort aendern";
-    case BTN_ADMIN:    return u && user_is_admin(u) ? "Verwalterrecht nehmen"
-                                            : "Zum Verwalter machen";
-    case BTN_LOCK:     return u && u->locked ? "Anmeldung freigeben"
-                                             : "Anmeldung sperren";
-    case BTN_DELETE:   return "Benutzer entfernen";
-    default:           return "Speichern";
+    case BTN_NEW:      return tr("Neuer Benutzer");
+    case BTN_PASSWORD: return tr("Passwort aendern");
+    case BTN_ADMIN:    return u && user_is_admin(u) ? tr("Verwalterrecht nehmen")
+                                            : tr("Zum Verwalter machen");
+    case BTN_LOCK:     return u && u->locked ? tr("Anmeldung freigeben")
+                                             : tr("Anmeldung sperren");
+    case BTN_DELETE:   return tr("Benutzer entfernen");
+    default:           return tr("Speichern");
     }
 }
 
@@ -129,7 +130,7 @@ static void paint_details(struct canvas *c, struct window *win,
     struct user *u = selected_user(ui);
 
     if (!u) {
-        gfx_text(c, SIDE_X, 16, "Kein Benutzer ausgewaehlt.", COL_TEXT_DIM);
+        gfx_text(c, SIDE_X, 16, tr("Kein Benutzer ausgewaehlt."), COL_TEXT_DIM);
         return;
     }
 
@@ -139,16 +140,16 @@ static void paint_details(struct canvas *c, struct window *win,
     gfx_text_bold(c, SIDE_X + 40, 14, u->name, COL_TEXT);
     gfx_text(c, SIDE_X + 40, 30, u->full, COL_TEXT_DIM);
 
-    ksnprintf(line, sizeof(line), "Nummer %u, Gruppe %s%s%s",
+    ksnprintf(line, sizeof(line), tr("Nummer %u, Gruppe %s%s%s"),
               (unsigned)u->uid, group_name_of(u->gid),
-              u->nopass ? ", ohne Passwort" : "",
-              u->locked ? ", gesperrt" : "");
+              u->nopass ? tr(", ohne Passwort") : "",
+              u->locked ? tr(", gesperrt") : "");
     gfx_text(c, SIDE_X, 52, line, COL_TEXT_DIM);
 
     char rechte[64];
 
     caps_text(u->caps, rechte, sizeof(rechte));
-    ksnprintf(line, sizeof(line), "Rolle %s - darf %s",
+    ksnprintf(line, sizeof(line), tr("Rolle %s - darf %s"),
               u->role[0] ? u->role : caps_role(u->caps), rechte);
     gfx_text_clipped(c, SIDE_X, 68, line, COL_TEXT_DIM,
                      gui_client_width(win) - SIDE_X - 12);
@@ -208,14 +209,14 @@ static void users_paint(struct window *win, struct canvas *c)
         widget_button(&local, button_rect(win, i), button_label(ui, i),
                       ui->hover == -100 - i, button_enabled(ui, i));
 
-    widget_button(&local, save_rect(win), "Speichern",
+    widget_button(&local, save_rect(win), tr("Speichern"),
                   ui->hover == -100 - BTN_SAVE, button_enabled(ui, BTN_SAVE));
 
     if (ui->status[0])
         gfx_text_clipped(&local, 10, local.h - 36, ui->status, COL_TEXT_DIM,
                          LIST_W);
     if (ui->changed)
-        gfx_text(&local, 10, local.h - 20, "Es gibt ungespeicherte Aenderungen.",
+        gfx_text(&local, 10, local.h - 20, tr("Es gibt ungespeicherte Aenderungen."),
                  COL_ACCENT);
 }
 
@@ -232,14 +233,14 @@ static void say(struct users_ui *ui, const char *text)
 static void do_save(struct users_ui *ui)
 {
     if (!fs_disk_mounted()) {
-        say(ui, "Ohne Festplatte gilt das nur bis zum Ausschalten.");
+        say(ui, tr("Ohne Festplatte gilt das nur bis zum Ausschalten."));
         ui->changed = false;
         return;
     }
     bool first = !user_store_exists();
 
     if (!user_save() || !perm_store_save()) {
-        say(ui, "Die Datei liess sich nicht schreiben.");
+        say(ui, tr("Die Datei liess sich nicht schreiben."));
         return;
     }
 
@@ -255,14 +256,14 @@ static void do_save(struct users_ui *ui)
             char text[96];
 
             ksnprintf(text, sizeof(text),
-                      "Gespeichert - aber %s ist Verwalter ohne Passwort.",
+                      tr("Gespeichert - aber %s ist Verwalter ohne Passwort."),
                       u->name);
             say(ui, text);
             return;
         }
     }
 
-    say(ui, first ? "Gespeichert. Ab dem naechsten Start wird angemeldet."
+    say(ui, first ? tr("Gespeichert. Ab dem naechsten Start wird angemeldet.")
                   : "Gespeichert in " USER_PATH);
 }
 
@@ -283,14 +284,14 @@ static void new_password_entered(const char *text, void *user)
     ui->pending[0] = '\0';
 
     if (!u) {
-        say(ui, error[0] ? error : "Der Benutzer liess sich nicht anlegen.");
+        say(ui, error[0] ? error : tr("Der Benutzer liess sich nicht anlegen."));
         return;
     }
 
     user_ensure_home(u);
     ui->selected = u->uid;
     ui->changed  = true;
-    say(ui, "Angelegt. Zum Behalten speichern.");
+    say(ui, tr("Angelegt. Zum Behalten speichern."));
 }
 
 static void new_name_entered(const char *text, void *user)
@@ -303,8 +304,8 @@ static void new_name_entered(const char *text, void *user)
         return;
 
     strlcpy(ui->pending, text, sizeof(ui->pending));
-    dialog_password("Neuer Benutzer",
-                    "Passwort fuer den neuen Benutzer (leer heisst: keines):",
+    dialog_password(tr("Neuer Benutzer"),
+                    tr("Passwort fuer den neuen Benutzer (leer heisst: keines):"),
                     new_password_entered, NULL);
 }
 
@@ -324,7 +325,7 @@ static void password_entered(const char *text, void *user)
 
     user_set_password(u, text);
     ui->changed = true;
-    say(ui, text && text[0] ? "Passwort gesetzt. Zum Behalten speichern."
+    say(ui, text && text[0] ? tr("Passwort gesetzt. Zum Behalten speichern.")
                             : "Passwort geloescht - die Anmeldung geht jetzt "
                               "ohne.");
 }
@@ -350,7 +351,7 @@ static void delete_confirmed(bool yes, void *user)
 
     ui->selected = UID_ROOT;
     ui->changed  = true;
-    say(ui, "Entfernt. Das Heimatverzeichnis bleibt stehen.");
+    say(ui, tr("Entfernt. Das Heimatverzeichnis bleibt stehen."));
 }
 
 static void press(struct users_ui *ui, int id)
@@ -359,21 +360,21 @@ static void press(struct users_ui *ui, int id)
     char error[96] = "";
 
     if (!button_enabled(ui, id)) {
-        say(ui, session_is_admin() ? "Das geht bei diesem Benutzer nicht."
-                                   : "Dafuer braucht es Verwalterrechte.");
+        say(ui, session_is_admin() ? tr("Das geht bei diesem Benutzer nicht.")
+                                   : tr("Dafuer braucht es Verwalterrechte."));
         return;
     }
 
     switch (id) {
     case BTN_NEW:
         ui->pending[0] = '\0';
-        dialog_input("Neuer Benutzer", "Anmeldename:", "", new_name_entered, NULL);
+        dialog_input(tr("Neuer Benutzer"), tr("Anmeldename:"), "", new_name_entered, NULL);
         break;
     case BTN_PASSWORD: {
         char prompt[96];
 
-        ksnprintf(prompt, sizeof(prompt), "Neues Passwort fuer %s:", u->name);
-        dialog_password("Passwort aendern", prompt, password_entered, NULL);
+        ksnprintf(prompt, sizeof(prompt), tr("Neues Passwort fuer %s:"), u->name);
+        dialog_password(tr("Passwort aendern"), prompt, password_entered, NULL);
         break;
     }
     case BTN_ADMIN:
@@ -383,18 +384,18 @@ static void press(struct users_ui *ui, int id)
         else
             group_remove_member(group_by_gid(GID_ROOT), u->uid);
         ui->changed = true;
-        say(ui, user_is_admin(u) ? "Ist jetzt Verwalter."
-                                 : "Ist kein Verwalter mehr.");
+        say(ui, user_is_admin(u) ? tr("Ist jetzt Verwalter.")
+                                 : tr("Ist kein Verwalter mehr."));
         break;
     case BTN_LOCK:
         u->locked = !u->locked;
         ui->changed = true;
-        say(ui, u->locked ? "Die Anmeldung ist gesperrt."
-                          : "Die Anmeldung ist wieder frei.");
+        say(ui, u->locked ? tr("Die Anmeldung ist gesperrt.")
+                          : tr("Die Anmeldung ist wieder frei."));
         break;
     case BTN_DELETE:
-        ksnprintf(error, sizeof(error), "%s wirklich entfernen?", u->name);
-        dialog_confirm("Benutzer entfernen", error, delete_confirmed, NULL);
+        ksnprintf(error, sizeof(error), tr("%s wirklich entfernen?"), u->name);
+        dialog_confirm(tr("Benutzer entfernen"), error, delete_confirmed, NULL);
         break;
     case BTN_SAVE:
         do_save(ui);
@@ -500,7 +501,7 @@ void app_users(void)
         strlcpy(ui->status, "Noch keine Datenbank - RetroOS meldet sich ohne "
                             "Nachfrage als root an.", sizeof(ui->status));
     else if (!fs_disk_mounted())
-        strlcpy(ui->status, "Ohne Festplatte bleibt nichts gespeichert.",
+        strlcpy(ui->status, tr("Ohne Festplatte bleibt nichts gespeichert."),
                 sizeof(ui->status));
 
     struct window *win = gui_create_window("Benutzer", 0, 0, 700, 380,

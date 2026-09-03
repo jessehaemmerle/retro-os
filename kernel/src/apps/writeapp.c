@@ -20,6 +20,7 @@
 #include "theme.h"
 #include "widgets.h"
 #include "writedoc.h"
+#include "lang.h"
 
 #define WA_TOOLBAR_H 34
 #define WA_STATUS_H  24
@@ -373,8 +374,8 @@ static void update_title(struct window *win)
     struct wa_state *st = win->user;
     char text[WIN_TITLE_MAX + 1];
 
-    ksnprintf(text, sizeof(text), "Schreiben - %s%s",
-              st->file ? st->file->name : "Unbenannt",
+    ksnprintf(text, sizeof(text), tr("Schreiben - %s%s"),
+              st->file ? st->file->name : tr("Unbenannt"),
               st->modified ? " *" : "");
     gui_set_title(win, text);
 }
@@ -401,7 +402,7 @@ static void on_save_as(const char *name, void *user)
     if (!file)
         file = fs_create(dir, name, FS_FILE);
     if (!file || file->type != FS_FILE || file->readonly) {
-        dialog_message("Speichern", "Unter diesem Namen geht es nicht.");
+        dialog_message(tr("Speichern"), tr("Unter diesem Namen geht es nicht."));
         return;
     }
 
@@ -409,7 +410,7 @@ static void on_save_as(const char *name, void *user)
     char *html = kmalloc(room);
 
     if (!html) {
-        dialog_message("Speichern", "Zu wenig Speicher.");
+        dialog_message(tr("Speichern"), tr("Zu wenig Speicher."));
         return;
     }
 
@@ -430,7 +431,7 @@ static void on_save_as(const char *name, void *user)
     kfree(html);
 
     if (!ok) {
-        dialog_message("Speichern", "Die Datei liess sich nicht schreiben.");
+        dialog_message(tr("Speichern"), tr("Die Datei liess sich nicht schreiben."));
         return;
     }
 
@@ -448,7 +449,7 @@ static void do_save(struct window *win)
         st->file = NULL;
 
     if (!st->file || st->file->readonly) {
-        dialog_input("Speichern unter", "Dateiname:",
+        dialog_input(tr("Speichern unter"), tr("Dateiname:"),
                      st->file ? st->file->name : "dokument.html",
                      on_save_as, win);
         return;
@@ -469,7 +470,7 @@ static void on_open(const char *path, void *user)
         file = fs_find_child(docs_dir(), path);
 
     if (!file || file->type != FS_FILE || !fs_load(file)) {
-        dialog_message("Oeffnen", "Diese Datei gibt es nicht.");
+        dialog_message(tr("Oeffnen"), tr("Diese Datei gibt es nicht."));
         return;
     }
 
@@ -510,14 +511,14 @@ static void paint_toolbar(struct window *win, struct canvas *c)
     const struct paragraph *p = &st->doc->paras[st->para];
 
     widget_toolbar(c, rect_make(0, 0, c->w, WA_TOOLBAR_H));
-    widget_icon_button(c, tool_rect(WB_OPEN), ICON_FOLDER_OPEN, "Oeffnen",
+    widget_icon_button(c, tool_rect(WB_OPEN), ICON_FOLDER_OPEN, tr("Oeffnen"),
                        st->pressed == WB_OPEN, true);
-    widget_icon_button(c, tool_rect(WB_SAVE), ICON_SAVE, "Speichern",
+    widget_icon_button(c, tool_rect(WB_SAVE), ICON_SAVE, tr("Speichern"),
                        st->pressed == WB_SAVE, true);
     widget_icon_button(c, tool_rect(WB_STYLE), ICON_HEADING,
                        wdoc_style_name(p->style),
                        st->pressed == WB_STYLE, true);
-    widget_icon_button(c, tool_rect(WB_LIST), ICON_LIST, "Liste",
+    widget_icon_button(c, tool_rect(WB_LIST), ICON_LIST, tr("Liste"),
                        st->pressed == WB_LIST || p->style == STYLE_LIST, true);
 
     bool bold_on = has_selection(st) ? false : (st->marks & MARK_BOLD) != 0;
@@ -653,9 +654,9 @@ static void wa_paint(struct window *win, struct canvas *c)
     char left[128], right[64];
     const struct paragraph *p = &st->doc->paras[st->para];
 
-    ksnprintf(left, sizeof(left), "%s - Absatz %d von %d",
+    ksnprintf(left, sizeof(left), tr("%s - Absatz %d von %d"),
               wdoc_style_name(p->style), st->para + 1, st->doc->count);
-    ksnprintf(right, sizeof(right), "%u Woerter, %u Zeichen",
+    ksnprintf(right, sizeof(right), tr("%u Woerter, %u Zeichen"),
               (unsigned)wdoc_words(st->doc), (unsigned)wdoc_chars(st->doc));
     widget_statusbar(&local, rect_make(0, local.h - WA_STATUS_H,
                                        local.w, WA_STATUS_H), left, right);
@@ -672,7 +673,7 @@ static void wa_action(struct window *win, int action)
 
     switch (action) {
     case WB_OPEN:
-        dialog_input("Oeffnen", "Datei:", "dokument.html", on_open, win);
+        dialog_input(tr("Oeffnen"), tr("Datei:"), "dokument.html", on_open, win);
         return;
     case WB_SAVE:
         do_save(win);

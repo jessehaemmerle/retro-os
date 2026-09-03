@@ -1,8 +1,14 @@
 /* settings.c - das Einstellungsfenster.
  *
- * Sechs Dinge lassen sich hier aendern; alle landen in derselben
+ * Acht Dinge lassen sich hier aendern; alle landen in derselben
  * Textdatei auf der Festplatte. Ohne Festplatte gilt jede Aenderung
  * nur bis zum Ausschalten - das sagt das Fenster dann auch.
+ *
+ * Jede Aenderung wirkt sofort und nicht erst beim Speichern: Die
+ * Sprache wechselt, waehrend das Fenster offen ist, die Schrift auch,
+ * und das Hintergrundbild liegt gleich hinter dem Fenster. Speichern
+ * heisst darum nur "so soll es bleiben" - was etwas ganz anderes ist
+ * als "so soll es sein".
  */
 
 #include "apps.h"
@@ -16,6 +22,8 @@
 #include "theme.h"
 #include "vfs.h"
 #include "widgets.h"
+#include "wallpaper.h"
+#include "lang.h"
 
 #define ROW_H     30
 #define LABEL_X   16
@@ -23,20 +31,31 @@
 #define CHOICE_W  160
 
 enum row_id {
+    ROW_LANGUAGE,
     ROW_KEYMAP,
     ROW_CLOCK,
     ROW_TIMEZONE,
     ROW_BACKGROUND,
+    ROW_WALLPAPER,
     ROW_FONT,
     ROW_HOSTNAME,
     ROW_COUNT
 };
 
+#define WALLPAPER_MAX 12
+
 struct settings_ui {
     int  hover;          /* Knopf unter dem Zeiger, -1 = keiner */
     bool hostname_focus;
     size_t hostname_cursor;
-    char status[80];
+    char status[96];
+
+    /* Die Bilder, die zur Auswahl stehen. Platz 0 bleibt leer und
+     * heisst "kein Bild" - so ist der Weg zurueck zum Verlauf
+     * dieselbe Bewegung wie die Wahl eines Bildes. */
+    char   images[WALLPAPER_MAX][64];
+    size_t image_count;
+    size_t image_at;
 };
 
 /* Die Zeitzonen, die zur Auswahl stehen - mehr braucht es nicht. */
@@ -48,6 +67,78 @@ static const struct { int32_t minutes; const char *name; } zones[] = {
     {  330, "UTC+5:30 Delhi"   },
     {  540, "UTC+9  Tokio"     },
 };
+
+/* Sammelt Bilder aus einem Ordner ein - nur die oberste Ebene, denn
+ * wer sein Bild tiefer vergraebt, tippt den Pfad ohnehin lieber
+ * selbst. */
+static void collect_images(struct settings_ui *ui, const char *dir_path)
+{
+    struct fs_node *dir = fs_lookup(NULL, dir_path);
+
+    if (!dir || dir->type != FS_DIR)
+        return;
+
+    struct fs_node *entries[32];
+    size_t n = fs_list(dir, entries, ARRAY_LEN(entries));
+
+    for (size_t i = 0; i < n && ui->image_count < WALLPAPER_MAX; i++) {
+        if (entries[i]->type != FS_FILE)
+            continue;
+
+        const char *dot = strrchr(entries[i]->name, '.');
+
+        if (!dot)
+            continue;
+        if (strcasecmp(dot, ".png") != 0 && strcasecmp(dot, ".jpg") != 0 &&
+            strcasecmp(dot, ".jpeg") != 0 && strcasecmp(dot, ".gif") != 0 &&
+            strcasecmp(dot, ".bmp") != 0)
+            continue;
+
+        fs_path(entries[i], ui->images[ui->image_count],
+                sizeof(ui->images[0]));
+        ui->image_count++;
+    }
+}
+
+/* Baut die Liste neu auf und merkt sich, wo das eingestellte Bild
+ * darin steht. Ein Bild, das nirgends gefunden wurde - von Hand
+ * eingetippt etwa -, kommt hinten dazu; sonst waere es beim ersten
+ * Klick auf einen Pfeil verloren. */
+static void refresh_images(struct settings_ui *ui)
+{
+    const char *set = config_current()->wallpaper;
+    char home[FS_PATH_MAX];
+
+    ui->image_count = 1;
+    ui->images[0][0] = '\0';
+    ui->image_at = 0;
+
+    collect_images(ui, "/Medien");
+    user_home_file("Bilder", "/Medien", home, sizeof(home));
+    collect_images(ui, home);
+
+    if (!set[0])
+        return;
+
+    for (size_t i = 1; i < ui->image_count; i++) {
+        if (strcmp(ui->images[i], set) == 0) {
+            ui->image_at = i;
+            return;
+        }
+    }
+    if (ui->image_count < WALLPAPER_MAX) {
+        strlcpy(ui->images[ui->image_count], set, sizeof(ui->images[0]));
+        ui->image_at = ui->image_count++;
+    }
+}
+
+/* Nur der letzte Teil des Pfades passt in das Feld. */
+static const char *short_name(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+
+    return slash ? slash + 1 : path;
+}
 
 static size_t zone_index(void)
 {
@@ -83,20 +174,27 @@ static void row_value(int row, char *out, size_t size)
     struct config *c = config_current();
 
     switch (row) {
+    case ROW_LANGUAGE:
+        strlcpy(out, lang_name(lang_current()), size);
+        break;
     case ROW_KEYMAP: {
         const struct keymap *map = keymap_current();
 
-        strlcpy(out, map->name, size);
+        strlcpy(out, tr(map->name), size);
         break;
     }
     case ROW_CLOCK:
-        strlcpy(out, c->clock == CLOCK_UTC ? "UTC" : "Ortszeit", size);
+        strlcpy(out, c->clock == CLOCK_UTC ? "UTC" : tr("Ortszeit"), size);
         break;
     case ROW_TIMEZONE:
         strlcpy(out, zones[zone_index()].name, size);
         break;
     case ROW_BACKGROUND:
-        strlcpy(out, background_name(c->background), size);
+        strlcpy(out, tr(background_name(c->background)), size);
+        break;
+    case ROW_WALLPAPER:
+        strlcpy(out, c->wallpaper[0] ? short_name(c->wallpaper)
+                                     : tr("kein Bild"), size);
         break;
     case ROW_FONT:
         strlcpy(out, font_name(font_current()), size);
@@ -113,22 +211,47 @@ static void row_value(int row, char *out, size_t size)
 static const char *row_label(int row)
 {
     switch (row) {
-    case ROW_KEYMAP:     return "Tastatur";
-    case ROW_CLOCK:      return "Batterieuhr";
-    case ROW_TIMEZONE:   return "Zeitzone";
-    case ROW_BACKGROUND: return "Hintergrund";
-    case ROW_FONT:       return "Schrift";
-    case ROW_HOSTNAME:   return "Rechnername";
+    case ROW_LANGUAGE:   return tr("Sprache");
+    case ROW_KEYMAP:     return tr("Tastatur");
+    case ROW_CLOCK:      return tr("Batterieuhr");
+    case ROW_TIMEZONE:   return tr("Zeitzone");
+    case ROW_BACKGROUND: return tr("Hintergrund");
+    case ROW_WALLPAPER:  return tr("Hintergrundbild");
+    case ROW_FONT:       return tr("Schrift");
+    case ROW_HOSTNAME:   return tr("Rechnername");
     default:             return "";
     }
 }
 
 /* Blaettert eine Zeile eins vor oder zurueck. */
-static void row_step(int row, int delta)
+static void row_step(struct settings_ui *ui, int row, int delta)
 {
     struct config *c = config_current();
 
     switch (row) {
+    case ROW_LANGUAGE: {
+        enum language before = lang_current();
+        enum language next = (enum language)((before + LANG_COUNT +
+                                              (delta > 0 ? 1 : LANG_COUNT - 1)) %
+                                             LANG_COUNT);
+
+        lang_select(next);
+        strlcpy(c->language, lang_code(next), sizeof(c->language));
+
+        /* Die Tastatur wandert mit - aber nur, solange sie noch die
+         * ist, die zur alten Sprache gehoerte. Wer sich bewusst eine
+         * andere Belegung gesucht hat, soll sie behalten; sonst waere
+         * ein Blick in die englische Oberflaeche jedes Mal ein Verlust
+         * seiner Umlaute. */
+        if (strcasecmp(c->keymap, lang_default_keymap(before)) == 0) {
+            keymap_select(lang_default_keymap(next));
+            strlcpy(c->keymap, keymap_current()->code, sizeof(c->keymap));
+            strlcpy(ui->status,
+                    tr("Die Sprache gilt sofort - die Tastatur ist mitgewandert."),
+                    sizeof(ui->status));
+        }
+        break;
+    }
     case ROW_KEYMAP: {
         size_t count = keymap_count();
         size_t next = (keymap_current_index() + count +
@@ -155,6 +278,32 @@ static void row_step(int row, int delta)
         c->background = (uint32_t)((c->background + count +
                                     (size_t)(delta > 0 ? 1 : count - 1)) %
                                    count);
+        break;
+    }
+    case ROW_WALLPAPER: {
+        size_t count = ui->image_count;
+
+        if (count < 2)
+            break;
+
+        ui->image_at = (ui->image_at + count +
+                        (size_t)(delta > 0 ? 1 : count - 1)) % count;
+
+        const char *path = ui->images[ui->image_at];
+
+        /* Auch hier gilt: Es wirkt sofort. Der Desktop liegt hinter
+         * dem Fenster, die Wahl ist damit ihre eigene Vorschau. */
+        if (!path[0]) {
+            wallpaper_set(NULL);
+            c->wallpaper[0] = '\0';
+        } else if (wallpaper_set(path)) {
+            strlcpy(c->wallpaper, path, sizeof(c->wallpaper));
+        } else {
+            strlcpy(ui->status, tr("Das Bild liess sich nicht laden."),
+                    sizeof(ui->status));
+            break;
+        }
+        gui_invalidate();
         break;
     }
     case ROW_FONT: {
@@ -184,7 +333,7 @@ static void settings_paint(struct window *win, struct canvas *c)
     gfx_gradient_v(&local, rect_make(0, 0, local.w, 48),
                    COL_TITLE_A1, COL_TITLE_A2);
     icon_draw(&local, 14, 14, ICON_SETTINGS, 1);
-    gfx_text_bold(&local, 40, 16, "Einstellungen", COL_WHITE);
+    gfx_text_bold(&local, 40, 16, tr("Einstellungen"), COL_WHITE);
 
     for (int row = 0; row < ROW_COUNT; row++) {
         struct rect r = row_rect(row);
@@ -220,12 +369,15 @@ static void settings_paint(struct window *win, struct canvas *c)
                      font_license(font_current()), COL_TEXT_DIM);
     }
 
-    widget_button(&local, save_rect(win), "Speichern",
+    widget_button(&local, save_rect(win), tr("Speichern"),
                   ui->hover == 100, true);
 
+    /* Rechts steht der Knopf - die Meldung wird davor abgeschnitten,
+     * statt darunterzulaufen. */
     if (ui->status[0])
-        gfx_text(&local, LABEL_X, gui_client_height(win) - 38, ui->status,
-                 COL_TEXT_DIM);
+        gfx_text_clipped(&local, LABEL_X, gui_client_height(win) - 38,
+                         ui->status, COL_TEXT_DIM,
+                         save_rect(win).x - LABEL_X - 12);
 }
 
 static void settings_save(struct window *win)
@@ -245,13 +397,13 @@ static void settings_save(struct window *win)
     }
 
     if (!fs_disk_mounted()) {
-        strlcpy(ui->status, "Ohne Festplatte gilt das nur bis zum Ausschalten.",
+        strlcpy(ui->status, tr("Ohne Festplatte gilt das nur bis zum Ausschalten."),
                 sizeof(ui->status));
     } else if (config_save()) {
-        ksnprintf(ui->status, sizeof(ui->status), "Gespeichert in %s",
+        ksnprintf(ui->status, sizeof(ui->status), tr("Gespeichert in %s"),
                   CONFIG_PATH);
     } else {
-        strlcpy(ui->status, "Die Datei liess sich nicht schreiben.",
+        strlcpy(ui->status, tr("Die Datei liess sich nicht schreiben."),
                 sizeof(ui->status));
     }
     gui_invalidate();
@@ -322,14 +474,15 @@ static void settings_event(struct window *win, const struct gui_event *ev)
     for (int row = 0; row < ROW_COUNT; row++) {
         if (row == ROW_HOSTNAME)
             continue;
-        if (rect_contains(arrow_rect(row, false), ev->x, ev->y))
-            row_step(row, -1);
-        else if (rect_contains(arrow_rect(row, true), ev->x, ev->y))
-            row_step(row, +1);
-        else
+        if (!rect_contains(arrow_rect(row, false), ev->x, ev->y) &&
+            !rect_contains(arrow_rect(row, true), ev->x, ev->y))
             continue;
 
+        /* Die alte Meldung gilt nicht mehr, sobald etwas anderes
+         * eingestellt wird - eine neue darf row_step aber setzen. */
         ui->status[0] = '\0';
+        row_step(ui, row,
+                 rect_contains(arrow_rect(row, false), ev->x, ev->y) ? -1 : +1);
         break;
     }
     gui_invalidate();
@@ -356,11 +509,12 @@ void app_settings(void)
         return;
 
     ui->hover = -1;
+    refresh_images(ui);
     if (!fs_disk_mounted())
-        strlcpy(ui->status, "Ohne Festplatte bleibt nichts gespeichert.",
+        strlcpy(ui->status, tr("Ohne Festplatte bleibt nichts gespeichert."),
                 sizeof(ui->status));
 
-    struct window *win = gui_create_window("Einstellungen", 0, 0, 560, 322,
+    struct window *win = gui_create_window("Einstellungen", 0, 0, 620, 382,
                                            WF_CENTER, ICON_SETTINGS);
     if (!win) {
         kfree(ui);

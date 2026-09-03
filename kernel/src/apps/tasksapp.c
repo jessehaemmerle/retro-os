@@ -22,6 +22,7 @@
 #include "user.h"
 #include "vfs.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define ENTRY_H   34
 #define ROW_H     22
@@ -91,14 +92,14 @@ static struct rect button_rect(struct window *win, int id)
 static const char *button_label(struct tasks_ui *ui, int id)
 {
     switch (id) {
-    case B_ADD:    return "Hinzufuegen";
-    case B_TOGGLE: return "Haken setzen";
-    case B_PRIO:   return "Wichtigkeit";
-    case B_DUE:    return "Termin";
-    case B_DELETE: return "Loeschen";
-    case B_PURGE:  return "Erledigte weg";
-    case B_FILTER: return ui->hide_done ? "Alle zeigen" : "Nur offene";
-    default:       return "Speichern";
+    case B_ADD:    return tr("Hinzufuegen");
+    case B_TOGGLE: return tr("Haken setzen");
+    case B_PRIO:   return tr("Wichtigkeit");
+    case B_DUE:    return tr("Termin");
+    case B_DELETE: return tr("Loeschen");
+    case B_PURGE:  return tr("Erledigte weg");
+    case B_FILTER: return ui->hide_done ? tr("Alle zeigen") : tr("Nur offene");
+    default:       return tr("Speichern");
     }
 }
 
@@ -143,7 +144,7 @@ static void save(struct tasks_ui *ui)
     char  *text = kmalloc(cap);
 
     if (!text) {
-        strlcpy(ui->status, "Kein Speicher.", sizeof(ui->status));
+        strlcpy(ui->status, tr("Kein Speicher."), sizeof(ui->status));
         return;
     }
 
@@ -155,12 +156,12 @@ static void save(struct tasks_ui *ui)
 
     if (file && file->type == FS_FILE && fs_write(file, text, used)) {
         ui->changed = false;
-        ksnprintf(ui->status, sizeof(ui->status), "Gesichert in %s", ui->path);
-        log_info("aufgaben", "%u Aufgaben in %s gesichert",
+        ksnprintf(ui->status, sizeof(ui->status), tr("Gesichert in %s"), ui->path);
+        log_info("aufgaben", tr("%u Aufgaben in %s gesichert"),
                  (unsigned)tasks_count(&ui->list, false), ui->path);
     } else {
         ksnprintf(ui->status, sizeof(ui->status),
-                  "%s liess sich nicht schreiben.", ui->path);
+                  tr("%s liess sich nicht schreiben."), ui->path);
     }
     kfree(text);
 }
@@ -226,7 +227,7 @@ static void tasks_paint(struct window *win, struct canvas *c)
                  ui->input_focus ? (int32_t)ui->cursor : -1, ui->input_focus);
     if (!ui->input[0] && !ui->input_focus)
         gfx_text(&local, input_rect(win).x + 6, input_rect(win).y + 5,
-                 "Neue Aufgabe eintippen und Eingabe druecken",
+                 tr("Neue Aufgabe eintippen und Eingabe druecken"),
                  COL_TEXT_DIM);
 
     struct rect l = list_rect(win);
@@ -280,12 +281,12 @@ static void tasks_paint(struct window *win, struct canvas *c)
     if (ui->status[0])
         strlcpy(left, ui->status, sizeof(left));
     else
-        ksnprintf(left, sizeof(left), "%u offen von %u", (unsigned)open,
+        ksnprintf(left, sizeof(left), tr("%u offen von %u"), (unsigned)open,
                   (unsigned)all);
 
     widget_statusbar(&local,
                      rect_make(0, local.h - STATUS_H, local.w, STATUS_H),
-                     left, ui->changed ? "ungespeichert" : ui->path);
+                     left, ui->changed ? tr("ungespeichert") : ui->path);
 }
 
 /* ------------------------------------------------------------------ */
@@ -306,8 +307,8 @@ static void add_input(struct tasks_ui *ui)
     struct task *t = tasks_add(&ui->list, ui->input);
 
     if (!t) {
-        strlcpy(ui->status, ui->input[0] ? "Die Liste ist voll."
-                                         : "Da steht noch nichts.",
+        strlcpy(ui->status, ui->input[0] ? tr("Die Liste ist voll.")
+                                         : tr("Da steht noch nichts."),
                 sizeof(ui->status));
         return;
     }
@@ -334,7 +335,7 @@ static void prio_entered(const char *text, void *user)
     if (!t)
         return;
     if (!task_prio_parse(text, &prio)) {
-        strlcpy(ui->status, "Erwartet wird hoch, mittel oder niedrig.",
+        strlcpy(ui->status, tr("Erwartet wird hoch, mittel oder niedrig."),
                 sizeof(ui->status));
         gui_invalidate();
         return;
@@ -361,7 +362,7 @@ static void due_entered(const char *text, void *user)
     if (!t)
         return;
     if (!tasks_parse_date(text, &year, &month, &day)) {
-        strlcpy(ui->status, "Erwartet wird 15.09.2026 oder ein Strich.",
+        strlcpy(ui->status, tr("Erwartet wird 15.09.2026 oder ein Strich."),
                 sizeof(ui->status));
         gui_invalidate();
         return;
@@ -394,9 +395,9 @@ static void press(struct window *win, struct tasks_ui *ui, int id)
     case B_PRIO:
         if (t) {
             ksnprintf(prompt, sizeof(prompt),
-                      "Wichtigkeit von \"%s\" (hoch, mittel, niedrig):",
+                      tr("Wichtigkeit von \"%s\" (hoch, mittel, niedrig):"),
                       t->text);
-            dialog_input("Wichtigkeit", prompt, task_prio_name(t->prio),
+            dialog_input(tr("Wichtigkeit"), prompt, tr(task_prio_name(t->prio)),
                          prio_entered, NULL);
         }
         break;
@@ -406,9 +407,9 @@ static void press(struct window *win, struct tasks_ui *ui, int id)
 
             tasks_format_date(t, date, sizeof(date));
             ksnprintf(prompt, sizeof(prompt),
-                      "Termin fuer \"%s\" (TT.MM.JJJJ, Strich loescht ihn):",
+                      tr("Termin fuer \"%s\" (TT.MM.JJJJ, Strich loescht ihn):"),
                       t->text);
-            dialog_input("Termin", prompt, date, due_entered, NULL);
+            dialog_input(tr("Termin"), prompt, date, due_entered, NULL);
         }
         break;
     case B_DELETE:
@@ -424,9 +425,9 @@ static void press(struct window *win, struct tasks_ui *ui, int id)
             ui->selected = 0;
             ui->changed = true;
             ksnprintf(ui->status, sizeof(ui->status),
-                      "%u erledigte Aufgaben weggeraeumt.", (unsigned)n);
+                      tr("%u erledigte Aufgaben weggeraeumt."), (unsigned)n);
         } else {
-            strlcpy(ui->status, "Es ist nichts erledigt.", sizeof(ui->status));
+            strlcpy(ui->status, tr("Es ist nichts erledigt."), sizeof(ui->status));
         }
         break;
     }

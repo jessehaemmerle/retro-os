@@ -426,6 +426,10 @@ static const struct sh_command commands[] = {
     { "warte", "sleep", "System", "warte <millisekunden>",
       "eine Weile nichts tun", NULL },
     { "version", "ver", "System", "version", "Systemversion", NULL },
+    { "sprache", "lang", "System", "sprache [de|en]",
+      "Sprache zeigen oder umschalten",
+      "Ohne Angabe stehen die verfuegbaren Sprachen da. Die Tastatur\n"
+      "wandert mit, solange sie nicht von Hand gesetzt wurde." },
     { "schrift", NULL, "System", "schrift [name]",
       "Schriftarten zeigen oder waehlen", NULL },
     { "usb", NULL, "System", "usb",

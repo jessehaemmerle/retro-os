@@ -9,6 +9,7 @@
 
 #include "deck.h"
 #include "kstring.h"
+#include "lang.h"
 
 void deck_clear(struct deck *deck)
 {
@@ -86,6 +87,8 @@ void slide_remove_line(struct slide *slide, int index)
     slide->line_count--;
 }
 
+/* Der Name geht in die Datei und auf den Bildschirm. Er bleibt hier
+ * deutsch; wer ihn anzeigt, legt tr() darum. */
 const char *deck_layout_name(uint8_t layout)
 {
     switch (layout) {
@@ -134,9 +137,13 @@ size_t deck_to_text(const struct deck *deck, char *out, size_t size)
 
 static uint8_t layout_from(const char *name)
 {
-    if (strcasecmp(name, "Titelfolie") == 0 || strcasecmp(name, "titel") == 0)
+    /* Wie bei den Aufgaben: In der Datei steht Deutsch, damit sie
+     * ueberall lesbar bleibt - der englische Name wird beim Lesen
+     * trotzdem verstanden. */
+    if (strcasecmp(name, "Titelfolie") == 0 || strcasecmp(name, "titel") == 0 ||
+        strcasecmp(name, "Title slide") == 0)
         return LAYOUT_TITLE;
-    if (strcasecmp(name, "Zitat") == 0)
+    if (strcasecmp(name, "Zitat") == 0 || strcasecmp(name, "Quote") == 0)
         return LAYOUT_QUOTE;
     return LAYOUT_BULLETS;
 }

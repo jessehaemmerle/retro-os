@@ -8,6 +8,7 @@
 #include "apps.h"
 #include "font.h"
 #include "kstring.h"
+#include "lang.h"
 #include "mm.h"
 #include "theme.h"
 #include "widgets.h"
@@ -60,9 +61,9 @@ static int dialog_button_count(struct dialog_state *st)
 static const char *dialog_button_label(struct dialog_state *st, int index)
 {
     switch (st->kind) {
-    case DLG_CONFIRM: return index == 0 ? "Ja" : "Nein";
+    case DLG_CONFIRM: return index == 0 ? tr("Ja") : tr("Nein");
     case DLG_MESSAGE: return "OK";
-    default:          return index == 0 ? "OK" : "Abbrechen";
+    default:          return index == 0 ? "OK" : tr("Abbrechen");
     }
 }
 
@@ -276,7 +277,9 @@ static struct window *dialog_create(const char *title, enum dialog_kind kind,
     st->kind = kind;
     st->pressed_button = -1;
     st->caret_on = true;
-    strlcpy(st->prompt, prompt, sizeof(st->prompt));
+    /* Der Text kommt fertig zusammengesetzt herein; uebersetzt
+     * wird hier, weil er danach nur noch als Kopie existiert. */
+    strlcpy(st->prompt, tr(prompt), sizeof(st->prompt));
 
     struct window *win = gui_create_window(title, 0, 0, 400, height,
                                            WF_CENTER | WF_NO_MIN | WF_NO_TASKBAR,

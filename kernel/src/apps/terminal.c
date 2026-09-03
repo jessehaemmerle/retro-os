@@ -38,6 +38,8 @@
 #include "widgets.h"
 
 #include <stdarg.h>
+#include "lang.h"
+#include "keymap.h"
 
 int kvsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 
@@ -150,11 +152,11 @@ static void cmd_ls(struct term_state *st, const char *arg, bool detail)
     struct fs_node *dir = arg ? fs_lookup(st->cwd, arg) : st->cwd;
 
     if (!dir) {
-        term_printf(st, C_ERROR, "ls: \"%s\" nicht gefunden", arg);
+        term_printf(st, C_ERROR, tr("ls: \"%s\" nicht gefunden"), arg);
         return;
     }
     if (dir->type != FS_DIR) {
-        term_printf(st, C_ERROR, "ls: \"%s\" ist eine Datei", dir->name);
+        term_printf(st, C_ERROR, tr("ls: \"%s\" ist eine Datei"), dir->name);
         return;
     }
 
@@ -162,7 +164,7 @@ static void cmd_ls(struct term_state *st, const char *arg, bool detail)
     size_t n = fs_list(dir, entries, ARRAY_LEN(entries));
 
     if (!n && !perm_may(dir, P_R)) {
-        term_printf(st, C_ERROR, "ls: \"%s\" darfst du nicht lesen", dir->name);
+        term_printf(st, C_ERROR, tr("ls: \"%s\" darfst du nicht lesen"), dir->name);
         return;
     }
 
@@ -190,7 +192,7 @@ static void cmd_ls(struct term_state *st, const char *arg, bool detail)
                         e->mtime_year, e->mtime_hour, e->mtime_min);
         }
     }
-    term_printf(st, C_NORMAL, "  %u Eintraege", (unsigned)n);
+    term_printf(st, C_NORMAL, tr("  %u Eintraege"), (unsigned)n);
 }
 
 static void cmd_cat(struct term_state *st, const char *arg)
@@ -198,21 +200,21 @@ static void cmd_cat(struct term_state *st, const char *arg)
     struct fs_node *f = fs_lookup(st->cwd, arg);
 
     if (!f) {
-        term_printf(st, C_ERROR, "cat: \"%s\" nicht gefunden", arg);
+        term_printf(st, C_ERROR, tr("cat: \"%s\" nicht gefunden"), arg);
         return;
     }
     if (f->type == FS_DIR) {
-        term_printf(st, C_ERROR, "cat: \"%s\" ist ein Ordner", arg);
+        term_printf(st, C_ERROR, tr("cat: \"%s\" ist ein Ordner"), arg);
         return;
     }
 
     if (!fs_load(f)) {
-        term_printf(st, C_ERROR, "cat: \"%s\" laesst sich nicht lesen", arg);
+        term_printf(st, C_ERROR, tr("cat: \"%s\" laesst sich nicht lesen"), arg);
         return;
     }
 
     if (!f->data || f->size == 0) {
-        term_line(st, C_NORMAL, "(leere Datei)");
+        term_line(st, C_NORMAL, tr("(leere Datei)"));
         return;
     }
 
@@ -234,20 +236,20 @@ static void cmd_cat(struct term_state *st, const char *arg)
 
 static void cmd_memory(struct term_state *st)
 {
-    term_printf(st, C_HIGHLIGHT, "Physischer Speicher");
-    term_printf(st, C_NORMAL, "  gesamt  : %u MiB",
+    term_printf(st, C_HIGHLIGHT, tr("Physischer Speicher"));
+    term_printf(st, C_NORMAL, tr("  gesamt  : %u MiB"),
                 (unsigned)(pmm_total_bytes() / (1024 * 1024)));
-    term_printf(st, C_NORMAL, "  belegt  : %u MiB",
+    term_printf(st, C_NORMAL, tr("  belegt  : %u MiB"),
                 (unsigned)(pmm_used_bytes() / (1024 * 1024)));
-    term_printf(st, C_NORMAL, "  frei    : %u MiB",
+    term_printf(st, C_NORMAL, tr("  frei    : %u MiB"),
                 (unsigned)(pmm_free_bytes() / (1024 * 1024)));
-    term_printf(st, C_HIGHLIGHT, "Kernel-Heap");
-    term_printf(st, C_NORMAL, "  reserviert : %u KiB",
+    term_printf(st, C_HIGHLIGHT, tr("Kernel-Heap"));
+    term_printf(st, C_NORMAL, tr("  reserviert : %u KiB"),
                 (unsigned)(heap_total_bytes() / 1024));
-    term_printf(st, C_NORMAL, "  benutzt    : %u KiB",
+    term_printf(st, C_NORMAL, tr("  benutzt    : %u KiB"),
                 (unsigned)(heap_used_bytes() / 1024));
-    term_printf(st, C_HIGHLIGHT, "Dateisystem");
-    term_printf(st, C_NORMAL, "  %u Eintraege, %u Bytes",
+    term_printf(st, C_HIGHLIGHT, tr("Dateisystem"));
+    term_printf(st, C_NORMAL, tr("  %u Eintraege, %u Bytes"),
                 (unsigned)fs_node_count(), (unsigned)fs_bytes_used());
 }
 
@@ -257,7 +259,7 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
     struct http_response response;
 
     if (!url) {
-        term_line(st, C_ERROR, "holen: <adresse> [datei]");
+        term_line(st, C_ERROR, tr("holen: <adresse> [datei]"));
         return;
     }
 
@@ -270,19 +272,19 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
     else
         strlcpy(full, url, sizeof(full));
 
-    term_printf(st, C_NORMAL, "Rufe %s ab ...", full);
+    term_printf(st, C_NORMAL, tr("Rufe %s ab ..."), full);
 
     if (!http_get(full, &response)) {
-        term_printf(st, C_ERROR, "holen: %s", response.error);
+        term_printf(st, C_ERROR, tr("holen: %s"), response.error);
         return;
     }
 
-    term_printf(st, C_HIGHLIGHT, "%d, %u Byte, %s", response.status,
+    term_printf(st, C_HIGHLIGHT, tr("%d, %u Byte, %s"), response.status,
                 (unsigned)response.body_length, response.content_type);
     if (response.security[0])
-        term_printf(st, C_HIGHLIGHT, "Verschluesselt: %s", response.security);
+        term_printf(st, C_HIGHLIGHT, tr("Verschluesselt: %s"), response.security);
     if (response.truncated)
-        term_line(st, C_ERROR, "Achtung: die Antwort ist unvollstaendig.");
+        term_line(st, C_ERROR, tr("Achtung: die Antwort ist unvollstaendig."));
 
     if (target) {
         struct fs_node *file = fs_lookup(st->cwd, target);
@@ -291,11 +293,11 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
             file = fs_create_path(st->cwd, target, FS_FILE);
 
         if (!file || file->type != FS_FILE) {
-            term_printf(st, C_ERROR, "holen: %s laesst sich nicht anlegen", target);
+            term_printf(st, C_ERROR, tr("holen: %s laesst sich nicht anlegen"), target);
         } else if (!fs_write(file, response.body, response.body_length)) {
-            term_printf(st, C_ERROR, "holen: %s laesst sich nicht schreiben", target);
+            term_printf(st, C_ERROR, tr("holen: %s laesst sich nicht schreiben"), target);
         } else {
-            term_printf(st, C_HIGHLIGHT, "Gespeichert als %s", target);
+            term_printf(st, C_HIGHLIGHT, tr("Gespeichert als %s"), target);
         }
     } else {
         /* Ohne Zieldatei die ersten Zeilen anzeigen. */
@@ -314,7 +316,7 @@ static void cmd_fetch(struct term_state *st, const char *url, const char *target
             term_line(st, C_NORMAL, line);
         }
         if (p < end)
-            term_line(st, C_HIGHLIGHT, "... (gekuerzt)");
+            term_line(st, C_HIGHLIGHT, tr("... (gekuerzt)"));
     }
 
     http_response_free(&response);
@@ -326,7 +328,7 @@ static void cmd_usb(struct term_state *st)
     char line[128];
 
     if (usb_device_count() == 0) {
-        term_line(st, C_NORMAL, "Keine USB-Geraete gefunden.");
+        term_line(st, C_NORMAL, tr("Keine USB-Geraete gefunden."));
         return;
     }
 
@@ -337,21 +339,21 @@ static void cmd_usb(struct term_state *st)
         if (!info)
             continue;
 
-        const char *art = "Geraet";
+        const char *art = tr("Geraet");
 
         switch (info->interface_class) {
         case USB_CLASS_HID:
             if (info->interface_protocol == HID_PROTOCOL_KEYBOARD)
-                art = "Tastatur";
+                art = tr("Tastatur");
             else if (info->interface_protocol == HID_PROTOCOL_MOUSE)
-                art = "Maus";
+                art = tr("Maus");
             else
                 art = "Eingabegeraet";
             break;
-        case USB_CLASS_STORAGE: art = "Speicher";  break;
-        case 0x09:              art = "Verteiler"; break;
+        case USB_CLASS_STORAGE: art = tr("Speicher");  break;
+        case 0x09:              art = tr("Verteiler"); break;
         case 0x01:              art = "Ton";       break;
-        case 0x02:              art = "Netzwerk";  break;
+        case 0x02:              art = tr("Netzwerk");  break;
         case 0x07:              art = "Drucker";   break;
         case 0x0E:              art = "Kamera";    break;
         default: break;
@@ -381,16 +383,16 @@ static void cmd_install(struct term_state *st, const char *target,
 {
     if (!setup_sources_ready()) {
         term_line(st, C_ERROR,
-                  "Von diesem Startmedium laesst sich nicht installieren.");
+                  tr("Von diesem Startmedium laesst sich nicht installieren."));
         term_line(st, C_NORMAL,
-                  "Noetig ist das RetroOS-Abbild (ISO oder USB-Stick).");
+                  tr("Noetig ist das RetroOS-Abbild (ISO oder USB-Stick)."));
         return;
     }
 
     /* Ohne Ziel: aufzaehlen, was in Frage kommt. */
     if (!target) {
-        term_line(st, C_HIGHLIGHT, "RetroOS auf eine Festplatte bringen");
-        term_line(st, C_NORMAL, "Moegliche Ziele:");
+        term_line(st, C_HIGHLIGHT, tr("RetroOS auf eine Festplatte bringen"));
+        term_line(st, C_NORMAL, tr("Moegliche Ziele:"));
 
         size_t offered = 0;
 
@@ -400,7 +402,7 @@ static void cmd_install(struct term_state *st, const char *target,
             char why[96];
 
             if (setup_plan_for(d, &plan, why, sizeof(why))) {
-                term_printf(st, C_HIGHLIGHT, "  %-6s %s (%u MiB)",
+                term_printf(st, C_HIGHLIGHT, tr("  %-6s %s (%u MiB)"),
                             d->name, d->model,
                             (unsigned)(d->sector_count / 2048));
                 offered++;
@@ -412,21 +414,21 @@ static void cmd_install(struct term_state *st, const char *target,
             /* Passt daneben noch etwas hin? */
             if (setup_plan_beside(d, &plan, why, sizeof(why))) {
                 term_printf(st, C_HIGHLIGHT,
-                            "         daneben moeglich: %u MiB frei",
+                            tr("         daneben moeglich: %u MiB frei"),
                             (unsigned)(plan.data_count / 2048));
                 offered++;
             }
         }
 
         if (!offered) {
-            term_line(st, C_ERROR, "Kein geeigneter Datentraeger dabei.");
+            term_line(st, C_ERROR, tr("Kein geeigneter Datentraeger dabei."));
             return;
         }
         term_line(st, C_NORMAL, "");
         term_line(st, C_NORMAL,
-                  "Ganze Platte : installieren <name> wirklich");
+                  tr("Ganze Platte : installieren <name> wirklich"));
         term_line(st, C_NORMAL,
-                  "Daneben      : installieren <name> daneben");
+                  tr("Daneben      : installieren <name> daneben"));
         return;
     }
 
@@ -442,7 +444,7 @@ static void cmd_install(struct term_state *st, const char *target,
     }
 
     if (!dev) {
-        term_printf(st, C_ERROR, "installieren: %s gibt es nicht", target);
+        term_printf(st, C_ERROR, tr("installieren: %s gibt es nicht"), target);
         return;
     }
 
@@ -454,68 +456,68 @@ static void cmd_install(struct term_state *st, const char *target,
 
     if (beside) {
         if (!setup_plan_beside(dev, &plan, why, sizeof(why))) {
-            term_printf(st, C_ERROR, "installieren: %s", why);
+            term_printf(st, C_ERROR, tr("installieren: %s"), why);
             return;
         }
 
         char error[96];
 
-        term_printf(st, C_NORMAL, "Installiere neben dem Vorhandenen auf %s ...",
+        term_printf(st, C_NORMAL, tr("Installiere neben dem Vorhandenen auf %s ..."),
                     dev->name);
         if (setup_run(&plan, install_report, st, error, sizeof(error))) {
-            term_line(st, C_HIGHLIGHT, "Fertig.");
+            term_line(st, C_HIGHLIGHT, tr("Fertig."));
             if (plan.fallback_free)
                 term_line(st, C_NORMAL,
-                          "Der Rechner startet jetzt RetroOS.");
+                          tr("Der Rechner startet jetzt RetroOS."));
             else
                 term_line(st, C_ERROR,
                           "Der uebliche Startpfad war belegt - RetroOS steht "
                           "unter EFI\\RETROOS und muss im Startmenue der "
                           "Firmware gewaehlt werden.");
         } else {
-            term_printf(st, C_ERROR, "installieren: %s", error);
+            term_printf(st, C_ERROR, tr("installieren: %s"), error);
         }
         return;
     }
 
     if (!setup_plan_for(dev, &plan, why, sizeof(why))) {
-        term_printf(st, C_ERROR, "installieren: %s", why);
+        term_printf(st, C_ERROR, tr("installieren: %s"), why);
         return;
     }
 
     if (!confirm || strcasecmp(confirm, "wirklich") != 0) {
         term_printf(st, C_ERROR,
-                    "Das loescht alles auf %s (%s).", dev->name, dev->model);
+                    tr("Das loescht alles auf %s (%s)."), dev->name, dev->model);
         term_printf(st, C_NORMAL,
-                    "  EFI-Abschnitt : %u MiB ab Sektor %u",
+                    tr("  EFI-Abschnitt : %u MiB ab Sektor %u"),
                     (unsigned)(plan.esp_count / 2048),
                     (unsigned)plan.esp_start);
         term_printf(st, C_NORMAL,
-                    "  Ablage        : %u MiB ab Sektor %u",
+                    tr("  Ablage        : %u MiB ab Sektor %u"),
                     (unsigned)(plan.data_count / 2048),
                     (unsigned)plan.data_start);
         term_printf(st, C_NORMAL,
-                    "Zum Bestaetigen: installieren %s wirklich", dev->name);
+                    tr("Zum Bestaetigen: installieren %s wirklich"), dev->name);
         term_line(st, C_NORMAL,
-                  "Oder daneben, ohne etwas zu loeschen: installieren <name> daneben");
+                  tr("Oder daneben, ohne etwas zu loeschen: installieren <name> daneben"));
         return;
     }
 
     char error[96];
 
-    term_printf(st, C_NORMAL, "Installiere auf %s ...", dev->name);
+    term_printf(st, C_NORMAL, tr("Installiere auf %s ..."), dev->name);
     if (setup_run(&plan, install_report, st, error, sizeof(error))) {
         term_line(st, C_HIGHLIGHT,
-                  "Fertig. Das Startmedium kann jetzt entfernt werden.");
+                  tr("Fertig. Das Startmedium kann jetzt entfernt werden."));
     } else {
-        term_printf(st, C_ERROR, "installieren: %s", error);
+        term_printf(st, C_ERROR, tr("installieren: %s"), error);
     }
 }
 
 static void cmd_disk(struct term_state *st)
 {
     if (block_device_count() == 0) {
-        term_line(st, C_ERROR, "Kein Datentraeger gefunden.");
+        term_line(st, C_ERROR, tr("Kein Datentraeger gefunden."));
         return;
     }
 
@@ -523,13 +525,13 @@ static void cmd_disk(struct term_state *st)
         struct block_device *d = block_device_at(i);
 
         term_printf(st, C_HIGHLIGHT, "%s: %s", d->name, d->model);
-        term_printf(st, C_NORMAL, "  %u Sektoren zu %u Byte (%u MiB)",
+        term_printf(st, C_NORMAL, tr("  %u Sektoren zu %u Byte (%u MiB)"),
                     (unsigned)d->sector_count, (unsigned)d->sector_size,
                     (unsigned)(d->sector_count * d->sector_size / (1024 * 1024)));
     }
 
     if (!fs_disk_mounted()) {
-        term_line(st, C_ERROR, "Kein FAT32-Dateisystem eingehaengt.");
+        term_line(st, C_ERROR, tr("Kein FAT32-Dateisystem eingehaengt."));
         return;
     }
 
@@ -539,11 +541,11 @@ static void cmd_disk(struct term_state *st)
     fs_format_size(total, sizeof(total), (size_t)fat_total_bytes(vol));
     fs_format_size(freetext, sizeof(freetext), (size_t)fat_free_bytes(vol));
 
-    term_printf(st, C_HIGHLIGHT, "Eingehaengt: /Festplatte (%s)", fs_disk_name());
-    term_printf(st, C_NORMAL, "  Dateisystem : FAT32, %u Byte je Cluster",
+    term_printf(st, C_HIGHLIGHT, tr("Eingehaengt: /Festplatte (%s)"), fs_disk_name());
+    term_printf(st, C_NORMAL, tr("  Dateisystem : FAT32, %u Byte je Cluster"),
                 (unsigned)vol->cluster_bytes);
-    term_printf(st, C_NORMAL, "  Groesse     : %s", total);
-    term_printf(st, C_NORMAL, "  frei        : %s", freetext);
+    term_printf(st, C_NORMAL, tr("  Groesse     : %s"), total);
+    term_printf(st, C_NORMAL, tr("  frei        : %s"), freetext);
 }
 
 static void cmd_network(struct term_state *st)
@@ -551,7 +553,7 @@ static void cmd_network(struct term_state *st)
     char text[24];
 
     if (!g_netif.up) {
-        term_line(st, C_ERROR, "Keine Netzwerkkarte gefunden.");
+        term_line(st, C_ERROR, tr("Keine Netzwerkkarte gefunden."));
         return;
     }
 
@@ -560,36 +562,36 @@ static void cmd_network(struct term_state *st)
         term_printf(st, C_HIGHLIGHT, "%s", nic_model());
     else
         term_printf(st, C_HIGHLIGHT, "%s (%s)", nic_model(), nic_family());
-    term_printf(st, C_NORMAL, "  Hardware-Adresse : %s", text);
+    term_printf(st, C_NORMAL, tr("  Hardware-Adresse : %s"), text);
 
     if (nic_speed())
-        term_printf(st, C_NORMAL, "  Verbindung       : %s, %u MBit/s",
+        term_printf(st, C_NORMAL, tr("  Verbindung       : %s, %u MBit/s"),
                     nic_link_up() ? "steht" : "unterbrochen",
                     (unsigned)nic_speed());
     else
-        term_printf(st, C_NORMAL, "  Verbindung       : %s",
+        term_printf(st, C_NORMAL, tr("  Verbindung       : %s"),
                     nic_link_up() ? "steht" : "unterbrochen");
 
     if (!net_ready()) {
-        term_line(st, C_ERROR, "  Keine IP-Adresse (DHCP ohne Antwort).");
+        term_line(st, C_ERROR, tr("  Keine IP-Adresse (DHCP ohne Antwort)."));
         return;
     }
 
     ip_format(g_netif.ip, text, sizeof(text));
-    term_printf(st, C_NORMAL, "  IP-Adresse       : %s", text);
+    term_printf(st, C_NORMAL, tr("  IP-Adresse       : %s"), text);
     ip_format(g_netif.netmask, text, sizeof(text));
-    term_printf(st, C_NORMAL, "  Netzmaske        : %s", text);
+    term_printf(st, C_NORMAL, tr("  Netzmaske        : %s"), text);
     ip_format(g_netif.gateway, text, sizeof(text));
-    term_printf(st, C_NORMAL, "  Gateway          : %s", text);
+    term_printf(st, C_NORMAL, tr("  Gateway          : %s"), text);
     ip_format(g_netif.dns, text, sizeof(text));
-    term_printf(st, C_NORMAL, "  Namensserver     : %s", text);
-    term_printf(st, C_NORMAL, "  Empfangen        : %u Pakete, %u Byte",
+    term_printf(st, C_NORMAL, tr("  Namensserver     : %s"), text);
+    term_printf(st, C_NORMAL, tr("  Empfangen        : %u Pakete, %u Byte"),
                 (unsigned)g_netif.rx_packets, (unsigned)g_netif.rx_bytes);
-    term_printf(st, C_NORMAL, "  Gesendet         : %u Pakete, %u Byte",
+    term_printf(st, C_NORMAL, tr("  Gesendet         : %u Pakete, %u Byte"),
                 (unsigned)g_netif.tx_packets, (unsigned)g_netif.tx_bytes);
 
     if (nic_seen_count() > 1) {
-        term_line(st, C_NORMAL, "  Auf dem Bus gefunden:");
+        term_line(st, C_NORMAL, tr("  Auf dem Bus gefunden:"));
         for (size_t i = 0; i < nic_seen_count(); i++)
             term_printf(st, C_NORMAL, "    %s", nic_seen_at(i));
     }
@@ -601,34 +603,34 @@ static void cmd_ping(struct term_state *st, const char *target)
     char text[16];
 
     if (!target) {
-        term_line(st, C_ERROR, "ping: Ziel fehlt");
+        term_line(st, C_ERROR, tr("ping: Ziel fehlt"));
         return;
     }
     if (!net_ready()) {
-        term_line(st, C_ERROR, "ping: keine Netzwerkverbindung");
+        term_line(st, C_ERROR, tr("ping: keine Netzwerkverbindung"));
         return;
     }
     if (!dns_resolve(target, &addr)) {
-        term_printf(st, C_ERROR, "ping: %s nicht gefunden", target);
+        term_printf(st, C_ERROR, tr("ping: %s nicht gefunden"), target);
         return;
     }
 
     ip_format(addr, text, sizeof(text));
-    term_printf(st, C_HIGHLIGHT, "Ping an %s (%s):", target, text);
+    term_printf(st, C_HIGHLIGHT, tr("Ping an %s (%s):"), target, text);
 
     int received = 0;
     for (int i = 0; i < 4; i++) {
         uint32_t rtt = 0;
 
         if (icmp_ping(addr, 1500, &rtt)) {
-            term_printf(st, C_NORMAL, "  Antwort von %s: Zeit %u ms", text,
+            term_printf(st, C_NORMAL, tr("  Antwort von %s: Zeit %u ms"), text,
                         (unsigned)rtt);
             received++;
         } else {
-            term_line(st, C_ERROR, "  Zeitueberschreitung");
+            term_line(st, C_ERROR, tr("  Zeitueberschreitung"));
         }
     }
-    term_printf(st, C_HIGHLIGHT, "  %d von 4 Antworten", received);
+    term_printf(st, C_HIGHLIGHT, tr("  %d von 4 Antworten"), received);
 }
 
 /* Startet ein Programm; die Ausgabe holt der Takt danach ab. */
@@ -642,8 +644,8 @@ static void cmd_start_program(struct window *win, struct term_state *st,
     UNUSED(win);
 
     if (!path) {
-        term_line(st, C_ERROR, "starte: <programm> [text]");
-        term_line(st, C_NORMAL, "  z.B.  starte /Programme/hallo.elf");
+        term_line(st, C_ERROR, tr("starte: <programm> [text]"));
+        term_line(st, C_NORMAL, tr("  z.B.  starte /Programme/hallo.elf"));
         return;
     }
 
@@ -671,7 +673,7 @@ static void cmd_start_program(struct window *win, struct term_state *st,
                                                sizeof(error));
 
     if (!proc) {
-        term_printf(st, C_ERROR, "starte: %s", error);
+        term_printf(st, C_ERROR, tr("starte: %s"), error);
         return;
     }
 
@@ -683,10 +685,10 @@ static void cmd_start_program(struct window *win, struct term_state *st,
 
         sandbox_text(&proc->box, darf, sizeof(darf));
         term_printf(st, C_HIGHLIGHT,
-                    "[%s laeuft als Nummer %u im Kaefig \"%s\": %s]",
+                    tr("[%s laeuft als Nummer %u im Kaefig \"%s\": %s]"),
                     proc->name, (unsigned)proc->pid, proc->box.profile, darf);
     } else {
-        term_printf(st, C_HIGHLIGHT, "[%s laeuft als Nummer %u]", proc->name,
+        term_printf(st, C_HIGHLIGHT, tr("[%s laeuft als Nummer %u]"), proc->name,
                     (unsigned)proc->pid);
     }
 }
@@ -727,7 +729,7 @@ static void drain_process(struct term_state *st)
             term_line(st, C_NORMAL, st->partial);
             st->partial_len = 0;
         }
-        term_printf(st, C_HIGHLIGHT, "[%s beendet, Ergebnis %d]",
+        term_printf(st, C_HIGHLIGHT, tr("[%s beendet, Ergebnis %d]"),
                     st->running->name, st->running->exit_code);
 
         /* Erst jetzt gibt der Prozess seinen Steckplatz her - samt
@@ -742,11 +744,11 @@ static void drain_process(struct term_state *st)
 static const char *thread_state_name(uint8_t state)
 {
     switch (state) {
-    case THREAD_RUNNING:  return "laeuft";
-    case THREAD_READY:    return "bereit";
-    case THREAD_SLEEPING: return "schlaeft";
-    case THREAD_BLOCKED:  return "wartet";
-    default:              return "beendet";
+    case THREAD_RUNNING:  return tr("laeuft");
+    case THREAD_READY:    return tr("bereit");
+    case THREAD_SLEEPING: return tr("schlaeft");
+    case THREAD_BLOCKED:  return tr("wartet");
+    default:              return tr("beendet");
     }
 }
 
@@ -757,12 +759,12 @@ static void cmd_processes(struct term_state *st)
     size_t n = process_count();
 
     if (n == 0) {
-        term_line(st, C_NORMAL, "Zurzeit laeuft kein Programm.");
+        term_line(st, C_NORMAL, tr("Zurzeit laeuft kein Programm."));
         return;
     }
 
     term_printf(st, C_HIGHLIGHT, "%-5s %-6s %-16s %-10s %s",
-                "Nr.", "Eltern", "Name", "Zustand", "Speicher");
+                "Nr.", "Eltern", tr("Name"), tr("Zustand"), tr("Speicher"));
 
     for (size_t i = 0; i < n; i++) {
         struct process *p = process_at(i);
@@ -773,14 +775,14 @@ static void cmd_processes(struct term_state *st)
         if (p->parent_pid)
             ksnprintf(parent, sizeof(parent), "%u", (unsigned)p->parent_pid);
 
-        term_printf(st, C_NORMAL, "%-5u %-6s %-16s %-10s %u KiB",
+        term_printf(st, C_NORMAL, tr("%-5u %-6s %-16s %-10s %u KiB"),
                     (unsigned)p->pid, parent, p->name,
-                    p->finished ? "beendet" : "laeuft",
+                    p->finished ? tr("beendet") : tr("laeuft"),
                     (unsigned)(p->space.heap_break / 1024));
     }
 
     term_printf(st, C_NORMAL, "");
-    term_printf(st, C_NORMAL, "Mehrfach genutzt: %u KiB",
+    term_printf(st, C_NORMAL, tr("Mehrfach genutzt: %u KiB"),
                 (unsigned)(pmm_shared_bytes() / 1024));
 }
 
@@ -791,14 +793,14 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
     struct fs_node *korb = trash_dir();
 
     if (!korb) {
-        term_line(st, C_ERROR, "Es gibt keinen Papierkorb.");
+        term_line(st, C_ERROR, tr("Es gibt keinen Papierkorb."));
         return;
     }
 
     if (what && !strcasecmp(what, "leeren")) {
         size_t gone = trash_empty();
 
-        term_printf(st, C_NORMAL, "%u Eintraege endgueltig geloescht.",
+        term_printf(st, C_NORMAL, tr("%u Eintraege endgueltig geloescht."),
                     (unsigned)gone);
         return;
     }
@@ -814,7 +816,7 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
 
         if (index < 1 || (size_t)index > count) {
             term_printf(st, C_ERROR,
-                        "papierkorb zurueck: Nummer 1 bis %u erwartet",
+                        tr("papierkorb zurueck: Nummer 1 bis %u erwartet"),
                         (unsigned)count);
             return;
         }
@@ -824,20 +826,20 @@ static void cmd_trash(struct term_state *st, const char *what, const char *arg)
 
         strlcpy(name, pick->name, sizeof(name));
         if (trash_restore(pick))
-            term_printf(st, C_NORMAL, "\"%s\" ist wieder da.", name);
+            term_printf(st, C_NORMAL, tr("\"%s\" ist wieder da."), name);
         else
             term_printf(st, C_ERROR,
-                        "\"%s\" liess sich nicht zurueckholen.", name);
+                        tr("\"%s\" liess sich nicht zurueckholen."), name);
         return;
     }
 
     if (count == 0) {
-        term_line(st, C_NORMAL, "Der Papierkorb ist leer.");
+        term_line(st, C_NORMAL, tr("Der Papierkorb ist leer."));
         return;
     }
 
     term_printf(st, C_HIGHLIGHT, "%-4s %-24s %-10s %s",
-                "Nr.", "Name", "Groesse", "Kam von");
+                "Nr.", tr("Name"), "Groesse", "Kam von");
 
     for (size_t i = 0; i < count; i++) {
         char size[24];
@@ -906,14 +908,14 @@ static bool copy_entry(struct fs_node *src, struct fs_node *dest_dir,
 static void cmd_copy(struct term_state *st, const char *from, const char *to)
 {
     if (!from || !to) {
-        term_line(st, C_ERROR, "kopiere <quelle> <ziel>");
+        term_line(st, C_ERROR, tr("kopiere <quelle> <ziel>"));
         return;
     }
 
     struct fs_node *src = fs_lookup(st->cwd, from);
 
     if (!src) {
-        term_printf(st, C_ERROR, "kopiere: \"%s\" nicht gefunden", from);
+        term_printf(st, C_ERROR, tr("kopiere: \"%s\" nicht gefunden"), from);
         return;
     }
 
@@ -944,11 +946,11 @@ static void cmd_copy(struct term_state *st, const char *from, const char *to)
     }
 
     if (!dir || dir->type != FS_DIR) {
-        term_printf(st, C_ERROR, "kopiere: \"%s\" ist kein Ordner", to);
+        term_printf(st, C_ERROR, tr("kopiere: \"%s\" ist kein Ordner"), to);
         return;
     }
     if (fs_find_child(dir, name)) {
-        term_printf(st, C_ERROR, "kopiere: \"%s\" gibt es dort schon", name);
+        term_printf(st, C_ERROR, tr("kopiere: \"%s\" gibt es dort schon"), name);
         return;
     }
 
@@ -956,32 +958,32 @@ static void cmd_copy(struct term_state *st, const char *from, const char *to)
     for (struct fs_node *p = dir; p; p = p->parent) {
         if (p != src)
             continue;
-        term_line(st, C_ERROR, "kopiere: das waere eine Kopie in sich selbst");
+        term_line(st, C_ERROR, tr("kopiere: das waere eine Kopie in sich selbst"));
         return;
     }
 
     if (!copy_entry(src, dir, name)) {
-        term_line(st, C_ERROR, "kopiere: es ging nicht - fehlen die Rechte?");
+        term_line(st, C_ERROR, tr("kopiere: es ging nicht - fehlen die Rechte?"));
         return;
     }
 
     char text[FS_PATH_MAX];
 
     full_path(st, to, text, sizeof(text));
-    term_printf(st, C_NORMAL, "%s kopiert nach %s", src->name, text);
+    term_printf(st, C_NORMAL, tr("%s kopiert nach %s"), src->name, text);
 }
 
 static void cmd_move(struct term_state *st, const char *from, const char *to)
 {
     if (!from || !to) {
-        term_line(st, C_ERROR, "verschiebe <quelle> <ziel>");
+        term_line(st, C_ERROR, tr("verschiebe <quelle> <ziel>"));
         return;
     }
 
     struct fs_node *src = fs_lookup(st->cwd, from);
 
     if (!src) {
-        term_printf(st, C_ERROR, "verschiebe: \"%s\" nicht gefunden", from);
+        term_printf(st, C_ERROR, tr("verschiebe: \"%s\" nicht gefunden"), from);
         return;
     }
 
@@ -990,7 +992,7 @@ static void cmd_move(struct term_state *st, const char *from, const char *to)
     /* Zwei Faelle: In einen Ordner hinein, oder unter neuem Namen. */
     if (target && target->type == FS_DIR) {
         if (fs_find_child(target, src->name)) {
-            term_printf(st, C_ERROR, "verschiebe: \"%s\" gibt es dort schon",
+            term_printf(st, C_ERROR, tr("verschiebe: \"%s\" gibt es dort schon"),
                         src->name);
             return;
         }
@@ -1000,38 +1002,38 @@ static void cmd_move(struct term_state *st, const char *from, const char *to)
          * den Arbeitsspeicher umhaengen. */
         if (src->backend != target->backend) {
             if (!copy_entry(src, target, src->name)) {
-                term_line(st, C_ERROR, "verschiebe: das Kopieren scheiterte");
+                term_line(st, C_ERROR, tr("verschiebe: das Kopieren scheiterte"));
                 return;
             }
             if (!fs_remove(src)) {
                 term_line(st, C_ERROR,
-                          "verschiebe: kopiert, aber das Original blieb");
+                          tr("verschiebe: kopiert, aber das Original blieb"));
                 return;
             }
         } else if (!fs_move(src, target)) {
-            term_line(st, C_ERROR, "verschiebe: es ging nicht");
+            term_line(st, C_ERROR, tr("verschiebe: es ging nicht"));
             return;
         }
-        term_printf(st, C_NORMAL, "verschoben nach %s", to);
+        term_printf(st, C_NORMAL, tr("verschoben nach %s"), to);
         return;
     }
 
     if (target) {
-        term_printf(st, C_ERROR, "verschiebe: \"%s\" gibt es schon", to);
+        term_printf(st, C_ERROR, tr("verschiebe: \"%s\" gibt es schon"), to);
         return;
     }
 
     /* Ein neuer Name im selben Ordner ist ein Umbenennen. */
     if (!strchr(to, '/')) {
         if (!fs_rename(src, to)) {
-            term_line(st, C_ERROR, "verschiebe: das Umbenennen ging nicht");
+            term_line(st, C_ERROR, tr("verschiebe: das Umbenennen ging nicht"));
             return;
         }
-        term_printf(st, C_NORMAL, "umbenannt in %s", to);
+        term_printf(st, C_NORMAL, tr("umbenannt in %s"), to);
         return;
     }
 
-    term_printf(st, C_ERROR, "verschiebe: \"%s\" gibt es nicht", to);
+    term_printf(st, C_ERROR, tr("verschiebe: \"%s\" gibt es nicht"), to);
 }
 
 /* --- Text ansehen --------------------------------------------------- */
@@ -1043,16 +1045,16 @@ static const char *read_file(struct term_state *st, const char *path,
     struct fs_node *f = path ? fs_lookup(st->cwd, path) : NULL;
 
     if (!f) {
-        term_printf(st, C_ERROR, "%s: \"%s\" nicht gefunden", who,
+        term_printf(st, C_ERROR, tr("%s: \"%s\" nicht gefunden"), who,
                     path ? path : "");
         return NULL;
     }
     if (f->type != FS_FILE) {
-        term_printf(st, C_ERROR, "%s: \"%s\" ist ein Ordner", who, path);
+        term_printf(st, C_ERROR, tr("%s: \"%s\" ist ein Ordner"), who, path);
         return NULL;
     }
     if (!fs_load(f)) {
-        term_printf(st, C_ERROR, "%s: \"%s\" laesst sich nicht lesen", who,
+        term_printf(st, C_ERROR, tr("%s: \"%s\" laesst sich nicht lesen"), who,
                     path);
         return NULL;
     }
@@ -1138,7 +1140,7 @@ static void cmd_head_tail(struct term_state *st, const char *a1,
         if (line_at(text, length, i, line, sizeof(line)))
             term_line(st, C_NORMAL, line);
 
-    term_printf(st, C_HIGHLIGHT, "  %u von %u Zeilen",
+    term_printf(st, C_HIGHLIGHT, tr("  %u von %u Zeilen"),
                 (unsigned)(last - first), (unsigned)total);
 }
 
@@ -1162,7 +1164,7 @@ static void cmd_count(struct term_state *st, const char *path)
         inside = !space;
     }
 
-    term_printf(st, C_NORMAL, "%u Zeilen, %u Woerter, %u Zeichen  %s",
+    term_printf(st, C_NORMAL, tr("%u Zeilen, %u Woerter, %u Zeichen  %s"),
                 (unsigned)count_lines(text, length), (unsigned)words,
                 (unsigned)length, path);
 }
@@ -1178,7 +1180,7 @@ static void cmd_sort(struct term_state *st, const char *path)
     size_t total = count_lines(text, length);
 
     if (total > 200) {
-        term_line(st, C_ERROR, "sortiere: hoechstens 200 Zeilen");
+        term_line(st, C_ERROR, tr("sortiere: hoechstens 200 Zeilen"));
         return;
     }
 
@@ -1187,7 +1189,7 @@ static void cmd_sort(struct term_state *st, const char *path)
     char (*lines)[TERM_COLS] = kmalloc(total * TERM_COLS);
 
     if (!lines) {
-        term_line(st, C_ERROR, "sortiere: kein Speicher");
+        term_line(st, C_ERROR, tr("sortiere: kein Speicher"));
         return;
     }
 
@@ -1209,7 +1211,7 @@ static void cmd_sort(struct term_state *st, const char *path)
 
     for (size_t i = 0; i < total; i++)
         term_line(st, C_NORMAL, lines[i]);
-    term_printf(st, C_HIGHLIGHT, "  %u Zeilen", (unsigned)total);
+    term_printf(st, C_HIGHLIGHT, tr("  %u Zeilen"), (unsigned)total);
     kfree(lines);
 }
 
@@ -1226,7 +1228,7 @@ static void cmd_diff(struct term_state *st, const char *a, const char *b)
     char *copy = kmalloc(la + 1);
 
     if (!copy) {
-        term_line(st, C_ERROR, "vergleiche: kein Speicher");
+        term_line(st, C_ERROR, tr("vergleiche: kein Speicher"));
         return;
     }
     memcpy(copy, ta, la);
@@ -1251,18 +1253,18 @@ static void cmd_diff(struct term_state *st, const char *a, const char *b)
         if (ga && gb && strcmp(linea, lineb) == 0)
             continue;
 
-        term_printf(st, C_ERROR, "Zeile %u:", (unsigned)(i + 1));
+        term_printf(st, C_ERROR, tr("Zeile %u:"), (unsigned)(i + 1));
         term_printf(st, C_NORMAL, "  < %s", ga ? linea : "(fehlt)");
         term_printf(st, C_NORMAL, "  > %s", gb ? lineb : "(fehlt)");
 
         if (++shown >= 10) {
-            term_line(st, C_HIGHLIGHT, "  ... weitere Unterschiede");
+            term_line(st, C_HIGHLIGHT, tr("  ... weitere Unterschiede"));
             break;
         }
     }
 
     if (!shown)
-        term_line(st, C_NORMAL, "Die Dateien sind gleich.");
+        term_line(st, C_NORMAL, tr("Die Dateien sind gleich."));
     kfree(copy);
 }
 
@@ -1315,7 +1317,7 @@ static void cmd_hex(struct term_state *st, const char *path, const char *count)
         term_line(st, C_NORMAL, line);
     }
 
-    term_printf(st, C_HIGHLIGHT, "  %u von %u Bytes", (unsigned)want,
+    term_printf(st, C_HIGHLIGHT, tr("  %u von %u Bytes"), (unsigned)want,
                 (unsigned)length);
 }
 
@@ -1384,14 +1386,14 @@ static void cmd_grep(struct term_state *st, const char *needle,
                      const char *where)
 {
     if (!needle) {
-        term_line(st, C_ERROR, "suche <text> [pfad]");
+        term_line(st, C_ERROR, tr("suche <text> [pfad]"));
         return;
     }
 
     struct fs_node *start = where ? fs_lookup(st->cwd, where) : st->cwd;
 
     if (!start) {
-        term_printf(st, C_ERROR, "suche: \"%s\" nicht gefunden", where);
+        term_printf(st, C_ERROR, tr("suche: \"%s\" nicht gefunden"), where);
         return;
     }
 
@@ -1400,9 +1402,9 @@ static void cmd_grep(struct term_state *st, const char *needle,
     grep_walk(st, start, needle, &limit);
 
     if (!limit.found)
-        term_printf(st, C_NORMAL, "\"%s\" kommt darin nicht vor.", needle);
+        term_printf(st, C_NORMAL, tr("\"%s\" kommt darin nicht vor."), needle);
     else
-        term_printf(st, C_HIGHLIGHT, "  %u Fundstellen%s",
+        term_printf(st, C_HIGHLIGHT, tr("  %u Fundstellen%s"),
                     (unsigned)limit.found,
                     limit.found >= limit.max ? " (abgebrochen)" : "");
 }
@@ -1446,15 +1448,15 @@ static void cmd_find(struct term_state *st, const char *a1, const char *a2)
     const char *pattern = a2 ? a2 : a1;
 
     if (!pattern) {
-        term_line(st, C_ERROR, "finde [pfad] <muster>");
-        term_line(st, C_NORMAL, "  z.B.  finde / *.txt");
+        term_line(st, C_ERROR, tr("finde [pfad] <muster>"));
+        term_line(st, C_NORMAL, tr("  z.B.  finde / *.txt"));
         return;
     }
 
     struct fs_node *start = where ? fs_lookup(st->cwd, where) : st->cwd;
 
     if (!start) {
-        term_printf(st, C_ERROR, "finde: \"%s\" nicht gefunden", where);
+        term_printf(st, C_ERROR, tr("finde: \"%s\" nicht gefunden"), where);
         return;
     }
 
@@ -1463,9 +1465,9 @@ static void cmd_find(struct term_state *st, const char *a1, const char *a2)
     find_walk(st, start, pattern, &limit);
 
     if (!limit.found)
-        term_printf(st, C_NORMAL, "Nichts passt auf \"%s\".", pattern);
+        term_printf(st, C_NORMAL, tr("Nichts passt auf \"%s\"."), pattern);
     else
-        term_printf(st, C_HIGHLIGHT, "  %u gefunden%s", (unsigned)limit.found,
+        term_printf(st, C_HIGHLIGHT, tr("  %u gefunden%s"), (unsigned)limit.found,
                     limit.found >= limit.max ? " (abgebrochen)" : "");
 }
 
@@ -1505,7 +1507,7 @@ static void cmd_tree(struct term_state *st, const char *where,
     struct fs_node *dir = where ? fs_lookup(st->cwd, where) : st->cwd;
 
     if (!dir || dir->type != FS_DIR) {
-        term_printf(st, C_ERROR, "baum: \"%s\" ist kein Ordner",
+        term_printf(st, C_ERROR, tr("baum: \"%s\" ist kein Ordner"),
                     where ? where : ".");
         return;
     }
@@ -1519,7 +1521,7 @@ static void cmd_tree(struct term_state *st, const char *where,
     struct walk_limit limit = { 0, 300 };
 
     tree_walk(st, dir, 0, depth ? (int)depth : 3, "", &limit);
-    term_printf(st, C_HIGHLIGHT, "  %u Eintraege%s", (unsigned)limit.found,
+    term_printf(st, C_HIGHLIGHT, tr("  %u Eintraege%s"), (unsigned)limit.found,
                 limit.found >= limit.max ? " (abgebrochen)" : "");
 }
 
@@ -1528,7 +1530,7 @@ static void cmd_du(struct term_state *st, const char *where)
     struct fs_node *dir = where ? fs_lookup(st->cwd, where) : st->cwd;
 
     if (!dir) {
-        term_printf(st, C_ERROR, "groesse: \"%s\" nicht gefunden", where);
+        term_printf(st, C_ERROR, tr("groesse: \"%s\" nicht gefunden"), where);
         return;
     }
 
@@ -1564,7 +1566,7 @@ static void cmd_du(struct term_state *st, const char *where)
     }
 
     fs_format_size(size, sizeof(size), fs_total_size(dir));
-    term_printf(st, C_HIGHLIGHT, "%10s  insgesamt in %s", size, dir->name);
+    term_printf(st, C_HIGHLIGHT, tr("%10s  insgesamt in %s"), size, dir->name);
 }
 
 static void cmd_stat(struct term_state *st, const char *path)
@@ -1572,7 +1574,7 @@ static void cmd_stat(struct term_state *st, const char *path)
     struct fs_node *n = path ? fs_lookup(st->cwd, path) : NULL;
 
     if (!n) {
-        term_printf(st, C_ERROR, "info: \"%s\" nicht gefunden",
+        term_printf(st, C_ERROR, tr("info: \"%s\" nicht gefunden"),
                     path ? path : "");
         return;
     }
@@ -1586,24 +1588,24 @@ static void cmd_stat(struct term_state *st, const char *path)
     perm_mode_text(n->mode, n->type, mode);
 
     term_printf(st, C_HIGHLIGHT, "%s", full);
-    term_printf(st, C_NORMAL, "  Art       : %s%s",
-                n->type == FS_DIR ? "Ordner" : "Datei",
+    term_printf(st, C_NORMAL, tr("  Art       : %s%s"),
+                n->type == FS_DIR ? tr("Ordner") : "Datei",
                 n->readonly ? ", nur lesbar" : "");
-    term_printf(st, C_NORMAL, "  Groesse   : %s%s", size,
+    term_printf(st, C_NORMAL, tr("  Groesse   : %s%s"), size,
                 n->type == FS_DIR ? " mit allem darin" : "");
     if (n->type == FS_DIR)
-        term_printf(st, C_NORMAL, "  Eintraege : %u",
+        term_printf(st, C_NORMAL, tr("  Eintraege : %u"),
                     (unsigned)fs_child_count(n));
-    term_printf(st, C_NORMAL, "  Rechte    : %s (%04o)", mode,
+    term_printf(st, C_NORMAL, tr("  Rechte    : %s (%04o)"), mode,
                 (unsigned)n->mode);
-    term_printf(st, C_NORMAL, "  Gehoert   : %s:%s", user_name_of(n->uid),
+    term_printf(st, C_NORMAL, tr("  Gehoert   : %s:%s"), user_name_of(n->uid),
                 group_name_of(n->gid));
-    term_printf(st, C_NORMAL, "  Geaendert : %02u.%02u.%04u %02u:%02u",
+    term_printf(st, C_NORMAL, tr("  Geaendert : %02u.%02u.%04u %02u:%02u"),
                 n->mtime_day, n->mtime_month, n->mtime_year,
                 n->mtime_hour, n->mtime_min);
-    term_printf(st, C_NORMAL, "  Liegt     : %s",
+    term_printf(st, C_NORMAL, tr("  Liegt     : %s"),
                 n->backend == FS_BACKEND_FAT ? "auf der Festplatte"
-                                             : "im Arbeitsspeicher");
+                                             : tr("im Arbeitsspeicher"));
 }
 
 static void cmd_checksum(struct term_state *st, const char *path)
@@ -1628,14 +1630,14 @@ static void cmd_checksum(struct term_state *st, const char *path)
     hex[SHA256_SIZE * 2] = '\0';
 
     term_printf(st, C_NORMAL, "%s", hex);
-    term_printf(st, C_HIGHLIGHT, "  SHA-256 ueber %u Bytes von %s",
+    term_printf(st, C_HIGHLIGHT, tr("  SHA-256 ueber %u Bytes von %s"),
                 (unsigned)length, path);
 }
 
 static void cmd_which(struct term_state *st, const char *name)
 {
     if (!name) {
-        term_line(st, C_ERROR, "wo <name>");
+        term_line(st, C_ERROR, tr("wo <name>"));
         return;
     }
 
@@ -1643,10 +1645,10 @@ static void cmd_which(struct term_state *st, const char *name)
     const struct sh_command *cmd = sh_command_find(name);
 
     if (cmd) {
-        term_printf(st, C_HIGHLIGHT, "%s ist ein eingebauter Befehl: %s",
+        term_printf(st, C_HIGHLIGHT, tr("%s ist ein eingebauter Befehl: %s"),
                     cmd->name, cmd->what);
         if (cmd->alias)
-            term_printf(st, C_NORMAL, "  Auch als \"%s\"", cmd->alias);
+            term_printf(st, C_NORMAL, tr("  Auch als \"%s\""), cmd->alias);
         return;
     }
 
@@ -1662,7 +1664,7 @@ static void cmd_which(struct term_state *st, const char *name)
     struct fs_node *node = fs_lookup(st->cwd, full);
 
     if (!node) {
-        term_printf(st, C_ERROR, "\"%s\" ist weder Befehl noch Programm",
+        term_printf(st, C_ERROR, tr("\"%s\" ist weder Befehl noch Programm"),
                     name);
         return;
     }
@@ -1678,7 +1680,7 @@ static void cmd_kill(struct term_state *st, const char *text)
     size_t pid = number_arg(text);
 
     if (!pid) {
-        term_line(st, C_ERROR, "beende <nummer>");
+        term_line(st, C_ERROR, tr("beende <nummer>"));
         return;
     }
 
@@ -1688,14 +1690,14 @@ static void cmd_kill(struct term_state *st, const char *text)
         if (!p || p->pid != (uint32_t)pid)
             continue;
         if (p->finished) {
-            term_printf(st, C_ERROR, "%s laeuft schon nicht mehr.", p->name);
+            term_printf(st, C_ERROR, tr("%s laeuft schon nicht mehr."), p->name);
             return;
         }
 
         /* Ein fremdes Programm abzuschiessen ist Sache des Verwalters. */
         if (p->uid != session_uid() && !session_is_admin()) {
             term_printf(st, C_ERROR,
-                        "%s gehoert %s - das darf nur ein Verwalter beenden.",
+                        tr("%s gehoert %s - das darf nur ein Verwalter beenden."),
                         p->name, user_name_of(p->uid));
             return;
         }
@@ -1708,11 +1710,11 @@ static void cmd_kill(struct term_state *st, const char *text)
         process_kill(p);
         if (st->running && st->running->pid == (uint32_t)pid)
             st->running = NULL;
-        term_printf(st, C_NORMAL, "%s beendet.", name);
+        term_printf(st, C_NORMAL, tr("%s beendet."), name);
         return;
     }
 
-    term_printf(st, C_ERROR, "Es laeuft kein Programm mit der Nummer %u",
+    term_printf(st, C_ERROR, tr("Es laeuft kein Programm mit der Nummer %u"),
                 (unsigned)pid);
 }
 
@@ -1736,7 +1738,7 @@ static void cmd_calendar(struct term_state *st, const char *a1, const char *a2)
         year = now.year;
 
     if (month < 1 || month > 12 || year < 1970 || year > 2999) {
-        term_line(st, C_ERROR, "kalender [monat] [jahr]");
+        term_line(st, C_ERROR, tr("kalender [monat] [jahr]"));
         return;
     }
 
@@ -1760,13 +1762,13 @@ static void cmd_expr(struct term_state *st, const char *text)
     char error[80];
 
     if (!text || !text[0]) {
-        term_line(st, C_ERROR, "rechne <ausdruck>");
-        term_line(st, C_NORMAL, "  z.B.  rechne (3 + 4) * 1024");
+        term_line(st, C_ERROR, tr("rechne <ausdruck>"));
+        term_line(st, C_NORMAL, tr("  z.B.  rechne (3 + 4) * 1024"));
         return;
     }
 
     if (!sh_eval(text, &value, error, sizeof(error))) {
-        term_printf(st, C_ERROR, "rechne: %s", error);
+        term_printf(st, C_ERROR, tr("rechne: %s"), error);
         return;
     }
 
@@ -1783,15 +1785,20 @@ static void cmd_help(struct term_state *st, const char *group)
         /* "hilfe ls" ist so naheliegend, dass es dasselbe tun soll wie
          * "man ls" - niemand soll erst lernen, welches Wort er braucht. */
         if (one) {
-            term_printf(st, C_HIGHLIGHT, "%s - %s", one->usage, one->what);
+            term_printf(st, C_HIGHLIGHT, "%s - %s", one->usage,
+                        tr(one->what));
             if (one->alias)
-                term_printf(st, C_NORMAL, "  Auch als \"%s\".", one->alias);
+                term_printf(st, C_NORMAL, tr("  Auch als \"%s\"."), one->alias);
             if (one->detail) {
+                /* Uebersetzt wird der ganze Text und nicht Zeile fuer
+                 * Zeile: Wo im Deutschen umgebrochen wird, muss im
+                 * Englischen kein Umbruch sein. */
+                const char *detail = tr(one->detail);
                 char line[TERM_COLS];
-                size_t length = strlen(one->detail);
+                size_t length = strlen(detail);
 
-                for (size_t i = 0; i < count_lines(one->detail, length); i++)
-                    if (line_at(one->detail, length, i, line, sizeof(line)))
+                for (size_t i = 0; i < count_lines(detail, length); i++)
+                    if (line_at(detail, length, i, line, sizeof(line)))
                         term_printf(st, C_NORMAL, "  %s", line);
             }
             return;
@@ -1803,23 +1810,28 @@ static void cmd_help(struct term_state *st, const char *group)
     for (size_t g = 0; g < sh_group_count(); g++) {
         const char *name = sh_group_at(g);
 
-        if (group && group[0] && strcasecmp(group, name) != 0)
+        /* Der Bereich laesst sich unter seinem deutschen wie unter
+         * seinem englischen Namen ansprechen - wer "help Files" tippt,
+         * hat die Uebersicht vor sich und nicht das Wort daneben. */
+        if (group && group[0] && strcasecmp(group, name) != 0 &&
+            strcasecmp(group, tr(name)) != 0)
             continue;
 
-        term_printf(st, C_HIGHLIGHT, "%s:", name);
+        term_printf(st, C_HIGHLIGHT, "%s:", tr(name));
 
         for (size_t i = 0; i < sh_command_count(); i++) {
             const struct sh_command *c = sh_command_at(i);
 
             if (strcmp(c->group, name) != 0)
                 continue;
-            term_printf(st, C_NORMAL, "  %-42s %s", c->usage, c->what);
+            term_printf(st, C_NORMAL, "  %-42s %s", c->usage,
+                        tr(c->what));
             shown++;
         }
     }
 
     if (!shown) {
-        term_printf(st, C_ERROR, "\"%s\" ist weder Befehl noch Bereich.",
+        term_printf(st, C_ERROR, tr("\"%s\" ist weder Befehl noch Bereich."),
                     group);
         term_line(st, C_NORMAL,
                   "Bereiche: Dateien, Text, Programme, System, Netz, "
@@ -1842,11 +1854,11 @@ static void cmd_firewall(struct term_state *st, int argc, char *argv[])
     if (!what) {
         char text[96];
 
-        term_printf(st, C_HIGHLIGHT, "Paketfilter: %s",
+        term_printf(st, C_HIGHLIGHT, tr("Paketfilter: %s"),
                     fw_enabled() ? "eingeschaltet" : "ausgeschaltet");
-        term_printf(st, C_NORMAL, "  Grundeinstellung eingehend: %s",
+        term_printf(st, C_NORMAL, tr("  Grundeinstellung eingehend: %s"),
                     fw_action_name(fw_policy(FW_IN)));
-        term_printf(st, C_NORMAL, "  Grundeinstellung ausgehend: %s",
+        term_printf(st, C_NORMAL, tr("  Grundeinstellung ausgehend: %s"),
                     fw_action_name(fw_policy(FW_OUT)));
 
         size_t shown = 0;
@@ -1857,7 +1869,7 @@ static void cmd_firewall(struct term_state *st, int argc, char *argv[])
             if (!r)
                 continue;
             fw_rule_text(r, text, sizeof(text));
-            term_printf(st, C_NORMAL, "  %2u  %s  (%u Treffer)",
+            term_printf(st, C_NORMAL, tr("  %2u  %s  (%u Treffer)"),
                         (unsigned)i, text, (unsigned)r->hits);
             shown++;
         }
@@ -1866,7 +1878,7 @@ static void cmd_firewall(struct term_state *st, int argc, char *argv[])
                                     "Grundeinstellung.");
 
         term_printf(st, C_NORMAL,
-                    "  Durchgelassen: %u ein, %u aus; verworfen: %u ein, %u aus",
+                    tr("  Durchgelassen: %u ein, %u aus; verworfen: %u ein, %u aus"),
                     (unsigned)fw_passed(FW_IN), (unsigned)fw_passed(FW_OUT),
                     (unsigned)fw_dropped(FW_IN), (unsigned)fw_dropped(FW_OUT));
         term_line(st, C_NORMAL,
@@ -1877,13 +1889,13 @@ static void cmd_firewall(struct term_state *st, int argc, char *argv[])
     }
 
     if (!session_can(CAP_NET)) {
-        term_line(st, C_ERROR, "Dafuer braucht es das Recht am Netz.");
+        term_line(st, C_ERROR, tr("Dafuer braucht es das Recht am Netz."));
         return;
     }
 
     if (!strcasecmp(what, "an") || !strcasecmp(what, "aus")) {
         fw_enable(!strcasecmp(what, "an"));
-        term_printf(st, C_NORMAL, "Paketfilter %s.",
+        term_printf(st, C_NORMAL, tr("Paketfilter %s."),
                     fw_enabled() ? "eingeschaltet" : "ausgeschaltet");
     } else if (!strcasecmp(what, "standard")) {
         enum fw_action action;
@@ -1897,7 +1909,7 @@ static void cmd_firewall(struct term_state *st, int argc, char *argv[])
         enum fw_dir dir = !strcasecmp(argv[2], "ausgehend") ? FW_OUT : FW_IN;
 
         fw_set_policy(dir, action);
-        term_printf(st, C_NORMAL, "Grundeinstellung %s: %s", argv[2],
+        term_printf(st, C_NORMAL, tr("Grundeinstellung %s: %s"), argv[2],
                     fw_action_name(action));
     } else if (!strcasecmp(what, "regel")) {
         enum fw_action action;
@@ -1921,23 +1933,23 @@ static void cmd_firewall(struct term_state *st, int argc, char *argv[])
                            argc > 7 ? argv[7] : NULL);
 
         if (index < 0) {
-            term_line(st, C_ERROR, "Es ist kein Platz fuer weitere Regeln.");
+            term_line(st, C_ERROR, tr("Es ist kein Platz fuer weitere Regeln."));
             return;
         }
-        term_printf(st, C_NORMAL, "Regel %d angelegt.", index);
+        term_printf(st, C_NORMAL, tr("Regel %d angelegt."), index);
     } else if (!strcasecmp(what, "weg")) {
         size_t index = 0;
 
         for (const char *p = argc > 2 ? argv[2] : ""; *p >= '0' && *p <= '9'; p++)
             index = index * 10 + (size_t)(*p - '0');
         if (!fw_remove(index)) {
-            term_line(st, C_ERROR, "Diese Regel gibt es nicht.");
+            term_line(st, C_ERROR, tr("Diese Regel gibt es nicht."));
             return;
         }
-        term_printf(st, C_NORMAL, "Regel %u entfernt.", (unsigned)index);
+        term_printf(st, C_NORMAL, tr("Regel %u entfernt."), (unsigned)index);
     } else if (!strcasecmp(what, "leeren")) {
         fw_clear();
-        term_line(st, C_NORMAL, "Alle Regeln entfernt.");
+        term_line(st, C_NORMAL, tr("Alle Regeln entfernt."));
     } else if (!strcasecmp(what, "speichern")) {
         bool ok = fw_save();
 
@@ -1946,7 +1958,7 @@ static void cmd_firewall(struct term_state *st, int argc, char *argv[])
                      : "Ohne Festplatte laesst sich nichts sichern.");
         return;
     } else {
-        term_printf(st, C_ERROR, "Unbekannt: %s", what);
+        term_printf(st, C_ERROR, tr("Unbekannt: %s"), what);
         return;
     }
 
@@ -1986,7 +1998,7 @@ static void cmd_audit(struct term_state *st, const char *what)
     size_t shown = 0;
 
     term_line(st, C_HIGHLIGHT,
-              "Zeit        Art        Ausgang     Benutzer   Gegenstand");
+              tr("Zeit        Art        Ausgang     Benutzer   Gegenstand"));
 
     for (size_t i = first; i < count; i++) {
         if (!audit_get(i, &e))
@@ -2003,11 +2015,11 @@ static void cmd_audit(struct term_state *st, const char *what)
     }
 
     term_printf(st, C_HIGHLIGHT,
-                "%u von %u Eintraegen, davon %u abgewiesen%s",
+                tr("%u von %u Eintraegen, davon %u abgewiesen%s"),
                 (unsigned)shown, (unsigned)count,
                 (unsigned)audit_count_failed(),
                 audit_lost() ? " (aeltere sind aus dem Ring gefallen)" : "");
-    term_line(st, C_NORMAL, "  pruefspur [alle|abgewiesen|speichern]");
+    term_line(st, C_NORMAL, tr("  pruefspur [alle|abgewiesen|speichern]"));
 }
 
 /* --- Protokoll und Aufgaben ---------------------------------------- */
@@ -2017,11 +2029,11 @@ static void cmd_log(struct term_state *st, const char *what)
     if (what && !strcasecmp(what, "leeren")) {
         if (!session_can(CAP_LOG)) {
             term_line(st, C_ERROR,
-                      "Leeren darf nur, wer das Recht am Protokoll hat.");
+                      tr("Leeren darf nur, wer das Recht am Protokoll hat."));
             return;
         }
         log_clear();
-        term_line(st, C_NORMAL, "Protokoll geleert.");
+        term_line(st, C_NORMAL, tr("Protokoll geleert."));
         return;
     }
 
@@ -2031,9 +2043,9 @@ static void cmd_log(struct term_state *st, const char *what)
         user_home_file("protokoll.txt", LOG_PATH_DEFAULT, path, sizeof(path));
 
         if (log_save(path))
-            term_printf(st, C_NORMAL, "Gesichert in %s", path);
+            term_printf(st, C_NORMAL, tr("Gesichert in %s"), path);
         else
-            term_printf(st, C_ERROR, "%s liess sich nicht schreiben", path);
+            term_printf(st, C_ERROR, tr("%s liess sich nicht schreiben"), path);
         return;
     }
 
@@ -2048,7 +2060,7 @@ static void cmd_log(struct term_state *st, const char *what)
     else if (what && !strcasecmp(what, "alle"))   { tail = false; }
     else if (what && what[0]) {
         term_line(st, C_ERROR,
-                  "protokoll [alle|warnung|fehler|speichern|leeren]");
+                  tr("protokoll [alle|warnung|fehler|speichern|leeren]"));
         return;
     }
 
@@ -2072,12 +2084,12 @@ static void cmd_log(struct term_state *st, const char *what)
     }
 
     term_printf(st, C_HIGHLIGHT,
-                "%u von %u Meldungen - %u Warnungen, %u Fehler",
+                tr("%u von %u Meldungen - %u Warnungen, %u Fehler"),
                 (unsigned)shown, (unsigned)count,
                 (unsigned)log_count_level(LOG_WARN),
                 (unsigned)log_count_level(LOG_ERROR));
     if (log_lost())
-        term_printf(st, C_NORMAL, "%u aeltere sind aus dem Ring gefallen.",
+        term_printf(st, C_NORMAL, tr("%u aeltere sind aus dem Ring gefallen."),
                     (unsigned)log_lost());
 }
 
@@ -2142,7 +2154,7 @@ static void cmd_tasks(struct term_state *st, const char *what,
     char path[FS_PATH_MAX];
 
     if (!list) {
-        term_line(st, C_ERROR, "Kein Speicher.");
+        term_line(st, C_ERROR, tr("Kein Speicher."));
         return;
     }
 
@@ -2165,9 +2177,9 @@ static void cmd_tasks(struct term_state *st, const char *what,
 
     if (!what || !what[0]) {
         if (!n) {
-            term_line(st, C_NORMAL, "Nichts zu tun.");
+            term_line(st, C_NORMAL, tr("Nichts zu tun."));
         } else {
-            term_line(st, C_HIGHLIGHT, "Aufgaben:");
+            term_line(st, C_HIGHLIGHT, tr("Aufgaben:"));
             for (size_t i = 0; i < n; i++) {
                 char date[16];
 
@@ -2175,11 +2187,11 @@ static void cmd_tasks(struct term_state *st, const char *what,
                 term_printf(st, view[i]->done ? C_NORMAL : C_HIGHLIGHT,
                             "  %2u [%c] %-8s %-11s %s", (unsigned)(i + 1),
                             view[i]->done ? 'x' : ' ',
-                            task_prio_name(view[i]->prio), date,
+                            tr(task_prio_name(view[i]->prio)), date,
                             view[i]->text);
             }
         }
-        term_printf(st, C_NORMAL, "  %u offen von %u - %s",
+        term_printf(st, C_NORMAL, tr("  %u offen von %u - %s"),
                     (unsigned)tasks_count(list, true),
                     (unsigned)tasks_count(list, false), path);
         term_line(st, C_NORMAL,
@@ -2193,19 +2205,19 @@ static void cmd_tasks(struct term_state *st, const char *what,
         const char *text = text_rest;
 
         if (!text || !text[0]) {
-            term_line(st, C_ERROR, "aufgaben neu <text>");
+            term_line(st, C_ERROR, tr("aufgaben neu <text>"));
             kfree(list);
             return;
         }
         if (!tasks_add(list, text)) {
-            term_line(st, C_ERROR, "Die Liste ist voll.");
+            term_line(st, C_ERROR, tr("Die Liste ist voll."));
             kfree(list);
             return;
         }
-        term_printf(st, C_NORMAL, "Notiert: %s", text);
+        term_printf(st, C_NORMAL, tr("Notiert: %s"), text);
         dirty = true;
     } else if (!chosen) {
-        term_line(st, C_ERROR, "Welche Aufgabe? Nummer aus der Liste angeben.");
+        term_line(st, C_ERROR, tr("Welche Aufgabe? Nummer aus der Liste angeben."));
         kfree(list);
         return;
     } else if (!strcasecmp(what, "fertig")) {
@@ -2219,26 +2231,26 @@ static void cmd_tasks(struct term_state *st, const char *what,
 
         strlcpy(name, chosen->text, sizeof(name));
         tasks_remove(list, chosen->id);
-        term_printf(st, C_NORMAL, "Geloescht: %s", name);
+        term_printf(st, C_NORMAL, tr("Geloescht: %s"), name);
         dirty = true;
     } else if (!strcasecmp(what, "wichtig")) {
         uint8_t prio;
 
         if (!task_prio_parse(value_rest, &prio)) {
-            term_line(st, C_ERROR, "hoch, mittel oder niedrig");
+            term_line(st, C_ERROR, tr("hoch, mittel oder niedrig"));
             kfree(list);
             return;
         }
         chosen->prio = prio;
-        term_printf(st, C_NORMAL, "%s ist jetzt %s", chosen->text,
-                    task_prio_name(prio));
+        term_printf(st, C_NORMAL, tr("%s ist jetzt %s"), chosen->text,
+                    tr(task_prio_name(prio)));
         dirty = true;
     } else if (!strcasecmp(what, "termin")) {
         uint16_t year;
         uint8_t  month, day;
 
         if (!tasks_parse_date(value_rest, &year, &month, &day)) {
-            term_line(st, C_ERROR, "TT.MM.JJJJ oder ein Strich");
+            term_line(st, C_ERROR, tr("TT.MM.JJJJ oder ein Strich"));
             kfree(list);
             return;
         }
@@ -2249,16 +2261,16 @@ static void cmd_tasks(struct term_state *st, const char *what,
         char date[16];
 
         tasks_format_date(chosen, date, sizeof(date));
-        term_printf(st, C_NORMAL, "Termin von %s: %s", chosen->text, date);
+        term_printf(st, C_NORMAL, tr("Termin von %s: %s"), chosen->text, date);
         dirty = true;
     } else {
-        term_printf(st, C_ERROR, "Unbekannt: %s", what);
+        term_printf(st, C_ERROR, tr("Unbekannt: %s"), what);
         kfree(list);
         return;
     }
 
     if (dirty && !tasks_store(list, path))
-        term_printf(st, C_ERROR, "%s liess sich nicht schreiben", path);
+        term_printf(st, C_ERROR, tr("%s liess sich nicht schreiben"), path);
 
     kfree(list);
 }
@@ -2270,19 +2282,19 @@ static void cmd_who(struct term_state *st)
     struct user *u = session_user();
 
     if (!u) {
-        term_line(st, C_NORMAL, "Niemand angemeldet - alles laeuft als root.");
+        term_line(st, C_NORMAL, tr("Niemand angemeldet - alles laeuft als root."));
         return;
     }
 
     term_printf(st, C_HIGHLIGHT, "%s (%s)", u->name, u->full);
-    term_printf(st, C_NORMAL, "  Nummer    : %u", (unsigned)u->uid);
-    term_printf(st, C_NORMAL, "  Heim      : %s", u->home);
+    term_printf(st, C_NORMAL, tr("  Nummer    : %u"), (unsigned)u->uid);
+    term_printf(st, C_NORMAL, tr("  Heim      : %s"), u->home);
     char rechte[80];
 
     caps_text(u->caps, rechte, sizeof(rechte));
-    term_printf(st, C_NORMAL, "  Rolle     : %s",
+    term_printf(st, C_NORMAL, tr("  Rolle     : %s"),
                 u->role[0] ? u->role : caps_role(u->caps));
-    term_printf(st, C_NORMAL, "  Darf      : %s", rechte);
+    term_printf(st, C_NORMAL, tr("  Darf      : %s"), rechte);
 
     char line[128];
     size_t used = 0;
@@ -2296,12 +2308,12 @@ static void cmd_who(struct term_state *st)
                   used ? ", " : "", g->name);
         used += strlen(line + used);
     }
-    term_printf(st, C_NORMAL, "  Gruppen   : %s", used ? line : "keine");
+    term_printf(st, C_NORMAL, tr("  Gruppen   : %s"), used ? line : tr("keine"));
 }
 
 static void cmd_groups(struct term_state *st)
 {
-    term_line(st, C_HIGHLIGHT, "Gruppen:");
+    term_line(st, C_HIGHLIGHT, tr("Gruppen:"));
     for (size_t i = 0; i < group_count(); i++) {
         struct group *g = group_at(i);
         char line[160];
@@ -2322,7 +2334,7 @@ static void cmd_users(struct term_state *st, const char *what,
                       const char *name, const char *extra)
 {
     if (!what || !what[0]) {
-        term_line(st, C_HIGHLIGHT, "Benutzer:");
+        term_line(st, C_HIGHLIGHT, tr("Benutzer:"));
         for (size_t i = 0; i < user_count(); i++) {
             struct user *u = user_at(i);
 
@@ -2341,11 +2353,11 @@ static void cmd_users(struct term_state *st, const char *what,
     }
 
     if (!session_can(CAP_USERS)) {
-        term_line(st, C_ERROR, "Dafuer braucht es das Recht an den Konten.");
+        term_line(st, C_ERROR, tr("Dafuer braucht es das Recht an den Konten."));
         return;
     }
     if (!name || !name[0]) {
-        term_line(st, C_ERROR, "Es fehlt der Name.");
+        term_line(st, C_ERROR, tr("Es fehlt der Name."));
         return;
     }
 
@@ -2360,7 +2372,7 @@ static void cmd_users(struct term_state *st, const char *what,
             return;
         }
         user_ensure_home(u);
-        term_printf(st, C_NORMAL, "%s angelegt, Nummer %u, Heim %s",
+        term_printf(st, C_NORMAL, tr("%s angelegt, Nummer %u, Heim %s"),
                     u->name, (unsigned)u->uid, u->home);
     } else if (!strcasecmp(what, "loeschen")) {
         struct user *u = user_by_name(name);
@@ -2369,21 +2381,21 @@ static void cmd_users(struct term_state *st, const char *what,
             term_printf(st, C_ERROR, "%s", error);
             return;
         }
-        term_printf(st, C_NORMAL, "%s entfernt.", name);
+        term_printf(st, C_NORMAL, tr("%s entfernt."), name);
     } else if (!strcasecmp(what, "passwort")) {
         struct user *u = user_by_name(name);
 
         if (!u) {
-            term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", name);
+            term_printf(st, C_ERROR, tr("Unbekannter Benutzer: %s"), name);
             return;
         }
         user_set_password(u, extra);
-        term_printf(st, C_NORMAL, "Passwort von %s gesetzt.", u->name);
+        term_printf(st, C_NORMAL, tr("Passwort von %s gesetzt."), u->name);
     } else if (!strcasecmp(what, "rolle")) {
         struct user *u = user_by_name(name);
 
         if (!u) {
-            term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", name);
+            term_printf(st, C_ERROR, tr("Unbekannter Benutzer: %s"), name);
             return;
         }
         if (!extra || !user_set_role(u, extra)) {
@@ -2396,7 +2408,7 @@ static void cmd_users(struct term_state *st, const char *what,
                           used ? ", " : "", role_name(i));
                 used += strlen(liste + used);
             }
-            term_printf(st, C_ERROR, "Bekannte Rollen: %s", liste);
+            term_printf(st, C_ERROR, tr("Bekannte Rollen: %s"), liste);
             return;
         }
         if (user_is_admin(u))
@@ -2407,13 +2419,13 @@ static void cmd_users(struct term_state *st, const char *what,
         char rechte[80];
 
         caps_text(u->caps, rechte, sizeof(rechte));
-        term_printf(st, C_NORMAL, "%s hat jetzt die Rolle %s und darf %s.",
+        term_printf(st, C_NORMAL, tr("%s hat jetzt die Rolle %s und darf %s."),
                     u->name, u->role, rechte);
     } else if (!strcasecmp(what, "verwalter")) {
         struct user *u = user_by_name(name);
 
         if (!u) {
-            term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", name);
+            term_printf(st, C_ERROR, tr("Unbekannter Benutzer: %s"), name);
             return;
         }
         user_set_role(u, user_is_admin(u) ? "benutzer" : "verwalter");
@@ -2421,17 +2433,17 @@ static void cmd_users(struct term_state *st, const char *what,
             group_add_member(group_by_gid(GID_ROOT), u->uid);
         else
             group_remove_member(group_by_gid(GID_ROOT), u->uid);
-        term_printf(st, C_NORMAL, "%s ist %s Verwalter.", u->name,
+        term_printf(st, C_NORMAL, tr("%s ist %s Verwalter."), u->name,
                     user_is_admin(u) ? "jetzt" : "nicht mehr");
     } else {
-        term_printf(st, C_ERROR, "Unbekannt: %s", what);
+        term_printf(st, C_ERROR, tr("Unbekannt: %s"), what);
         return;
     }
 
     if (fs_disk_mounted() && user_save())
         term_line(st, C_NORMAL, "Gespeichert in " USER_PATH);
     else if (!fs_disk_mounted())
-        term_line(st, C_NORMAL, "Ohne Festplatte gilt das bis zum Ausschalten.");
+        term_line(st, C_NORMAL, tr("Ohne Festplatte gilt das bis zum Ausschalten."));
 }
 
 static void cmd_mode(struct term_state *st, const char *path, const char *mode)
@@ -2439,7 +2451,7 @@ static void cmd_mode(struct term_state *st, const char *path, const char *mode)
     struct fs_node *n = path ? fs_lookup(st->cwd, path) : NULL;
 
     if (!n) {
-        term_printf(st, C_ERROR, "rechte: \"%s\" nicht gefunden",
+        term_printf(st, C_ERROR, tr("rechte: \"%s\" nicht gefunden"),
                     path ? path : "");
         return;
     }
@@ -2457,11 +2469,11 @@ static void cmd_mode(struct term_state *st, const char *path, const char *mode)
     uint16_t want;
 
     if (!perm_parse_mode(mode, &want)) {
-        term_line(st, C_ERROR, "rechte: \"750\" oder \"rwxr-x---\" wird erwartet");
+        term_line(st, C_ERROR, tr("rechte: \"750\" oder \"rwxr-x---\" wird erwartet"));
         return;
     }
     if (!perm_set_mode(n, want)) {
-        term_line(st, C_ERROR, "Das darf nur der Eigentuemer oder ein Verwalter.");
+        term_line(st, C_ERROR, tr("Das darf nur der Eigentuemer oder ein Verwalter."));
         return;
     }
 
@@ -2476,12 +2488,12 @@ static void cmd_owner(struct term_state *st, const char *path, const char *who)
     struct fs_node *n = path ? fs_lookup(st->cwd, path) : NULL;
 
     if (!n) {
-        term_printf(st, C_ERROR, "besitzer: \"%s\" nicht gefunden",
+        term_printf(st, C_ERROR, tr("besitzer: \"%s\" nicht gefunden"),
                     path ? path : "");
         return;
     }
     if (!who || !who[0]) {
-        term_printf(st, C_NORMAL, "%s gehoert %s:%s", n->name,
+        term_printf(st, C_NORMAL, tr("%s gehoert %s:%s"), n->name,
                     user_name_of(n->uid), group_name_of(n->gid));
         return;
     }
@@ -2502,7 +2514,7 @@ static void cmd_owner(struct term_state *st, const char *path, const char *who)
     struct user *u = user_by_name(buffer);
 
     if (!u) {
-        term_printf(st, C_ERROR, "Unbekannter Benutzer: %s", buffer);
+        term_printf(st, C_ERROR, tr("Unbekannter Benutzer: %s"), buffer);
         return;
     }
 
@@ -2512,18 +2524,18 @@ static void cmd_owner(struct term_state *st, const char *path, const char *who)
         struct group *g = group_by_name(group_name);
 
         if (!g) {
-            term_printf(st, C_ERROR, "Unbekannte Gruppe: %s", group_name);
+            term_printf(st, C_ERROR, tr("Unbekannte Gruppe: %s"), group_name);
             return;
         }
         gid = g->gid;
     }
 
     if (!perm_set_owner(n, u->uid, gid)) {
-        term_line(st, C_ERROR, "Verschenken darf nur ein Verwalter.");
+        term_line(st, C_ERROR, tr("Verschenken darf nur ein Verwalter."));
         return;
     }
 
-    term_printf(st, C_NORMAL, "%s gehoert jetzt %s:%s", n->name, u->name,
+    term_printf(st, C_NORMAL, tr("%s gehoert jetzt %s:%s"), n->name, u->name,
                 group_name_of(gid));
     if (perm_store_dirty())
         perm_store_save();
@@ -2553,29 +2565,74 @@ static void cmd_font(struct term_state *st, const char *name)
 {
     if (name && name[0]) {
         if (!font_select_by_name(name)) {
-            term_printf(st, C_ERROR, "Unbekannte Schrift: %s", name);
+            term_printf(st, C_ERROR, tr("Unbekannte Schrift: %s"), name);
             return;
         }
         strlcpy(config_current()->font, font_name(font_current()),
                 sizeof(config_current()->font));
-        term_printf(st, C_NORMAL, "Schrift: %s", font_name(font_current()));
+        term_printf(st, C_NORMAL, tr("Schrift: %s"), font_name(font_current()));
         term_line(st, C_NORMAL,
-                  "Dauerhaft wird das erst mit Speichern in den Einstellungen.");
+                  tr("Dauerhaft wird das erst mit Speichern in den Einstellungen."));
         gui_invalidate();
         return;
     }
 
-    term_line(st, C_HIGHLIGHT, "Schriftarten:");
+    term_line(st, C_HIGHLIGHT, tr("Schriftarten:"));
     for (size_t i = 0; i < font_count(); i++)
         term_printf(st, C_NORMAL, "  %c %-18s %s",
                     i == font_current() ? '*' : ' ',
                     font_name(i), font_license(i));
 }
 
+static void cmd_language(struct term_state *st, const char *code)
+{
+    if (code && code[0]) {
+        enum language before = lang_current();
+
+        if (!lang_select_by_code(code)) {
+            term_printf(st, C_ERROR, tr("Unbekannte Sprache: %s"), code);
+            return;
+        }
+
+        struct config *cfg = config_current();
+
+        strlcpy(cfg->language, lang_code(lang_current()), sizeof(cfg->language));
+
+        /* Dieselbe Regel wie im Einstellungsfenster: Die Tastatur
+         * wandert mit, solange sie noch die der alten Sprache ist. */
+        if (strcasecmp(cfg->keymap, lang_default_keymap(before)) == 0) {
+            keymap_select(lang_default_keymap(lang_current()));
+            strlcpy(cfg->keymap, keymap_current()->code, sizeof(cfg->keymap));
+            term_printf(st, C_NORMAL, "%s: %s / %s",
+                        tr("Sprache"), lang_name(lang_current()),
+                        tr(keymap_current()->name));
+        } else {
+            term_printf(st, C_NORMAL, "%s: %s", tr("Sprache"),
+                        lang_name(lang_current()));
+        }
+        term_line(st, C_NORMAL,
+                  tr("Dauerhaft wird das erst mit Speichern in den Einstellungen."));
+        gui_invalidate();
+        return;
+    }
+
+    term_line(st, C_HIGHLIGHT, tr("Sprachen:"));
+    for (enum language l = 0; l < LANG_COUNT; l++)
+        term_printf(st, C_NORMAL, "  %c %-4s %s",
+                    l == lang_current() ? '*' : ' ', lang_code(l), lang_name(l));
+
+    term_line(st, C_NORMAL, "");
+    term_line(st, C_HIGHLIGHT, tr("Tastaturbelegungen:"));
+    for (size_t i = 0; i < keymap_count(); i++)
+        term_printf(st, C_NORMAL, "  %c %-4s %s",
+                    i == keymap_current_index() ? '*' : ' ',
+                    keymap_at(i)->code, tr(keymap_at(i)->name));
+}
+
 static void cmd_threads(struct term_state *st)
 {
     term_printf(st, C_HIGHLIGHT, "%-4s %-16s %-10s %-6s %-8s %s",
-                "Nr.", "Name", "Zustand", "Wicht.", "Laeufe", "Kern");
+                "Nr.", tr("Name"), tr("Zustand"), "Wicht.", "Laeufe", tr("Kern"));
 
     for (size_t i = 0; i < thread_count(); i++) {
         struct thread *t = thread_at(i);
@@ -2597,7 +2654,7 @@ static void cmd_threads(struct term_state *st)
 
             if (c)
                 term_printf(st, C_NORMAL,
-                            "Kern %u: %s, %u Takte, %u Wechsel", (unsigned)i,
+                            tr("Kern %u: %s, %u Takte, %u Wechsel"), (unsigned)i,
                             c->current ? c->current->name : "-",
                             (unsigned)c->ticks, (unsigned)c->switches);
         }
@@ -2643,7 +2700,7 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         struct fs_node *dir = a1 ? fs_lookup(st->cwd, a1) : fs_root();
 
         if (!dir || dir->type != FS_DIR)
-            term_printf(st, C_ERROR, "cd: \"%s\" ist kein Ordner", a1 ? a1 : "/");
+            term_printf(st, C_ERROR, tr("cd: \"%s\" ist kein Ordner"), a1 ? a1 : "/");
         else
             st->cwd = dir;
 
@@ -2657,24 +2714,24 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         if (a1)
             cmd_cat(st, a1);
         else
-            term_line(st, C_ERROR, "cat: Dateiname fehlt");
+            term_line(st, C_ERROR, tr("cat: Dateiname fehlt"));
 
     } else if (!strcasecmp(cmd, "mkdir")) {
         if (!a1)
-            term_line(st, C_ERROR, "mkdir: Name fehlt");
+            term_line(st, C_ERROR, tr("mkdir: Name fehlt"));
         else if (!fs_create(st->cwd, a1, FS_DIR))
-            term_printf(st, C_ERROR, "mkdir: \"%s\" konnte nicht angelegt werden", a1);
+            term_printf(st, C_ERROR, tr("mkdir: \"%s\" konnte nicht angelegt werden"), a1);
 
     } else if (!strcasecmp(cmd, "touch")) {
         if (!a1) {
-            term_line(st, C_ERROR, "touch: Name fehlt");
+            term_line(st, C_ERROR, tr("touch: Name fehlt"));
         } else {
             struct fs_node *f = fs_create(st->cwd, a1, FS_FILE);
 
             if (f)
                 fs_write(f, "", 0);
             else
-                term_printf(st, C_ERROR, "touch: \"%s\" existiert bereits", a1);
+                term_printf(st, C_ERROR, tr("touch: \"%s\" existiert bereits"), a1);
         }
 
     } else if (!strcasecmp(cmd, "schreib")) {
@@ -2684,12 +2741,12 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
             f = fs_create_path(st->cwd, a1, FS_FILE);
 
         if (!a1) {
-            term_line(st, C_ERROR, "schreib: <datei> <text>");
+            term_line(st, C_ERROR, tr("schreib: <datei> <text>"));
         } else if (!f) {
             term_printf(st, C_ERROR, "schreib: \"%s\" laesst sich nicht "
                                      "anlegen - fehlen die Rechte?", a1);
         } else if (f->type != FS_FILE) {
-            term_printf(st, C_ERROR, "schreib: \"%s\" ist ein Ordner", a1);
+            term_printf(st, C_ERROR, tr("schreib: \"%s\" ist ein Ordner"), a1);
         } else if (!perm_may(f, P_W)) {
             term_printf(st, C_ERROR, "schreib: \"%s\" darfst du nicht "
                                      "beschreiben", a1);
@@ -2714,19 +2771,19 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         struct fs_node *n = a1 ? fs_lookup(st->cwd, a1) : NULL;
 
         if (!n) {
-            term_printf(st, C_ERROR, "rm: \"%s\" nicht gefunden", a1 ? a1 : "");
+            term_printf(st, C_ERROR, tr("rm: \"%s\" nicht gefunden"), a1 ? a1 : "");
         } else if (trash_contains(n)) {
             /* Aus dem Korb heraus gibt es kein weiteres Zurueck. */
             if (trash_purge(n))
-                term_printf(st, C_NORMAL, "\"%s\" endgueltig geloescht", a1);
+                term_printf(st, C_NORMAL, tr("\"%s\" endgueltig geloescht"), a1);
             else
-                term_printf(st, C_ERROR, "rm: \"%s\" ist geschuetzt", a1);
+                term_printf(st, C_ERROR, tr("rm: \"%s\" ist geschuetzt"), a1);
         } else if (trash_delete(n)) {
             term_printf(st, C_NORMAL,
                         "\"%s\" liegt im Papierkorb - \"papierkorb zurueck\" "
                         "holt es wieder", a1);
         } else {
-            term_printf(st, C_ERROR, "rm: \"%s\" ist geschuetzt", a1);
+            term_printf(st, C_ERROR, tr("rm: \"%s\" ist geschuetzt"), a1);
         }
 
     } else if (!strcasecmp(cmd, "papierkorb")) {
@@ -2736,7 +2793,7 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         struct fs_node *f = a1 ? fs_lookup(st->cwd, a1) : NULL;
 
         if (!f || f->type != FS_FILE)
-            term_printf(st, C_ERROR, "edit: \"%s\" nicht gefunden", a1 ? a1 : "");
+            term_printf(st, C_ERROR, tr("edit: \"%s\" nicht gefunden"), a1 ? a1 : "");
         else
             editor_open(f);
 
@@ -2762,9 +2819,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         const struct sh_command *one = a1 ? sh_command_find(a1) : NULL;
 
         if (!a1)
-            term_line(st, C_ERROR, "man <befehl>");
+            term_line(st, C_ERROR, tr("man <befehl>"));
         else if (!one)
-            term_printf(st, C_ERROR, "\"%s\" kennt die Konsole nicht.", a1);
+            term_printf(st, C_ERROR, tr("\"%s\" kennt die Konsole nicht."), a1);
         else
             cmd_help(st, one->name);
 
@@ -2820,14 +2877,14 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         size_t ms = number_arg(a1);
 
         if (!ms) {
-            term_line(st, C_ERROR, "warte <millisekunden>");
+            term_line(st, C_ERROR, tr("warte <millisekunden>"));
         } else {
             /* Der Fenster-Thread darf schlafen - die Oberflaeche laeuft
              * in einem anderen weiter. Ueber zehn Sekunden geht es
              * trotzdem nicht: So lange soll niemand rateln, ob die
              * Konsole haengt. */
             thread_sleep((uint32_t)MIN(ms, (size_t)10000));
-            term_printf(st, C_NORMAL, "%u ms gewartet.", (unsigned)ms);
+            term_printf(st, C_NORMAL, tr("%u ms gewartet."), (unsigned)ms);
         }
 
     } else if (!strcasecmp(cmd, "kalender") || !strcasecmp(cmd, "cal")) {
@@ -2838,18 +2895,18 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "verlauf") || !strcasecmp(cmd, "history")) {
         if (!st->history_count) {
-            term_line(st, C_NORMAL, "Noch nichts eingegeben.");
+            term_line(st, C_NORMAL, tr("Noch nichts eingegeben."));
         } else {
             for (size_t i = 0; i < st->history_count; i++)
                 term_printf(st, C_NORMAL, "  %2u  %s", (unsigned)(i + 1),
                             st->history[i]);
             term_line(st, C_NORMAL,
-                      "  Mit den Pfeiltasten holt man sie zurueck.");
+                      tr("  Mit den Pfeiltasten holt man sie zurueck."));
         }
 
     } else if (!strcasecmp(cmd, "kaefig")) {
         if (!a1) {
-            term_line(st, C_HIGHLIGHT, "Kaefigprofile:");
+            term_line(st, C_HIGHLIGHT, tr("Kaefigprofile:"));
             for (size_t i = 0; i < sandbox_profile_count(); i++) {
                 struct sandbox probe;
                 char darf[96];
@@ -2862,9 +2919,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
                             probe.penalty == SB_KILL
                                 ? " (Verstoss beendet das Programm)" : "");
             }
-            term_line(st, C_NORMAL, "  kaefig <profil> <programm> [text]");
+            term_line(st, C_NORMAL, tr("  kaefig <profil> <programm> [text]"));
         } else if (!a2) {
-            term_line(st, C_ERROR, "kaefig <profil> <programm> [text]");
+            term_line(st, C_ERROR, tr("kaefig <profil> <programm> [text]"));
         } else {
             cmd_start_program(win, st, a2, raw, a1, 3);
         }
@@ -2902,6 +2959,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
     } else if (!strcasecmp(cmd, "schrift")) {
         cmd_font(st, rest_of(raw, 1));
 
+    } else if (!strcasecmp(cmd, "sprache") || !strcasecmp(cmd, "lang")) {
+        cmd_language(st, a1);
+
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);
 
@@ -2911,7 +2971,7 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
     } else if (!strcasecmp(cmd, "laufzeit") || !strcasecmp(cmd, "uptime")) {
         uint64_t ms = timer_ms();
 
-        term_printf(st, C_NORMAL, "Laufzeit: %u:%02u:%02u",
+        term_printf(st, C_NORMAL, tr("Laufzeit: %u:%02u:%02u"),
                     (unsigned)(ms / 3600000), (unsigned)(ms / 60000 % 60),
                     (unsigned)(ms / 1000 % 60));
 
@@ -2923,7 +2983,7 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         term_printf(st, C_NORMAL, "%s  %s", d, t);
 
     } else if (!strcasecmp(cmd, "version") || !strcasecmp(cmd, "ver")) {
-        term_line(st, C_HIGHLIGHT, "RetroOS 1.0 (x86-64)");
+        term_line(st, C_HIGHLIGHT, tr("RetroOS 1.0 (x86-64)"));
 
     } else if (!strcasecmp(cmd, "netz") || !strcasecmp(cmd, "ipconfig")) {
         cmd_network(st);
@@ -2935,13 +2995,13 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
         ip_addr_t addr;
 
         if (!a1) {
-            term_line(st, C_ERROR, "aufloesen: Name fehlt");
+            term_line(st, C_ERROR, tr("aufloesen: Name fehlt"));
         } else if (dns_resolve(a1, &addr)) {
             char text[16];
             ip_format(addr, text, sizeof(text));
-            term_printf(st, C_HIGHLIGHT, "%s hat die Adresse %s", a1, text);
+            term_printf(st, C_HIGHLIGHT, tr("%s hat die Adresse %s"), a1, text);
         } else {
-            term_printf(st, C_ERROR, "aufloesen: %s nicht gefunden", a1);
+            term_printf(st, C_ERROR, tr("aufloesen: %s nicht gefunden"), a1);
         }
 
     } else if (!strcasecmp(cmd, "holen") || !strcasecmp(cmd, "wget")) {
@@ -2960,15 +3020,15 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
     } else if (!strcasecmp(cmd, "formatieren")) {
         if (!a1 || strcasecmp(a1, "wirklich") != 0) {
             term_line(st, C_ERROR,
-                      "Das loescht alle Daten auf dem Datentraeger.");
+                      tr("Das loescht alle Daten auf dem Datentraeger."));
             term_line(st, C_NORMAL,
-                      "Zum Bestaetigen: formatieren wirklich [Bezeichnung]");
+                      tr("Zum Bestaetigen: formatieren wirklich [Bezeichnung]"));
         } else {
-            term_line(st, C_NORMAL, "Formatiere ...");
+            term_line(st, C_NORMAL, tr("Formatiere ..."));
             if (fs_format_disk(argc > 2 ? argv[2] : "RETROOS"))
-                term_line(st, C_HIGHLIGHT, "Fertig. /Festplatte ist wieder da.");
+                term_line(st, C_HIGHLIGHT, tr("Fertig. /Festplatte ist wieder da."));
             else
-                term_line(st, C_ERROR, "Formatieren fehlgeschlagen.");
+                term_line(st, C_ERROR, tr("Formatieren fehlgeschlagen."));
         }
 
     } else if (!strcasecmp(cmd, "leeren") || !strcasecmp(cmd, "clear") ||
@@ -2981,7 +3041,7 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else {
         term_printf(st, C_ERROR,
-                    "Unbekannter Befehl: %s  (\"hilfe\" zeigt alle Befehle)", cmd);
+                    tr("Unbekannter Befehl: %s  (\"hilfe\" zeigt alle Befehle)"), cmd);
     }
 
     UNUSED(win);
@@ -3104,7 +3164,7 @@ static void term_key(struct window *win, const struct gui_event *ev)
     /* Waehrend ein Programm laeuft, gehen Eingaben dorthin. */
     if (st->running) {
         if ((ev->mods & MOD_CTRL) && (ev->ascii == 'c' || ev->ascii == 'C')) {
-            term_printf(st, C_ERROR, "[%s abgebrochen]", st->running->name);
+            term_printf(st, C_ERROR, tr("[%s abgebrochen]"), st->running->name);
             process_kill(st->running);
             st->running = NULL;
             gui_invalidate();
@@ -3267,7 +3327,7 @@ void app_terminal(void)
     static int32_t cascade;
     int32_t offset = (cascade++ % 5) * 24;
 
-    struct window *win = gui_create_window("Konsole", 200 + offset, 120 + offset,
+    struct window *win = gui_create_window(tr("Konsole"), 200 + offset, 120 + offset,
                                            640, 380, WF_RESIZABLE, ICON_TERMINAL);
     if (!win) {
         kfree(st);
@@ -3284,8 +3344,8 @@ void app_terminal(void)
     win->min_w    = 420;
     win->min_h    = 200;
 
-    term_line(st, C_HIGHLIGHT, "RetroOS-Konsole 1.0");
-    term_line(st, C_NORMAL, "\"hilfe\" zeigt alle Befehle.");
+    term_line(st, C_HIGHLIGHT, tr("RetroOS-Konsole 1.0"));
+    term_line(st, C_NORMAL, tr("\"hilfe\" zeigt alle Befehle."));
     term_line(st, C_NORMAL, "");
 
     gui_focus_window(win);

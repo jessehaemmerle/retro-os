@@ -18,6 +18,7 @@
 #include "mm.h"
 #include "theme.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define SL_TOOLBAR_H 34
 #define SL_STATUS_H  24
@@ -390,8 +391,8 @@ static void update_title(struct window *win)
     struct sl_state *st = win->user;
     char text[WIN_TITLE_MAX + 1];
 
-    ksnprintf(text, sizeof(text), "Vortrag - %s%s",
-              st->file ? st->file->name : "Unbenannt",
+    ksnprintf(text, sizeof(text), tr("Vortrag - %s%s"),
+              st->file ? st->file->name : tr("Unbenannt"),
               st->modified ? " *" : "");
     gui_set_title(win, text);
 }
@@ -418,7 +419,7 @@ static void on_save_as(const char *name, void *user)
     if (!file)
         file = fs_create(dir, name, FS_FILE);
     if (!file || file->type != FS_FILE || file->readonly) {
-        dialog_message("Speichern", "Unter diesem Namen geht es nicht.");
+        dialog_message(tr("Speichern"), tr("Unter diesem Namen geht es nicht."));
         return;
     }
 
@@ -426,7 +427,7 @@ static void on_save_as(const char *name, void *user)
     char *text = kmalloc(room);
 
     if (!text) {
-        dialog_message("Speichern", "Zu wenig Speicher.");
+        dialog_message(tr("Speichern"), tr("Zu wenig Speicher."));
         return;
     }
 
@@ -436,7 +437,7 @@ static void on_save_as(const char *name, void *user)
     kfree(text);
 
     if (!ok) {
-        dialog_message("Speichern", "Die Datei liess sich nicht schreiben.");
+        dialog_message(tr("Speichern"), tr("Die Datei liess sich nicht schreiben."));
         return;
     }
 
@@ -454,7 +455,7 @@ static void do_save(struct window *win)
         st->file = NULL;
 
     if (!st->file || st->file->readonly) {
-        dialog_input("Speichern unter", "Dateiname:",
+        dialog_input(tr("Speichern unter"), tr("Dateiname:"),
                      st->file ? st->file->name : "vortrag.folien",
                      on_save_as, win);
         return;
@@ -475,7 +476,7 @@ static void on_open(const char *path, void *user)
         file = fs_find_child(deck_dir(), path);
 
     if (!file || file->type != FS_FILE || !fs_load(file)) {
-        dialog_message("Oeffnen", "Diese Datei gibt es nicht.");
+        dialog_message(tr("Oeffnen"), tr("Diese Datei gibt es nicht."));
         return;
     }
 
@@ -571,18 +572,18 @@ static void sl_paint(struct window *win, struct canvas *c)
 
     widget_toolbar(&local, rect_make(0, 0, local.w, SL_TOOLBAR_H));
     widget_icon_button(&local, tool_rect(SB_OPEN), ICON_FOLDER_OPEN,
-                       "Oeffnen", st->pressed == SB_OPEN, true);
-    widget_icon_button(&local, tool_rect(SB_SAVE), ICON_SAVE, "Speichern",
+                       tr("Oeffnen"), st->pressed == SB_OPEN, true);
+    widget_icon_button(&local, tool_rect(SB_SAVE), ICON_SAVE, tr("Speichern"),
                        st->pressed == SB_SAVE, true);
-    widget_icon_button(&local, tool_rect(SB_NEW), ICON_PLUS, "Folie",
+    widget_icon_button(&local, tool_rect(SB_NEW), ICON_PLUS, tr("Folie"),
                        st->pressed == SB_NEW,
                        st->deck->count < DECK_SLIDES_MAX);
-    widget_icon_button(&local, tool_rect(SB_DELETE), ICON_TRASH, "Weg",
+    widget_icon_button(&local, tool_rect(SB_DELETE), ICON_TRASH, tr("Weg"),
                        st->pressed == SB_DELETE, st->deck->count > 1);
     widget_icon_button(&local, tool_rect(SB_LAYOUT), ICON_SLIDES,
-                       deck_layout_name(slide->layout),
+                       tr(deck_layout_name(slide->layout)),
                        st->pressed == SB_LAYOUT, true);
-    widget_icon_button(&local, tool_rect(SB_SHOW), ICON_PRESENT, "Vorfuehren",
+    widget_icon_button(&local, tool_rect(SB_SHOW), ICON_PRESENT, tr("Vorfuehren"),
                        st->pressed == SB_SHOW, true);
 
     paint_strip(win, &local);
@@ -595,11 +596,11 @@ static void sl_paint(struct window *win, struct canvas *c)
 
     char left[128], right[64];
 
-    ksnprintf(left, sizeof(left), "Folie %d von %d - %s",
+    ksnprintf(left, sizeof(left), tr("Folie %d von %d - %s"),
               st->slide + 1, st->deck->count,
-              deck_layout_name(slide->layout));
+              tr(deck_layout_name(slide->layout)));
     ksnprintf(right, sizeof(right), "%s",
-              st->field == FIELD_TITLE ? "Titel" : "Zeile");
+              st->field == FIELD_TITLE ? tr("Titel") : tr("Zeile"));
     widget_statusbar(&local, rect_make(0, local.h - SL_STATUS_H,
                                        local.w, SL_STATUS_H), left, right);
 }
@@ -614,7 +615,7 @@ static void sl_action(struct window *win, int action)
 
     switch (action) {
     case SB_OPEN:
-        dialog_input("Oeffnen", "Datei:", "vortrag.folien", on_open, win);
+        dialog_input(tr("Oeffnen"), tr("Datei:"), "vortrag.folien", on_open, win);
         return;
     case SB_SAVE:
         do_save(win);

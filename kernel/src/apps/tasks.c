@@ -8,6 +8,7 @@
 
 #include "tasks.h"
 #include "kstring.h"
+#include "lang.h"
 
 void tasks_clear(struct tasklist *list)
 {
@@ -307,9 +308,17 @@ bool task_prio_parse(const char *text, uint8_t *out)
     if (!text || !out)
         return false;
 
-    if (strcasecmp(text, "hoch") == 0)    { *out = TP_HIGH; return true; }
-    if (strcasecmp(text, "mittel") == 0)  { *out = TP_MID;  return true; }
-    if (strcasecmp(text, "niedrig") == 0) { *out = TP_LOW;  return true; }
+    /* Deutsch steht in der Datei, Englisch tippt der Benutzer, wenn
+     * die Oberflaeche englisch ist - beides muss ankommen. Die Datei
+     * selbst bleibt deutsch: Eine Aufgabenliste, deren Format von der
+     * eingestellten Sprache abhaengt, waere auf dem naechsten Rechner
+     * nicht mehr lesbar. */
+    if (strcasecmp(text, "hoch") == 0 || strcasecmp(text, "high") == 0)
+        { *out = TP_HIGH; return true; }
+    if (strcasecmp(text, "mittel") == 0 || strcasecmp(text, "medium") == 0)
+        { *out = TP_MID;  return true; }
+    if (strcasecmp(text, "niedrig") == 0 || strcasecmp(text, "low") == 0)
+        { *out = TP_LOW;  return true; }
     return false;
 }
 

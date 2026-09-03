@@ -27,6 +27,7 @@
 #include "user.h"
 #include "vfs.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define TAB_H      28
 #define HEAD_H     20
@@ -184,20 +185,20 @@ static size_t row_count(struct monitor_ui *ui)
 static const char *state_name(uint8_t state)
 {
     switch (state) {
-    case THREAD_READY:    return "bereit";
-    case THREAD_RUNNING:  return "laeuft";
-    case THREAD_SLEEPING: return "schlaeft";
-    case THREAD_BLOCKED:  return "wartet";
-    default:              return "tot";
+    case THREAD_READY:    return tr("bereit");
+    case THREAD_RUNNING:  return tr("laeuft");
+    case THREAD_SLEEPING: return tr("schlaeft");
+    case THREAD_BLOCKED:  return tr("wartet");
+    default:              return tr("tot");
     }
 }
 
 static const char *priority_name(uint8_t priority)
 {
     switch (priority) {
-    case PRIO_HIGH: return "hoch";
-    case PRIO_LOW:  return "niedrig";
-    default:        return "normal";
+    case PRIO_HIGH: return tr("hoch");
+    case PRIO_LOW:  return tr("niedrig");
+    default:        return tr("normal");
     }
 }
 
@@ -239,9 +240,9 @@ static void columns(struct canvas *c, struct window *win, int32_t y,
 static void paint_programs(struct canvas *c, struct window *win,
                            struct monitor_ui *ui)
 {
-    static const char *const head[] = { "Nummer", "Programm", "Benutzer",
-                                        "Kaefig", "Zustand", "Speicher",
-                                        "Zeit" };
+    const char *const head[] = { tr("Nummer"), tr("Programm"), tr("Benutzer"),
+                                        tr("Kaefig"), tr("Zustand"), tr("Speicher"),
+                                        tr("Zeit") };
     const int32_t x[] = { 12, 68, 220, 320, 400, 500, 606 };
 
     columns(c, win, TAB_H + 2, head, x, ARRAY_LEN(head));
@@ -287,7 +288,7 @@ static void paint_programs(struct canvas *c, struct window *win,
         }
 
         gfx_text(c, x[4], r.y + 2,
-                 p->finished ? "beendet"
+                 p->finished ? tr("beendet")
                              : (p->thread ? state_name(p->thread->state)
                                           : "?"), fg);
 
@@ -305,8 +306,8 @@ static void paint_programs(struct canvas *c, struct window *win,
 static void paint_threads(struct canvas *c, struct window *win,
                           struct monitor_ui *ui)
 {
-    static const char *const head[] = { "Nr.", "Name", "Zustand", "Vorrang",
-                                        "Kern", "Rechenzeit", "Anteil" };
+    const char *const head[] = { "Nr.", tr("Name"), tr("Zustand"), tr("Vorrang"),
+                                        tr("Kern"), tr("Rechenzeit"), tr("Anteil") };
     const int32_t x[] = { 12, 58, 250, 350, 440, 500, 600 };
 
     columns(c, win, TAB_H + 2, head, x, ARRAY_LEN(head));
@@ -365,7 +366,7 @@ static void paint_system(struct canvas *c, struct window *win,
 
     uint64_t ms = timer_ms();
 
-    gfx_text_bold(c, 16, y, "Maschine", COL_TEXT);
+    gfx_text_bold(c, 16, y, tr("Maschine"), COL_TEXT);
     y += 22;
 
     unsigned cores = (unsigned)cpu_count();
@@ -373,24 +374,24 @@ static void paint_system(struct canvas *c, struct window *win,
 
     ksnprintf(text, sizeof(text), "%u %s in Betrieb, %u Threads, "
               "%u %s in Ring 3",
-              cores, cores == 1 ? "Kern" : "Kerne",
+              cores, cores == 1 ? tr("Kern") : tr("Kerne"),
               (unsigned)thread_count(),
-              progs, progs == 1 ? "Programm" : "Programme");
+              progs, progs == 1 ? tr("Programm") : tr("Programme"));
     gfx_text(c, 16, y, text, COL_TEXT);
     y += 18;
 
-    ksnprintf(text, sizeof(text), "Laufzeit %u:%02u:%02u",
+    ksnprintf(text, sizeof(text), tr("Laufzeit %u:%02u:%02u"),
               (unsigned)(ms / 3600000), (unsigned)((ms / 60000) % 60),
               (unsigned)((ms / 1000) % 60));
     gfx_text(c, 16, y, text, COL_TEXT);
     y += 30;
 
-    gfx_text_bold(c, 16, y, "Arbeitsspeicher", COL_TEXT);
+    gfx_text_bold(c, 16, y, tr("Arbeitsspeicher"), COL_TEXT);
     y += 22;
 
     fs_format_size(a, sizeof(a), (size_t)pmm_used_bytes());
     fs_format_size(b, sizeof(b), (size_t)pmm_total_bytes());
-    ksnprintf(text, sizeof(text), "%s von %s belegt", a, b);
+    ksnprintf(text, sizeof(text), tr("%s von %s belegt"), a, b);
     gfx_text(c, 16, y, text, COL_TEXT);
     y += 18;
     draw_bar(c, rect_make(16, y, w, 14), pmm_used_bytes(), pmm_total_bytes(),
@@ -399,37 +400,37 @@ static void paint_system(struct canvas *c, struct window *win,
 
     fs_format_size(a, sizeof(a), (size_t)pmm_shared_bytes());
     ksnprintf(text, sizeof(text),
-              "davon %s mehrfach genutzt (Kopie beim Schreiben)", a);
+              tr("davon %s mehrfach genutzt (Kopie beim Schreiben)"), a);
     gfx_text(c, 16, y, text, COL_TEXT_DIM);
     y += 26;
 
     fs_format_size(a, sizeof(a), (size_t)heap_used_bytes());
     fs_format_size(b, sizeof(b), (size_t)heap_total_bytes());
-    ksnprintf(text, sizeof(text), "Kernel-Heap: %s von %s", a, b);
+    ksnprintf(text, sizeof(text), tr("Kernel-Heap: %s von %s"), a, b);
     gfx_text(c, 16, y, text, COL_TEXT);
     y += 18;
     draw_bar(c, rect_make(16, y, w, 14), heap_used_bytes(), heap_total_bytes(),
              RGB(0x2E, 0xA0, 0x60));
     y += 30;
 
-    gfx_text_bold(c, 16, y, "Dateien und Protokoll", COL_TEXT);
+    gfx_text_bold(c, 16, y, tr("Dateien und Protokoll"), COL_TEXT);
     y += 22;
 
     fs_format_size(a, sizeof(a), fs_bytes_used());
-    ksnprintf(text, sizeof(text), "%u Eintraege im Dateibaum, %s belegt",
+    ksnprintf(text, sizeof(text), tr("%u Eintraege im Dateibaum, %s belegt"),
               (unsigned)fs_node_count(), a);
     gfx_text(c, 16, y, text, COL_TEXT);
     y += 18;
 
     ksnprintf(text, sizeof(text),
-              "%u Meldungen im Protokoll, davon %u Warnungen und %u Fehler",
+              tr("%u Meldungen im Protokoll, davon %u Warnungen und %u Fehler"),
               (unsigned)log_count(), (unsigned)log_count_level(LOG_WARN),
               (unsigned)log_count_level(LOG_ERROR));
     gfx_text(c, 16, y, text, COL_TEXT);
     y += 18;
 
     ksnprintf(text, sizeof(text),
-              "%u Eintraege in der Pruefspur, davon %u abgewiesen",
+              tr("%u Eintraege in der Pruefspur, davon %u abgewiesen"),
               (unsigned)audit_count(), (unsigned)audit_count_failed());
     gfx_text(c, 16, y, text, COL_TEXT);
 }
@@ -441,8 +442,8 @@ static void monitor_paint(struct window *win, struct canvas *c)
 
     gfx_fill(&local, rect_make(0, 0, local.w, local.h), COL_FACE);
 
-    static const char *const tabs[TAB_COUNT] = { "Programme", "Threads",
-                                                 "System" };
+    const char *const tabs[TAB_COUNT] = { tr("Programme"), tr("Threads"),
+                                                 tr("System") };
 
     for (int i = 0; i < TAB_COUNT; i++)
         widget_button(&local, tab_rect(i), tabs[i], ui->tab == i, true);
@@ -468,14 +469,14 @@ static void monitor_paint(struct window *win, struct canvas *c)
     if (ui->tab == TAB_PROGRAMS) {
         struct process *p = process_at((size_t)ui->selected);
 
-        widget_button(&local, kill_rect(win), "Programm beenden",
+        widget_button(&local, kill_rect(win), tr("Programm beenden"),
                       ui->hover == 100, p && !p->finished);
     }
 
     char right[48];
 
     ksnprintf(right, sizeof(right), "%u %s", (unsigned)cpu_count(),
-              cpu_count() == 1 ? "Kern" : "Kerne");
+              cpu_count() == 1 ? tr("Kern") : tr("Kerne"));
     widget_statusbar(&local, rect_make(0, local.h - STATUS_H, local.w, STATUS_H),
                      ui->status[0] ? ui->status
                                    : "Die Anteile werden jede Sekunde neu "
@@ -501,7 +502,7 @@ static void kill_selected(struct window *win, struct monitor_ui *ui)
     struct process *p = process_at((size_t)ui->selected);
 
     if (!p || p->finished) {
-        strlcpy(ui->status, "Da laeuft nichts mehr.", sizeof(ui->status));
+        strlcpy(ui->status, tr("Da laeuft nichts mehr."), sizeof(ui->status));
         return;
     }
 
@@ -509,7 +510,7 @@ static void kill_selected(struct window *win, struct monitor_ui *ui)
      * sonst koennte jeder jedem in die Arbeit greifen. */
     if (p->uid != session_uid() && !session_is_admin()) {
         ksnprintf(ui->status, sizeof(ui->status),
-                  "%s gehoert %s - das darf nur ein Verwalter beenden.",
+                  tr("%s gehoert %s - das darf nur ein Verwalter beenden."),
                   p->name, user_name_of(p->uid));
         return;
     }
@@ -521,7 +522,7 @@ static void kill_selected(struct window *win, struct monitor_ui *ui)
 
     strlcpy(name, p->name, sizeof(name));
     process_kill(p);
-    ksnprintf(ui->status, sizeof(ui->status), "%s beendet.", name);
+    ksnprintf(ui->status, sizeof(ui->status), tr("%s beendet."), name);
     UNUSED(win);
 }
 

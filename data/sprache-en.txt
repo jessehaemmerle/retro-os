@@ -1,0 +1,790 @@
+# sprache-en.txt - die englische Fassung der Oberflaeche.
+#
+# Je Zeile ein Paar, getrennt durch einen Tabulator: links der
+# deutsche Text, wie er im Quelltext steht, rechts die englische
+# Entsprechung. \n steht fuer einen Zeilenumbruch.
+#
+# Reihenfolge und Anzahl der Platzhalter (%s, %u, %d) muessen auf
+# beiden Seiten gleich sein - eine Pruefung im Testlauf besteht darauf.
+#
+# Nach jeder Aenderung: make sprache
+#
+# Umlaute werden wie ueberall in diesem System als ae/oe/ue
+# geschrieben - der eingebaute Zeichensatz kennt nur ASCII.
+
+# --- Desktop, Taskleiste, Startmenue --------------------------------
+Start	Start
+Sperren	Lock
+Benutzer wechseln	Switch user
+Abmelden	Sign out
+Neu starten	Restart
+Herunterfahren	Shut down
+
+# --- Anmeldung und Sperrbildschirm ---
+Gesperrt	Locked
+Abgemeldet	Signed out
+Anmelden	Sign in
+Noch %u Sekunden warten.	Wait another %u seconds.
+Drei Fehlversuche - %u Sekunden Pause	Three failed attempts - %u second pause
+Zu viele Versuche - bitte kurz warten.	Too many attempts - please wait a moment.
+Name oder Passwort stimmt nicht.	Name or password is wrong.
+RetroOS auf %s	RetroOS on %s
+Benutzer	Users
+Passwort	Password
+(ohne Namen)	(no name)
+Tabulator wechselt das Feld, Eingabe meldet an.	Tab moves between fields, Enter signs in.
+Es gibt noch keine Benutzerdatenbank - melde dich als root an.	There is no user database yet - sign in as root.
+
+# --- Namen der Programme ---
+Dateimanager	Files
+Editor	Editor
+Browser	Browser
+Konsole	Console
+Systeminformation	System information
+Systemmonitor	System monitor
+Protokoll	Log
+Aufgaben	Tasks
+Tabelle	Sheet
+Schreiben	Writer
+Vortrag	Slides
+Programmieren	Code
+Einstellungen	Settings
+Installieren	Install
+Papierkorb	Trash
+Ueber RetroOS	About RetroOS
+
+# --- die kleinen Standardfenster ---
+Ja	Yes
+Nein	No
+Abbrechen	Cancel
+
+# --- Einstellungen ---
+Sprache	Language
+Tastatur	Keyboard
+Batterieuhr	Hardware clock
+Zeitzone	Time zone
+Hintergrund	Background
+Hintergrundbild	Wallpaper
+Schrift	Font
+Rechnername	Computer name
+Ortszeit	Local time
+Speichern	Save
+kein Bild	no image
+Bild waehlen	Choose image
+Pfad des Bildes (PNG, JPEG, GIF oder BMP):	Path of the image (PNG, JPEG, GIF or BMP):
+Das Bild liess sich nicht laden.	The image could not be loaded.
+Als Hintergrund gesetzt.	Set as wallpaper.
+Dauerhaft speichern darf nur, wer das Recht an den Einstellungen hat.	Only someone with the settings permission may save this permanently.
+Ohne Festplatte gilt das nur bis zum Ausschalten.	Without a hard disk this only lasts until shutdown.
+Gespeichert in %s	Saved to %s
+Die Datei liess sich nicht schreiben.	The file could not be written.
+Ohne Festplatte bleibt nichts gespeichert.	Without a hard disk nothing is kept.
+Die Sprache gilt sofort - die Tastatur ist mitgewandert.	The language applies at once - the keyboard moved along with it.
+Deutsch (QWERTZ)	German (QWERTZ)
+Englisch (QWERTY)	English US (QWERTY)
+Englisch GB (QWERTY)	English UK (QWERTY)
+Schweiz (QWERTZ)	Swiss (QWERTZ)
+Tuerkis	Turquoise
+Nachtblau	Midnight blue
+Waldgruen	Forest green
+Weinrot	Wine red
+Grau	Grey
+
+# --- Dateimanager ---
+Dateimanager - %s	Files - %s
+Neuer Ordner	New folder
+Neue Datei	New file
+Umbenennen	Rename
+Loeschen	Delete
+Endgueltig	Delete for good
+Wiederherstellen	Restore
+Oeffnen	Open
+Eigenschaften	Properties
+Rechte	Permissions
+Ordner	Folder
+Der Ordner konnte nicht angelegt werden. Moeglicherweise gibt es ihn bereits.	The folder could not be created. It may already exist.
+Die Datei konnte nicht angelegt werden. Moeglicherweise gibt es sie bereits.	The file could not be created. It may already exist.
+Der Name konnte nicht geaendert werden.	The name could not be changed.
+Dieser Eintrag gehoert zum System und laesst sich nicht loeschen.	This entry belongs to the system and cannot be deleted.
+Der alte Platz ist nicht mehr erreichbar.	The original place is no longer reachable.
+Name des neuen Ordners:	Name of the new folder:
+Name der neuen Datei:	Name of the new file:
+Neuer Name:	New name:
+"%s" endgueltig loeschen? Das laesst sich nicht mehr zuruecknehmen.	Delete "%s" for good? This cannot be undone.
+Ordner "%s" in den Papierkorb legen?	Move folder "%s" to the trash?
+"%s" in den Papierkorb legen?	Move "%s" to the trash?
+Erwartet wird "750" oder "rwxr-x---".	Expected "750" or "rwxr-x---".
+Das darf nur der Eigentuemer oder ein Verwalter.	Only the owner or an administrator may do that.
+auf der Platte	on the disk
+im Arbeitsspeicher	in memory
+Dieser Ordner ist leer.	This folder is empty.
+%u Eintr.	%u items
+%u Ordner, %u Dateien	%u folders, %u files
+Als Hintergrund	Set as wallpaper
+%s\n%s, %s\nGehoert %s:%s - %s (%04o)	%s\n%s, %s\nOwned by %s:%s - %s (%04o)
+
+# --- Editor ---
+Editor - %s%s	Editor - %s%s
+Unbenannt	Untitled
+ (geaendert)	 (modified)
+Die Datei wurde inzwischen geloescht. Der Text ist noch da, hat aber kein Ziel mehr.	The file has been deleted in the meantime. The text is still here but has nowhere to go.
+Zu diesem Text gehoert keine Datei.	There is no file behind this text.
+Diese Datei gehoert zum System und ist schreibgeschuetzt.	This file belongs to the system and is read-only.
+Die Datei konnte nicht geschrieben werden.	The file could not be written.
+Die Datei laesst sich nicht lesen.	The file cannot be read.
+Zeile %d von %d, Spalte %d	Line %d of %d, column %d
+%u Zeichen%s	%u characters%s
+
+# --- Protokoll ---
+Hinweise	Notices
+Warnungen	Warnings
+Fehler	Errors
+Leeren	Clear
+Alle	All
+%d von %u Meldungen - %u aeltere sind aus dem Ring gefallen	%d of %u messages - %u older ones fell out of the ring
+%d von %u Meldungen	%d of %u messages
+haengt am Ende	following the end
+angehalten	paused
+Gesichert in %s	Saved to %s
+%s liess sich nicht schreiben.	%s could not be written.
+Leeren darf nur, wer das Recht am Protokoll hat.	Only someone with the log permission may clear it.
+
+# --- Systemmonitor ---
+bereit	ready
+laeuft	running
+schlaeft	sleeping
+wartet	waiting
+tot	dead
+hoch	high
+niedrig	low
+normal	normal
+Nummer	Number
+Programm	Program
+Kaefig	Cage
+Zustand	State
+Speicher	Memory
+Zeit	Time
+beendet	ended
+Name	Name
+Vorrang	Priority
+Kern	Core
+Kerne	Cores
+Rechenzeit	CPU time
+Anteil	Share
+Maschine	Machine
+Programme	Programs
+Threads	Threads
+System	System
+%u %s in Betrieb, %u Threads, %u %s in Ring 3	%u %s in use, %u threads, %u %s in ring 3
+Laufzeit %u:%02u:%02u	Uptime %u:%02u:%02u
+Arbeitsspeicher	Main memory
+%s von %s belegt	%s of %s in use
+davon %s mehrfach genutzt (Kopie beim Schreiben)	of which %s is shared (copy on write)
+Kernel-Heap: %s von %s	Kernel heap: %s of %s
+Dateien und Protokoll	Files and log
+%u Eintraege im Dateibaum, %s belegt	%u entries in the file tree, %s in use
+%u Meldungen im Protokoll, davon %u Warnungen und %u Fehler	%u messages in the log, %u warnings and %u errors among them
+%u Eintraege in der Pruefspur, davon %u abgewiesen	%u entries in the audit trail, %u of them denied
+Programm beenden	End program
+Die Anteile werden jede Sekunde neu gemessen.	The shares are measured afresh every second.
+Da laeuft nichts mehr.	Nothing is running there any more.
+%s gehoert %s - das darf nur ein Verwalter beenden.	%s belongs to %s - only an administrator may end it.
+%s beendet.	%s ended.
+
+# --- Aufgaben ---
+Hinzufuegen	Add
+Haken setzen	Tick off
+Wichtigkeit	Priority
+Termin	Due date
+Erledigte weg	Clear done
+Alle zeigen	Show all
+Nur offene	Open only
+Kein Speicher.	Out of memory.
+%u Aufgaben in %s gesichert	%u tasks saved to %s
+Neue Aufgabe eintippen und Eingabe druecken	Type a new task and press Enter
+%u offen von %u	%u open of %u
+ungespeichert	unsaved
+Die Liste ist voll.	The list is full.
+Da steht noch nichts.	There is nothing there yet.
+Erwartet wird hoch, mittel oder niedrig.	Expected high, medium or low.
+Erwartet wird 15.09.2026 oder ein Strich.	Expected 15.09.2026 or a dash.
+Wichtigkeit von "%s" (hoch, mittel, niedrig):	Priority of "%s" (high, medium, low):
+Termin fuer "%s" (TT.MM.JJJJ, Strich loescht ihn):	Due date for "%s" (DD.MM.YYYY, a dash removes it):
+%u erledigte Aufgaben weggeraeumt.	%u finished tasks cleared away.
+Es ist nichts erledigt.	Nothing is finished.
+mittel	medium
+
+# --- Benutzerverwaltung ---
+Neuer Benutzer	New user
+Passwort aendern	Change password
+Verwalterrecht nehmen	Revoke admin
+Zum Verwalter machen	Make administrator
+Anmeldung freigeben	Allow sign-in
+Anmeldung sperren	Block sign-in
+Benutzer entfernen	Remove user
+Kein Benutzer ausgewaehlt.	No user selected.
+Nummer %u, Gruppe %s%s%s	Number %u, group %s%s%s
+, ohne Passwort	, no password
+, gesperrt	, blocked
+Rolle %s - darf %s	Role %s - may %s
+Es gibt ungespeicherte Aenderungen.	There are unsaved changes.
+Gespeichert - aber %s ist Verwalter ohne Passwort.	Saved - but %s is an administrator without a password.
+Gespeichert. Ab dem naechsten Start wird angemeldet.	Saved. From the next start on, signing in is required.
+Der Benutzer liess sich nicht anlegen.	The user could not be created.
+Angelegt. Zum Behalten speichern.	Created. Save to keep it.
+Passwort fuer den neuen Benutzer (leer heisst: keines):	Password for the new user (empty means none):
+Passwort gesetzt. Zum Behalten speichern.	Password set. Save to keep it.
+Passwort geloescht - die Anmeldung geht jetzt ohne.	Password removed - signing in now works without one.
+Entfernt. Das Heimatverzeichnis bleibt stehen.	Removed. The home directory stays.
+Das geht bei diesem Benutzer nicht.	That is not possible for this user.
+Dafuer braucht es Verwalterrechte.	That needs administrator rights.
+Anmeldename:	Login name:
+Neues Passwort fuer %s:	New password for %s:
+Ist jetzt Verwalter.	Is an administrator now.
+Ist kein Verwalter mehr.	Is no longer an administrator.
+Die Anmeldung ist gesperrt.	Signing in is blocked.
+Die Anmeldung ist wieder frei.	Signing in is allowed again.
+%s wirklich entfernen?	Really remove %s?
+Ohne Verwalterrechte laesst sich nur das eigene Passwort aendern.	Without administrator rights only your own password can be changed.
+Noch keine Datenbank - RetroOS meldet sich ohne Nachfrage als root an.	No database yet - RetroOS signs in as root without asking.
+
+# --- Systeminformation ---
+unbekannt	unknown
+Prozessor	Processor
+Hersteller	Vendor
+Modell	Model
+Betriebsart	Mode
+Long Mode (64 Bit)	Long mode (64 bit)
+APIC, %u Kern%s%s	APIC, %u core%s%s
+, eigener Zeitgeber	, own timer
+8259A-PIC mit PIT	8259A PIC with PIT
+Unterbrechungen	Interrupts
+%u in Betrieb	%u in use
+  Kern %u	  Core %u
+%s, %u Wechsel	%s, %u switches
+%u MiB von %u MiB belegt	%u MiB of %u MiB in use
+%u KiB von %u KiB benutzt	%u KiB of %u KiB used
+Kernel-Heap	Kernel heap
+Grafik und Dateien	Graphics and files
+%u x %u, %u Bit	%u x %u, %u bit
+Bildschirm	Screen
+%u Eintraege, %s	%u entries, %s
+Dateisystem	File system
+Laufzeit	Uptime
+Offene Fenster	Open windows
+%u aktiv	%u active
+%u in Ring 3 (%s)	%u in ring 3 (%s)
+keine	none
+Datentraeger	Storage
+Laufwerk	Drive
+keines gefunden	none found
+%s (%u,%u GiB)	%s (%u.%u GiB)
+%s (%u MiB)	%s (%u MiB)
+FAT32 "%s" unter /Festplatte	FAT32 "%s" at /Festplatte
+nicht eingehaengt	not mounted
+Eingabe	Input
+PS/2-Anschluss	PS/2 port
+Tastatur und Maus	Keyboard and mouse
+nicht vorhanden	not present
+keine Geraete	no devices
+Geraet	Device
+Maus	Mouse
+Verteiler	Hub
+USB-Anschluss %u	USB port %u
+Netzwerk	Network
+Karte	Adapter
+keine gefunden	none found
+Hardware-Adresse	Hardware address
+%s (Gateway %s)	%s (gateway %s)
+IP-Adresse	IP address
+%u empfangen, %u gesendet	%u received, %u sent
+Pakete	Packets
+keine (DHCP ohne Antwort)	none (DHCP got no answer)
+Version 1.0	Version 1.0
+
+# --- Ueber RetroOS ---
+Ein kleines Betriebssystem fuer x86-64-Rechner,	A small operating system for x86-64 machines,
+vollstaendig neu geschrieben:	written entirely from scratch:
+  Kernel        eigener 64-Bit-Kernel, Long Mode	  Kernel        own 64-bit kernel, long mode
+  Speicher      Bitmap-Seitenverwaltung und Heap	  Memory        bitmap page allocator and heap
+  Treiber       PS/2-Tastatur und -Maus, PIT, RTC	  Drivers       PS/2 keyboard and mouse, PIT, RTC
+  Grafik        linearer Framebuffer mit Backbuffer	  Graphics      linear framebuffer with a back buffer
+  Oberflaeche   eigenes Fenstersystem	  Interface     own window system
+  Dateien       Dateisystem im Arbeitsspeicher	  Files         file system in memory
+Alles Uebrige steht unter der MIT-Lizenz.	Everything else is under the MIT licence.
+
+# --- Installationsprogramm ---
+RetroOS installieren	Install RetroOS
+Auf welchen Datentraeger soll das System?	Which disk should the system go on?
+Es wurde kein Datentraeger gefunden.	No disk was found.
+%s freier Platz - alles Vorhandene bleibt	%s free space - everything present stays
+alles loeschen: %s Startbereich, %s Ablage	erase everything: %s boot area, %s storage
+Daneben einrichten	Install alongside
+Wirklich?	Are you sure?
+Alles Vorhandene bleibt stehen.	Everything present stays as it is.
+Danach ist der Datentraeger leer.	Afterwards the disk is empty.
+Ziel: %s - %s (%s)	Target: %s - %s (%s)
+Nichts wird geloescht - RetroOS nimmt nur den freien Platz.	Nothing is erased - RetroOS only takes the free space.
+  Ablage        %s - unter /Festplatte	  Storage       %s - at /Festplatte
+  Startbereich  der vorhandene wird mitbenutzt	  Boot area     the existing one is shared
+  Startbereich  %s - Bootloader und Kernel	  Boot area     %s - bootloader and kernel
+RetroOS legt zwei Abschnitte an:	RetroOS creates two partitions:
+Alles, was darauf steht, geht verloren.	Everything on it will be lost.
+Der Rechner startet danach von dieser Platte - ueber UEFI	The machine will then boot from this disk - over UEFI
+wie ueber BIOS.	as well as BIOS.
+Ist der uebliche Startpfad belegt, muss RetroOS im	If the usual boot path is taken, RetroOS has to be picked
+Startmenue der Firmware gewaehlt werden.	from the firmware boot menu.
+Installation laeuft	Installing
+Bitte nicht ausschalten.	Please do not switch off.
+Fertig	Done
+RetroOS liegt jetzt auf der Platte.	RetroOS is on the disk now.
+Die Installation ist abgeschlossen.	The installation is complete.
+Startmedium entfernen und neu starten - der	Remove the boot medium and restart - the machine
+Rechner bootet dann von der Festplatte.	will then boot from the hard disk.
+Dateien unter /Festplatte bleiben ab jetzt liegen.	Files under /Festplatte are kept from now on.
+Konten legst du unter "Benutzer" an - ab dann	You create accounts under "Users" - from then on
+fragt RetroOS beim Start nach Name und Passwort.	RetroOS asks for a name and password at startup.
+Der uebliche Startpfad war belegt: RetroOS steht unter	The usual boot path was taken: RetroOS sits at
+EFI\RETROOS und muss im Startmenue gewaehlt werden.	EFI\RETROOS and has to be picked from the boot menu.
+Fehlgeschlagen	Failed
+Die Platte wurde nicht fertig.	The disk was not finished.
+Die Installation ist gescheitert:	The installation failed:
+Der Datentraeger ist jetzt in einem halben Zustand.	The disk is now in a half-finished state.
+Ein zweiter Versuch legt ihn neu an.	A second attempt lays it out afresh.
+Weiter	Next
+Zurueck	Back
+Von vorn	Start over
+Wird vorbereitet ...	Preparing ...
+Der Arbeitsthread liess sich nicht starten.	The worker thread could not be started.
+Von diesem Startmedium laesst sich nicht installieren.\nNoetig ist das RetroOS-Abbild als ISO oder auf einem USB-Stick.	There is no installing from this boot medium.\nThe RetroOS image is needed, as an ISO or on a USB stick.
+  -  daneben	  -  alongside
+
+# --- Bueroprogramme ---
+Tabelle - %s%s	Sheet - %s%s
+Schreiben - %s%s	Writer - %s%s
+Vortrag - %s%s	Slides - %s%s
+Programmieren - %s%s	Code - %s%s
+Unter diesem Namen geht es nicht.	That name will not work.
+Zu wenig Speicher.	Not enough memory.
+Speichern unter	Save as
+Dateiname:	File name:
+Diese Datei gibt es nicht.	There is no such file.
+Summe	Sum
+Fett	Bold
+%u Zellen belegt	%u cells in use
+Datei:	File:
+Liste	List
+%s - Absatz %d von %d	%s - paragraph %d of %d
+%u Woerter, %u Zeichen	%u words, %u characters
+Folie	Slide
+Weg	Remove
+Vorfuehren	Present
+Folie %d von %d - %s	Slide %d of %d - %s
+Titel	Title
+Zeile	Line
+Titelfolie	Title slide
+Zitat	Quote
+Aufzaehlung	Bullet list
+Ueberschrift 1	Heading 1
+Ueberschrift 2	Heading 2
+Textkoerper	Body text
+Ausgabe erscheint hier. F5 fuehrt aus.	Output appears here. F5 runs the program.
+Ausfuehren	Run
+abgebrochen	stopped
+gelaufen	finished
+F5 fuehrt aus	F5 runs it
+Es steht noch nichts da.\n	There is nothing here yet.\n
+Der Deuter liess sich nicht anlegen - zu wenig Speicher.\n	The interpreter could not be created - not enough memory.\n
+Fehler: 	Error: 
+Durchgelaufen - aber ohne Ausgabe. console.log() sagt etwas.\n	Ran through - but without output. console.log() says something.\n
+
+# --- Browser ---
+Browser - %s	Browser - %s
+Startseite	Start page
+Datei nicht gefunden: %s	File not found: %s
+%s - %u Byte	%s - %u bytes
+Downloads	Downloads
+Zu wenig Platz fuer den Download.	Not enough room for the download.
+Gespeichert: %s (%s)%s	Saved: %s (%s)%s
+ - unvollstaendig!	 - incomplete!
+Die Seite konnte nicht geladen werden.	The page could not be loaded.
+unverschluesselt	unencrypted
+ (unvollstaendig)	 (incomplete)
+Lade Bestandteil %u von %u ...	Loading part %u of %u ...
+Der Download ist fehlgeschlagen.	The download failed.
+Nachrichten kann RetroOS nicht verschicken: %s	RetroOS cannot send mail: %s
+Keine Netzwerkverbindung.	No network connection.
+Kein freier Arbeits-Thread.	No free worker thread.
+Lade ...	Loading ...
+Bild	Image
+Lade Bestandteile ...	Loading parts ...
+Keine Seite geladen.	No page loaded.
+Los	Go
+%u Stuecke	%u pieces
+Herunterladen geht nur aus dem Netz.	Downloading only works from the network.
+Es laeuft schon ein Auftrag.	A job is already running.
+Lade herunter: %s	Downloading: %s
+Seitentext kopiert (%u Zeichen)	Page text copied (%u characters)
+
+# --- Konsole: Bereiche und Befehle ---
+Dateien	Files
+Text	Text
+Netz	Network
+Sicherheit	Security
+Ordnerinhalt anzeigen	list a folder
+Mit -l stehen Rechte, Eigentuemer und Gruppe davor.	With -l, permissions, owner and group stand in front.
+Ordner wechseln	change folder
+aktuellen Pfad anzeigen	show the current path
+Ordner als Baum zeichnen	draw a folder as a tree
+Ohne Tiefe geht es drei Ebenen hinunter.	Without a depth it goes down three levels.
+Ordner anlegen	create a folder
+leere Datei anlegen	create an empty file
+Datei oder Ordner kopieren	copy a file or folder
+Ist das Ziel ein Ordner, landet die Kopie darin unter demselben\nNamen. Ordner werden mit allem Inhalt kopiert.	If the target is a folder, the copy lands inside it under the same\nname. Folders are copied with everything in them.
+verschieben oder umbenennen	move or rename
+Innerhalb eines Dateisystems wird nur umgehaengt - es wird kein\nByte angefasst. Ueber die Grenze hinweg wird kopiert und geloescht.	Within one file system only the link moves - not a byte is touched.\nAcross the boundary it is copied and then deleted.
+in den Papierkorb legen	move to the trash
+Was schon im Papierkorb liegt, wird endgueltig geloescht.	Whatever is already in the trash is deleted for good.
+Dateien nach Namensmuster suchen	find files by name pattern
+Im Muster steht * fuer beliebig viele Zeichen und ? fuer eines.	In the pattern * stands for any number of characters and ? for one.
+Platzbedarf eines Ordners	space used by a folder
+Zaehlt alles darunter zusammen und zeigt die groessten zuerst.	Adds up everything below it and shows the largest first.
+alles ueber einen Eintrag	everything about an entry
+Art, Groesse, Eigentuemer, Rechte, Zeitpunkt und wo er liegt.	Kind, size, owner, permissions, time and where it sits.
+Geloeschtes ansehen und zurueckholen	see and restore deleted things
+Laufwerke und eingehaengtes Dateisystem	drives and mounted file system
+Datentraeger neu mit FAT32 formatieren	format a disk afresh with FAT32
+Datei ausgeben	print a file
+die ersten Zeilen	the first lines
+Ohne Angabe sind es zehn.	Without a count it is ten.
+die letzten Zeilen	the last lines
+Zeilen, Woerter und Zeichen zaehlen	count lines, words and characters
+Text in Dateien suchen	search files for text
+Gross- und Kleinschreibung sind gleich. Ist der Pfad ein Ordner,\nwird alles darunter durchsucht.	Upper and lower case are the same. If the path is a folder,\neverything below it is searched.
+Zeilen sortiert ausgeben	print lines in order
+zwei Dateien vergleichen	compare two files
+Zeigt die erste Zeile, in der sie sich unterscheiden.	Shows the first line where they differ.
+Datei als Zahlen und Zeichen	a file as numbers and characters
+Ohne Angabe die ersten 256 Bytes.	Without a count, the first 256 bytes.
+Text an eine Datei anhaengen	append text to a file
+Text ausgeben	print text
+Datei im Editor oeffnen	open a file in the editor
+ein Programm in Ring 3 ausfuehren	run a program in ring 3
+ein Programm eingesperrt starten	start a program in a cage
+Ohne Angabe stehen die Profile mit ihren Rechten da.	Without arguments the profiles and their rights are listed.
+die mitgelieferten Programme auflisten	list the bundled programs
+laufende Programme mit Verwandtschaft	running programs and their kinship
+laufende Threads mit Zustand und Rechenzeit	running threads with state and CPU time
+ein laufendes Programm beenden	end a running program
+Fremde Programme beendet nur ein Verwalter.	Only an administrator ends someone else's program.
+wo ein Programm liegt	where a program comes from
+diese Uebersicht	this overview
+Mit einem Bereich nur dessen Befehle: Dateien, Text, Programme,\nSystem, Netz, Sicherheit.	With a group, only its commands: Files, Text, Programs,\nSystem, Network, Security.
+alles zu einem einzelnen Befehl	everything about a single command
+die zuletzt eingegebenen Zeilen	the lines entered most recently
+Mit den Pfeiltasten nach oben und unten holt man sie zurueck.	The up and down arrow keys bring them back.
+ganze Zahlen ausrechnen	work out whole numbers
+Es gibt + - * / % und Klammern, Punkt vor Strich.	There are + - * / % and parentheses, times before plus.
+einen Monat als Kalender	a month as a calendar
+Ohne Angabe der laufende Monat, der heutige Tag in Klammern.	Without arguments the current month, today in brackets.
+Datum und Uhrzeit	date and time
+Zeit seit dem Einschalten	time since switching on
+Speicherbelegung	memory in use
+eine Weile nichts tun	do nothing for a while
+Systemversion	system version
+Schriftarten zeigen oder waehlen	show or choose fonts
+Sprache zeigen oder umschalten	show or switch the language
+Ohne Angabe stehen die verfuegbaren Sprachen da. Die Tastatur\nwandert mit, solange sie nicht von Hand gesetzt wurde.	Without arguments the available languages are listed. The keyboard\nmoves along, as long as it was not set by hand.
+Geraete am USB-Bus	devices on the USB bus
+RetroOS auf eine Platte bringen	put RetroOS on a disk
+Bildschirm loeschen	clear the screen
+Rechner neu starten	restart the machine
+Adresse, Gateway, Namensserver, Zaehler	address, gateway, name server, counters
+Erreichbarkeit pruefen	check whether something answers
+Namen in eine Adresse wandeln	turn a name into an address
+Seite abrufen und wahlweise speichern	fetch a page and optionally save it
+Paketfilter zeigen und regeln	show and set the packet filter
+Regeln werden von oben nach unten geprueft, die erste passende\nentscheidet. Passt keine, gilt die Grundeinstellung.	Rules are checked from top to bottom, the first match decides.\nIf none matches, the default applies.
+angemeldeter Benutzer, Rolle und Gruppen	the signed-in user, their role and groups
+Konten zeigen und verwalten	show and manage accounts
+Gruppen und ihre Mitglieder	groups and their members
+Rechte zeigen oder setzen	show or set permissions
+Der Modus ist "750" oder "rwxr-x---".	The mode is "750" or "rwxr-x---".
+Eigentuemer zeigen oder setzen	show or set the owner
+Pruefsumme einer Datei	checksum of a file
+SHA-256, dieselbe, die auch anderswo gerechnet wird.	SHA-256, the same one everybody else computes.
+Bildschirm sperren	lock the screen
+Systemprotokoll zeigen und sichern	show and save the system log
+Sicherheitsereignisse ansehen	look at security events
+Aufgabenliste fuehren	keep a task list
+
+# --- Konsole: Ausgaben der Befehle ---
+ls: "%s" nicht gefunden	ls: "%s" not found
+ls: "%s" ist eine Datei	ls: "%s" is a file
+ls: "%s" darfst du nicht lesen	ls: you may not read "%s"
+  %u Eintraege	  %u entries
+cat: "%s" nicht gefunden	cat: "%s" not found
+cat: "%s" ist ein Ordner	cat: "%s" is a folder
+cat: "%s" laesst sich nicht lesen	cat: "%s" cannot be read
+(leere Datei)	(empty file)
+Physischer Speicher	Physical memory
+  gesamt  : %u MiB	  total   : %u MiB
+  belegt  : %u MiB	  in use  : %u MiB
+  frei    : %u MiB	  free    : %u MiB
+  reserviert : %u KiB	  reserved   : %u KiB
+  benutzt    : %u KiB	  used       : %u KiB
+  %u Eintraege, %u Bytes	  %u entries, %u bytes
+holen: <adresse> [datei]	holen: <address> [file]
+Rufe %s ab ...	Fetching %s ...
+holen: %s	holen: %s
+%d, %u Byte, %s	%d, %u bytes, %s
+Verschluesselt: %s	Encrypted: %s
+Achtung: die Antwort ist unvollstaendig.	Careful: the answer is incomplete.
+holen: %s laesst sich nicht anlegen	holen: %s cannot be created
+holen: %s laesst sich nicht schreiben	holen: %s cannot be written
+Gespeichert als %s	Saved as %s
+... (gekuerzt)	... (shortened)
+Keine USB-Geraete gefunden.	No USB devices found.
+Von diesem Startmedium laesst sich nicht installieren.	There is no installing from this boot medium.
+Noetig ist das RetroOS-Abbild (ISO oder USB-Stick).	The RetroOS image is needed (ISO or USB stick).
+RetroOS auf eine Festplatte bringen	Put RetroOS on a hard disk
+Moegliche Ziele:	Possible targets:
+  %-6s %s (%u MiB)	  %-6s %s (%u MiB)
+         daneben moeglich: %u MiB frei	         alongside possible: %u MiB free
+Kein geeigneter Datentraeger dabei.	No suitable disk among them.
+Ganze Platte : installieren <name> wirklich	Whole disk   : installieren <name> wirklich
+Daneben      : installieren <name> daneben	Alongside    : installieren <name> daneben
+installieren: %s gibt es nicht	installieren: there is no %s
+installieren: %s	installieren: %s
+Installiere neben dem Vorhandenen auf %s ...	Installing alongside what is on %s ...
+Fertig.	Done.
+Der Rechner startet jetzt RetroOS.	The machine now boots RetroOS.
+Der uebliche Startpfad war belegt - RetroOS steht unter EFI\RETROOS und muss im Startmenue der Firmware gewaehlt werden.	The usual boot path was taken - RetroOS sits at EFI\RETROOS and has to be picked from the firmware boot menu.
+Das loescht alles auf %s (%s).	This erases everything on %s (%s).
+  EFI-Abschnitt : %u MiB ab Sektor %u	  EFI partition : %u MiB from sector %u
+  Ablage        : %u MiB ab Sektor %u	  Storage       : %u MiB from sector %u
+Zum Bestaetigen: installieren %s wirklich	To confirm: installieren %s wirklich
+Oder daneben, ohne etwas zu loeschen: installieren <name> daneben	Or alongside, erasing nothing: installieren <name> daneben
+Installiere auf %s ...	Installing on %s ...
+Fertig. Das Startmedium kann jetzt entfernt werden.	Done. The boot medium can be removed now.
+Kein Datentraeger gefunden.	No disk found.
+  %u Sektoren zu %u Byte (%u MiB)	  %u sectors of %u bytes (%u MiB)
+Kein FAT32-Dateisystem eingehaengt.	No FAT32 file system mounted.
+Eingehaengt: /Festplatte (%s)	Mounted: /Festplatte (%s)
+  Dateisystem : FAT32, %u Byte je Cluster	  File system : FAT32, %u bytes per cluster
+  Groesse     : %s	  Size        : %s
+  frei        : %s	  free        : %s
+Keine Netzwerkkarte gefunden.	No network adapter found.
+  Hardware-Adresse : %s	  Hardware address : %s
+  Verbindung       : %s, %u MBit/s	  Link             : %s, %u Mbit/s
+  Verbindung       : %s	  Link             : %s
+  Keine IP-Adresse (DHCP ohne Antwort).	  No IP address (DHCP got no answer).
+  IP-Adresse       : %s	  IP address       : %s
+  Netzmaske        : %s	  Netmask          : %s
+  Gateway          : %s	  Gateway          : %s
+  Namensserver     : %s	  Name server      : %s
+  Empfangen        : %u Pakete, %u Byte	  Received         : %u packets, %u bytes
+  Gesendet         : %u Pakete, %u Byte	  Sent             : %u packets, %u bytes
+  Auf dem Bus gefunden:	  Found on the bus:
+ping: Ziel fehlt	ping: no target given
+ping: keine Netzwerkverbindung	ping: no network connection
+ping: %s nicht gefunden	ping: %s not found
+Ping an %s (%s):	Ping to %s (%s):
+  Antwort von %s: Zeit %u ms	  Answer from %s: time %u ms
+  Zeitueberschreitung	  Timed out
+  %d von 4 Antworten	  %d of 4 answers
+starte: <programm> [text]	starte: <program> [text]
+  z.B.  starte /Programme/hallo.elf	  e.g.  starte /Programme/hallo.elf
+starte: %s	starte: %s
+[%s laeuft als Nummer %u im Kaefig "%s": %s]	[%s runs as number %u in the "%s" cage: %s]
+[%s laeuft als Nummer %u]	[%s runs as number %u]
+[%s beendet, Ergebnis %d]	[%s ended, result %d]
+Zurzeit laeuft kein Programm.	No program is running right now.
+%-5u %-6s %-16s %-10s %u KiB	%-5u %-6s %-16s %-10s %u KiB
+Mehrfach genutzt: %u KiB	Shared: %u KiB
+Es gibt keinen Papierkorb.	There is no trash.
+%u Eintraege endgueltig geloescht.	%u entries deleted for good.
+papierkorb zurueck: Nummer 1 bis %u erwartet	papierkorb zurueck: a number from 1 to %u is expected
+"%s" ist wieder da.	"%s" is back.
+"%s" liess sich nicht zurueckholen.	"%s" could not be brought back.
+Der Papierkorb ist leer.	The trash is empty.
+%u Eintraege, %s - "papierkorb leeren" raeumt auf	%u entries, %s - "papierkorb leeren" clears them out
+kopiere <quelle> <ziel>	cp <source> <target>
+kopiere: "%s" nicht gefunden	cp: "%s" not found
+kopiere: "%s" ist kein Ordner	cp: "%s" is not a folder
+kopiere: "%s" gibt es dort schon	cp: "%s" is already there
+kopiere: das waere eine Kopie in sich selbst	cp: that would be a copy into itself
+kopiere: es ging nicht - fehlen die Rechte?	cp: it did not work - permissions missing?
+%s kopiert nach %s	%s copied to %s
+verschiebe <quelle> <ziel>	mv <source> <target>
+verschiebe: "%s" nicht gefunden	mv: "%s" not found
+verschiebe: "%s" gibt es dort schon	mv: "%s" is already there
+verschiebe: das Kopieren scheiterte	mv: the copy failed
+verschiebe: kopiert, aber das Original blieb	mv: copied, but the original stayed
+verschiebe: es ging nicht	mv: it did not work
+verschoben nach %s	moved to %s
+verschiebe: "%s" gibt es schon	mv: "%s" already exists
+verschiebe: das Umbenennen ging nicht	mv: the rename did not work
+umbenannt in %s	renamed to %s
+verschiebe: "%s" gibt es nicht	mv: there is no "%s"
+%s: "%s" nicht gefunden	%s: "%s" not found
+%s: "%s" ist ein Ordner	%s: "%s" is a folder
+%s: "%s" laesst sich nicht lesen	%s: "%s" cannot be read
+  %u von %u Zeilen	  %u of %u lines
+%u Zeilen, %u Woerter, %u Zeichen  %s	%u lines, %u words, %u characters  %s
+sortiere: hoechstens 200 Zeilen	sort: 200 lines at most
+sortiere: kein Speicher	sort: out of memory
+  %u Zeilen	  %u lines
+vergleiche: kein Speicher	diff: out of memory
+Zeile %u:	Line %u:
+  ... weitere Unterschiede	  ... more differences
+Die Dateien sind gleich.	The files are the same.
+  %u von %u Bytes	  %u of %u bytes
+suche <text> [pfad]	grep <text> [path]
+suche: "%s" nicht gefunden	grep: "%s" not found
+"%s" kommt darin nicht vor.	"%s" does not appear in it.
+  %u Fundstellen%s	  %u hits%s
+finde [pfad] <muster>	find [path] <pattern>
+  z.B.  finde / *.txt	  e.g.  finde / *.txt
+finde: "%s" nicht gefunden	find: "%s" not found
+Nichts passt auf "%s".	Nothing matches "%s".
+  %u gefunden%s	  %u found%s
+baum: "%s" ist kein Ordner	tree: "%s" is not a folder
+  %u Eintraege%s	  %u entries%s
+groesse: "%s" nicht gefunden	du: "%s" not found
+%10s  insgesamt in %s	%10s  in total in %s
+info: "%s" nicht gefunden	stat: "%s" not found
+  Art       : %s%s	  Kind      : %s%s
+  Groesse   : %s%s	  Size      : %s%s
+  Eintraege : %u	  Entries   : %u
+  Rechte    : %s (%04o)	  Mode      : %s (%04o)
+  Gehoert   : %s:%s	  Owner     : %s:%s
+  Geaendert : %02u.%02u.%04u %02u:%02u	  Changed   : %02u.%02u.%04u %02u:%02u
+  Liegt     : %s	  Path      : %s
+  SHA-256 ueber %u Bytes von %s	  SHA-256 over %u bytes of %s
+wo <name>	which <name>
+%s ist ein eingebauter Befehl: %s	%s is a built-in command: %s
+  Auch als "%s"	  Also as "%s"
+"%s" ist weder Befehl noch Programm	"%s" is neither a command nor a program
+beende <nummer>	kill <number>
+%s laeuft schon nicht mehr.	%s is not running any more.
+Es laeuft kein Programm mit der Nummer %u	No program is running with number %u
+kalender [monat] [jahr]	cal [month] [year]
+rechne <ausdruck>	expr <expression>
+  z.B.  rechne (3 + 4) * 1024	  e.g.  rechne (3 + 4) * 1024
+rechne: %s	expr: %s
+  Auch als "%s".	  Also as "%s".
+"%s" ist weder Befehl noch Bereich.	"%s" is neither a command nor a group.
+Bereiche: Dateien, Text, Programme, System, Netz, Sicherheit	Groups: Files, Text, Programs, System, Network, Security
+"hilfe <bereich>" zeigt nur einen Teil, "man <befehl>" alles zu einem Befehl.	"hilfe <group>" shows one part only, "man <command>" everything about a command.
+Paketfilter: %s	Packet filter: %s
+  Grundeinstellung eingehend: %s	  Default inbound:  %s
+  Grundeinstellung ausgehend: %s	  Default outbound: %s
+  %2u  %s  (%u Treffer)	  %2u  %s  (%u hits)
+  Keine Regeln - es gilt die Grundeinstellung.	  No rules - the default applies.
+  Durchgelassen: %u ein, %u aus; verworfen: %u ein, %u aus	  Passed: %u in, %u out; dropped: %u in, %u out
+  firewall an|aus | standard <richtung> <tat> | regel <richtung> <tat> <protokoll> <ziel> <ports> | weg <n> | leeren | speichern	  firewall an|aus | standard <direction> <action> | regel <direction> <action> <protocol> <target> <ports> | weg <n> | leeren | speichern
+Dafuer braucht es das Recht am Netz.	That needs the network permission.
+Paketfilter %s.	Packet filter %s.
+firewall standard eingehend|ausgehend erlauben|verwerfen|ablehnen	firewall standard eingehend|ausgehend erlauben|verwerfen|ablehnen
+Grundeinstellung %s: %s	Default %s: %s
+firewall regel <eingehend|ausgehend> <erlauben|verwerfen|ablehnen> <alle|tcp|udp|icmp> <alle|adresse[/bits]> <alle|port[-port]>	firewall regel <eingehend|ausgehend> <erlauben|verwerfen|ablehnen> <alle|tcp|udp|icmp> <alle|address[/bits]> <alle|port[-port]>
+Es ist kein Platz fuer weitere Regeln.	There is no room for more rules.
+Regel %d angelegt.	Rule %d created.
+Diese Regel gibt es nicht.	There is no such rule.
+Regel %u entfernt.	Rule %u removed.
+Alle Regeln entfernt.	All rules removed.
+Unbekannt: %s	Unknown: %s
+Die Pruefspur lesen darf nur, wer das Recht am Protokoll hat.	Only someone with the log permission may read the audit trail.
+Zeit        Art        Ausgang     Benutzer   Gegenstand	Time        Kind       Outcome     User       Subject
+%u von %u Eintraegen, davon %u abgewiesen%s	%u of %u entries, %u of them denied%s
+  pruefspur [alle|abgewiesen|speichern]	  pruefspur [alle|abgewiesen|speichern]
+Protokoll geleert.	Log cleared.
+%s liess sich nicht schreiben	%s could not be written
+protokoll [alle|warnung|fehler|speichern|leeren]	protokoll [alle|warnung|fehler|speichern|leeren]
+%u von %u Meldungen - %u Warnungen, %u Fehler	%u of %u messages - %u warnings, %u errors
+%u aeltere sind aus dem Ring gefallen.	%u older ones fell out of the ring.
+Nichts zu tun.	Nothing to do.
+Aufgaben:	Tasks:
+  %u offen von %u - %s	  %u open of %u - %s
+  aufgaben neu <text> | fertig <n> | weg <n> | wichtig <n> <stufe> | termin <n> <datum>	  aufgaben neu <text> | fertig <n> | weg <n> | wichtig <n> <level> | termin <n> <date>
+aufgaben neu <text>	aufgaben neu <text>
+Notiert: %s	Noted: %s
+Welche Aufgabe? Nummer aus der Liste angeben.	Which task? Give a number from the list.
+Geloescht: %s	Deleted: %s
+hoch, mittel oder niedrig	high, medium or low
+%s ist jetzt %s	%s is now %s
+TT.MM.JJJJ oder ein Strich	DD.MM.YYYY or a dash
+Termin von %s: %s	Due date of %s: %s
+Niemand angemeldet - alles laeuft als root.	Nobody signed in - everything runs as root.
+  Nummer    : %u	  Number    : %u
+  Heim      : %s	  Home      : %s
+  Rolle     : %s	  Role      : %s
+  Darf      : %s	  May       : %s
+  Gruppen   : %s	  Groups    : %s
+Gruppen:	Groups:
+Benutzer:	Users:
+  benutzer neu|loeschen|passwort|rolle|verwalter <name> [wert]	  benutzer neu|loeschen|passwort|rolle|verwalter <name> [value]
+Dafuer braucht es das Recht an den Konten.	That needs the accounts permission.
+Es fehlt der Name.	The name is missing.
+%s angelegt, Nummer %u, Heim %s	%s created, number %u, home %s
+%s entfernt.	%s removed.
+Unbekannter Benutzer: %s	Unknown user: %s
+Passwort von %s gesetzt.	Password of %s set.
+Bekannte Rollen: %s	Known roles: %s
+%s hat jetzt die Rolle %s und darf %s.	%s now has the role %s and may %s.
+%s ist %s Verwalter.	%s is %s administrator.
+Ohne Festplatte gilt das bis zum Ausschalten.	Without a hard disk this lasts until shutdown.
+rechte: "%s" nicht gefunden	rechte: "%s" not found
+rechte: "750" oder "rwxr-x---" wird erwartet	rechte: "750" or "rwxr-x---" is expected
+besitzer: "%s" nicht gefunden	besitzer: "%s" not found
+%s gehoert %s:%s	%s is owned by %s:%s
+Unbekannte Gruppe: %s	Unknown group: %s
+Verschenken darf nur ein Verwalter.	Only an administrator may give something away.
+%s gehoert jetzt %s:%s	%s is now owned by %s:%s
+Unbekannte Schrift: %s	Unknown font: %s
+Schrift: %s	Font: %s
+Dauerhaft wird das erst mit Speichern in den Einstellungen.	It only becomes permanent by saving in the settings.
+Schriftarten:	Fonts:
+Unbekannte Sprache: %s	Unknown language: %s
+Sprachen:	Languages:
+Tastaturbelegungen:	Keyboard layouts:
+Kern %u: %s, %u Takte, %u Wechsel	Core %u: %s, %u ticks, %u switches
+cd: "%s" ist kein Ordner	cd: "%s" is not a folder
+cat: Dateiname fehlt	cat: file name missing
+mkdir: Name fehlt	mkdir: name missing
+mkdir: "%s" konnte nicht angelegt werden	mkdir: "%s" could not be created
+touch: Name fehlt	touch: name missing
+touch: "%s" existiert bereits	touch: "%s" already exists
+schreib: <datei> <text>	schreib: <file> <text>
+schreib: "%s" laesst sich nicht anlegen - fehlen die Rechte?	schreib: "%s" cannot be created - permissions missing?
+schreib: "%s" ist ein Ordner	schreib: "%s" is a folder
+schreib: "%s" darfst du nicht beschreiben	schreib: you may not write to "%s"
+rm: "%s" nicht gefunden	rm: "%s" not found
+"%s" endgueltig geloescht	"%s" deleted for good
+rm: "%s" ist geschuetzt	rm: "%s" is protected
+"%s" liegt im Papierkorb - "papierkorb zurueck" holt es wieder	"%s" is in the trash - "papierkorb zurueck" brings it back
+edit: "%s" nicht gefunden	edit: "%s" not found
+man <befehl>	man <command>
+"%s" kennt die Konsole nicht.	The console does not know "%s".
+warte <millisekunden>	sleep <milliseconds>
+%u ms gewartet.	waited %u ms.
+Noch nichts eingegeben.	Nothing entered yet.
+  Mit den Pfeiltasten holt man sie zurueck.	  The arrow keys bring them back.
+Kaefigprofile:	Cage profiles:
+  kaefig <profil> <programm> [text]	  kaefig <profile> <program> [text]
+kaefig <profil> <programm> [text]	kaefig <profile> <program> [text]
+Laufzeit: %u:%02u:%02u	Uptime: %u:%02u:%02u
+RetroOS 1.0 (x86-64)	RetroOS 1.0 (x86-64)
+aufloesen: Name fehlt	aufloesen: name missing
+%s hat die Adresse %s	%s has the address %s
+aufloesen: %s nicht gefunden	aufloesen: %s not found
+Das loescht alle Daten auf dem Datentraeger.	This erases all data on the disk.
+Zum Bestaetigen: formatieren wirklich [Bezeichnung]	To confirm: formatieren wirklich [label]
+Formatiere ...	Formatting ...
+Fertig. /Festplatte ist wieder da.	Done. /Festplatte is back.
+Formatieren fehlgeschlagen.	Formatting failed.
+Unbekannter Befehl: %s  ("hilfe" zeigt alle Befehle)	Unknown command: %s  ("hilfe" lists them all)
+[%s abgebrochen]	[%s stopped]
+RetroOS-Konsole 1.0	RetroOS console 1.0
+"hilfe" zeigt alle Befehle.	"hilfe" lists all commands.

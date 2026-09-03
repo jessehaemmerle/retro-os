@@ -20,6 +20,7 @@
 #include "theme.h"
 #include "user.h"
 #include "widgets.h"
+#include "lang.h"
 
 #define ROW_H     16
 #define TOOLBAR_H 34
@@ -56,12 +57,12 @@ struct log_ui {
 static const char *filter_label(int id)
 {
     switch (id) {
-    case F_INFO:  return "Hinweise";
-    case F_WARN:  return "Warnungen";
-    case F_ERROR: return "Fehler";
-    case B_SAVE:  return "Speichern";
-    case B_CLEAR: return "Leeren";
-    default:      return "Alle";
+    case F_INFO:  return tr("Hinweise");
+    case F_WARN:  return tr("Warnungen");
+    case F_ERROR: return tr("Fehler");
+    case B_SAVE:  return tr("Speichern");
+    case B_CLEAR: return tr("Leeren");
+    default:      return tr("Alle");
     }
 }
 
@@ -240,15 +241,15 @@ static void log_paint(struct window *win, struct canvas *c)
         strlcpy(left, ui->status, sizeof(left));
     } else if (log_lost()) {
         ksnprintf(left, sizeof(left),
-                  "%d von %u Meldungen - %u aeltere sind aus dem Ring gefallen",
+                  tr("%d von %u Meldungen - %u aeltere sind aus dem Ring gefallen"),
                   total, (unsigned)log_count(), (unsigned)log_lost());
     } else {
-        ksnprintf(left, sizeof(left), "%d von %u Meldungen", total,
+        ksnprintf(left, sizeof(left), tr("%d von %u Meldungen"), total,
                   (unsigned)log_count());
     }
 
     widget_statusbar(&local, rect_make(0, local.h - STATUS_H, local.w, STATUS_H),
-                     left, ui->follow ? "haengt am Ende" : "angehalten");
+                     left, ui->follow ? tr("haengt am Ende") : tr("angehalten"));
 }
 
 /* ------------------------------------------------------------------ */
@@ -265,10 +266,10 @@ static void do_save(struct window *win, struct log_ui *ui)
     user_home_file("protokoll.txt", LOG_PATH_DEFAULT, path, sizeof(path));
 
     if (log_save(path))
-        ksnprintf(ui->status, sizeof(ui->status), "Gesichert in %s", path);
+        ksnprintf(ui->status, sizeof(ui->status), tr("Gesichert in %s"), path);
     else
         ksnprintf(ui->status, sizeof(ui->status),
-                  "%s liess sich nicht schreiben.", path);
+                  tr("%s liess sich nicht schreiben."), path);
 }
 
 static void log_event(struct window *win, const struct gui_event *ev)
@@ -347,7 +348,7 @@ static void log_event(struct window *win, const struct gui_event *ev)
             log_clear();
         } else {
             strlcpy(ui->status,
-                    "Leeren darf nur, wer das Recht am Protokoll hat.",
+                    tr("Leeren darf nur, wer das Recht am Protokoll hat."),
                     sizeof(ui->status));
         }
 

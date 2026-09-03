@@ -14,6 +14,9 @@
 #include "user.h"
 #include "trash.h"
 #include "widgets.h"
+#include "lang.h"
+#include "wallpaper.h"
+#include "config.h"
 
 #define TOOLBAR_H   34
 #define PATHBAR_H   26
@@ -41,6 +44,7 @@ enum context_id {
     CTX_NEW_DIR,
     CTX_NEW_FILE,
     CTX_PROPS,
+    CTX_WALLPAPER,
 };
 
 struct fm_state {
@@ -148,7 +152,7 @@ static void fm_refresh(struct window *win)
         st->selection = -1;
 
     fs_path(st->dir, path, sizeof(path));
-    ksnprintf(title, sizeof(title), "Dateimanager - %s", path);
+    ksnprintf(title, sizeof(title), tr("Dateimanager - %s"), path);
     gui_set_title(win, title);
 
     struct fs_node *sel = (st->selection >= 0) ? st->entries[st->selection] : NULL;
@@ -262,7 +266,7 @@ static void on_new_dir(const char *name, void *user)
     struct fm_state *st = win->user;
 
     if (!fs_create(st->dir, name, FS_DIR))
-        dialog_message("Neuer Ordner",
+        dialog_message(tr("Neuer Ordner"),
                        "Der Ordner konnte nicht angelegt werden. "
                        "Moeglicherweise gibt es ihn bereits.");
     fm_refresh(win);
@@ -279,7 +283,7 @@ static void on_new_file(const char *name, void *user)
     struct fs_node  *f   = fs_create(st->dir, name, FS_FILE);
 
     if (!f) {
-        dialog_message("Neue Datei",
+        dialog_message(tr("Neue Datei"),
                        "Die Datei konnte nicht angelegt werden. "
                        "Moeglicherweise gibt es sie bereits.");
         return;
@@ -301,7 +305,7 @@ static void on_rename(const char *name, void *user)
         return;
 
     if (!fs_rename(st->entries[st->selection], name))
-        dialog_message("Umbenennen", "Der Name konnte nicht geaendert werden.");
+        dialog_message(tr("Umbenennen"), tr("Der Name konnte nicht geaendert werden."));
     fm_refresh(win);
 }
 
@@ -324,7 +328,7 @@ static void on_delete_confirmed(bool yes, void *user)
     bool ok = trash_contains(sel) ? trash_purge(sel) : trash_delete(sel);
 
     if (!ok)
-        dialog_message("Loeschen",
+        dialog_message(tr("Loeschen"),
                        "Dieser Eintrag gehoert zum System und "
                        "laesst sich nicht loeschen.");
     fm_refresh(win);
@@ -338,8 +342,8 @@ static void on_restore(struct window *win)
         return;
 
     if (!trash_restore(st->entries[st->selection]))
-        dialog_message("Wiederherstellen",
-                       "Der alte Platz ist nicht mehr erreichbar.");
+        dialog_message(tr("Wiederherstellen"),
+                       tr("Der alte Platz ist nicht mehr erreichbar."));
     fm_refresh(win);
 }
 
@@ -364,18 +368,18 @@ static void fm_action(struct window *win, int action)
         break;
 
     case TB_NEW_DIR:
-        dialog_input("Neuer Ordner", "Name des neuen Ordners:",
-                     "Neuer Ordner", on_new_dir, win);
+        dialog_input(tr("Neuer Ordner"), tr("Name des neuen Ordners:"),
+                     tr("Neuer Ordner"), on_new_dir, win);
         break;
 
     case TB_NEW_FILE:
-        dialog_input("Neue Datei", "Name der neuen Datei:",
+        dialog_input(tr("Neue Datei"), tr("Name der neuen Datei:"),
                      "Unbenannt.txt", on_new_file, win);
         break;
 
     case TB_RENAME:
         if (sel && !sel->readonly)
-            dialog_input("Umbenennen", "Neuer Name:", sel->name, on_rename, win);
+            dialog_input(tr("Umbenennen"), tr("Neuer Name:"), sel->name, on_rename, win);
         break;
 
     case TB_DELETE:
@@ -389,10 +393,10 @@ static void fm_action(struct window *win, int action)
             else
                 ksnprintf(msg, sizeof(msg),
                           sel->type == FS_DIR
-                              ? "Ordner \"%s\" in den Papierkorb legen?"
-                              : "\"%s\" in den Papierkorb legen?",
+                              ? tr("Ordner \"%s\" in den Papierkorb legen?")
+                              : tr("\"%s\" in den Papierkorb legen?"),
                           sel->name);
-            dialog_confirm("Loeschen", msg, on_delete_confirmed, win);
+            dialog_confirm(tr("Loeschen"), msg, on_delete_confirmed, win);
         }
         break;
 
@@ -419,13 +423,13 @@ static void on_mode_entered(const char *text, void *user)
     if (!sel || !fs_node_alive(sel))
         return;
     if (!perm_parse_mode(text, &mode)) {
-        dialog_message("Rechte",
-                       "Erwartet wird \"750\" oder \"rwxr-x---\".");
+        dialog_message(tr("Rechte"),
+                       tr("Erwartet wird \"750\" oder \"rwxr-x---\"."));
         return;
     }
     if (!perm_set_mode(sel, mode)) {
-        dialog_message("Rechte",
-                       "Das darf nur der Eigentuemer oder ein Verwalter.");
+        dialog_message(tr("Rechte"),
+                       tr("Das darf nur der Eigentuemer oder ein Verwalter."));
         return;
     }
     if (perm_store_dirty())
@@ -449,19 +453,19 @@ static void fm_properties(struct window *win)
     perm_mode_text(sel->mode, sel->type, mode);
     fs_path(sel, path, sizeof(path));
     if (sel->type == FS_DIR)
-        strlcpy(size, "Ordner", sizeof(size));
+        strlcpy(size, tr("Ordner"), sizeof(size));
     else
         fs_format_size(size, sizeof(size), sel->size);
 
-    ksnprintf(text, sizeof(text), "%s\n%s, %s\nGehoert %s:%s - %s (%04o)",
+    ksnprintf(text, sizeof(text), tr("%s\n%s, %s\nGehoert %s:%s - %s (%04o)"),
               path, size,
-              sel->backend == FS_BACKEND_FAT ? "auf der Platte"
-                                             : "im Arbeitsspeicher",
+              sel->backend == FS_BACKEND_FAT ? tr("auf der Platte")
+                                             : tr("im Arbeitsspeicher"),
               user_name_of(sel->uid), group_name_of(sel->gid), mode,
               (unsigned)sel->mode);
 
     if (!perm_owns(sel)) {
-        dialog_message("Eigenschaften", text);
+        dialog_message(tr("Eigenschaften"), text);
         return;
     }
 
@@ -469,7 +473,46 @@ static void fm_properties(struct window *win)
 
     ksnprintf(preset, sizeof(preset), "%04o", (unsigned)sel->mode);
 
-    dialog_input("Eigenschaften", text, preset, on_mode_entered, win);
+    dialog_input(tr("Eigenschaften"), text, preset, on_mode_entered, win);
+}
+
+/* Ist das ein Bild? Dieselbe Endungsliste wie beim Symbol - wer hier
+ * eine Endung ergaenzt, muss es dort auch tun. */
+static bool is_image(const struct fs_node *node)
+{
+    const char *dot = node ? strrchr(node->name, '.') : NULL;
+
+    if (!dot || node->type != FS_FILE)
+        return false;
+    return strcasecmp(dot, ".png") == 0 || strcasecmp(dot, ".jpg") == 0 ||
+           strcasecmp(dot, ".jpeg") == 0 || strcasecmp(dot, ".gif") == 0 ||
+           strcasecmp(dot, ".bmp") == 0;
+}
+
+/* Das Bild wird gesetzt und gleich in die Einstellungen geschrieben -
+ * aber nicht gespeichert. Wer es behalten will, geht in die
+ * Einstellungen und drueckt dort auf Speichern; das ist derselbe Weg
+ * wie bei allem anderen, was fuer den ganzen Rechner gilt. */
+static void fm_set_wallpaper(struct window *win)
+{
+    struct fm_state *st = win->user;
+    struct fs_node *sel = (st->selection >= 0) ? st->entries[st->selection]
+                                               : NULL;
+    char path[FS_PATH_MAX];
+
+    if (!is_image(sel))
+        return;
+
+    fs_path(sel, path, sizeof(path));
+
+    if (!wallpaper_set(path)) {
+        dialog_message(tr("Hintergrundbild"), tr("Das Bild liess sich nicht laden."));
+        return;
+    }
+
+    strlcpy(config_current()->wallpaper, path,
+            sizeof(config_current()->wallpaper));
+    gui_invalidate();
 }
 
 static void context_selected(int id, void *user)
@@ -483,6 +526,7 @@ static void context_selected(int id, void *user)
     case CTX_NEW_DIR:  fm_action(win, TB_NEW_DIR);   break;
     case CTX_NEW_FILE: fm_action(win, TB_NEW_FILE);  break;
     case CTX_PROPS:    fm_properties(win);           break;
+    case CTX_WALLPAPER: fm_set_wallpaper(win);       break;
     }
 }
 
@@ -493,14 +537,15 @@ static void open_context_menu(struct window *win, int32_t sx, int32_t sy)
     bool editable = sel && !sel->readonly;
 
     struct menu_item items[] = {
-        { "Oeffnen",      ICON_FOLDER_OPEN, true, sel != NULL, CTX_OPEN },
-        { "Umbenennen",   ICON_EDITOR,      true, editable,    CTX_RENAME },
-        { "Loeschen",     ICON_TRASH,       true, editable,    CTX_DELETE },
+        { tr("Oeffnen"),      ICON_FOLDER_OPEN, true, sel != NULL, CTX_OPEN },
+        { tr("Umbenennen"),   ICON_EDITOR,      true, editable,    CTX_RENAME },
+        { tr("Loeschen"),     ICON_TRASH,       true, editable,    CTX_DELETE },
         { NULL,           ICON_FILE,        false, false,      0 },
-        { "Neuer Ordner", ICON_NEW_FOLDER,  true, true,        CTX_NEW_DIR },
-        { "Neue Datei",   ICON_NEW_FILE,    true, true,        CTX_NEW_FILE },
+        { tr("Neuer Ordner"), ICON_NEW_FOLDER,  true, true,        CTX_NEW_DIR },
+        { tr("Neue Datei"),   ICON_NEW_FILE,    true, true,        CTX_NEW_FILE },
         { NULL,           ICON_FILE,        false, false,      0 },
-        { "Eigenschaften", ICON_KEY,        true, sel != NULL, CTX_PROPS },
+        { tr("Als Hintergrund"), ICON_IMAGE,   true, is_image(sel), CTX_WALLPAPER },
+        { tr("Eigenschaften"), ICON_KEY,        true, sel != NULL, CTX_PROPS },
     };
 
     gui_open_menu(sx, sy, items, ARRAY_LEN(items), context_selected, win);
@@ -518,9 +563,9 @@ static void paint_toolbar(struct window *win, struct canvas *c)
     bool im_korb = trash_contains(st->dir);
 
     const char *labels[TB_COUNT] = {
-        "", "", "", "Neuer Ordner", "Neue Datei", "Umbenennen",
-        im_korb ? "Endgueltig" : "Loeschen",
-        im_korb ? "Wiederherstellen" : ""
+        "", "", "", tr("Neuer Ordner"), tr("Neue Datei"), tr("Umbenennen"),
+        im_korb ? tr("Endgueltig") : tr("Loeschen"),
+        im_korb ? tr("Wiederherstellen") : ""
     };
     const enum icon_id icons[TB_COUNT] = {
         ICON_BACK, ICON_UP, ICON_HOME,
@@ -578,7 +623,7 @@ static void paint_list(struct window *win, struct canvas *c)
 
     if (st->count == 0) {
         gfx_text(&clipped, area.x + 12, area.y + 10,
-                 "Dieser Ordner ist leer.", COL_TEXT_DIM);
+                 tr("Dieser Ordner ist leer."), COL_TEXT_DIM);
     }
 
     for (int32_t i = 0; i < rows; i++) {
@@ -606,7 +651,7 @@ static void paint_list(struct window *win, struct canvas *c)
 
             if (node->type == FS_DIR) {
                 size_t n = fs_child_count(node);
-                ksnprintf(size, sizeof(size), "%u Eintr.", (unsigned)n);
+                ksnprintf(size, sizeof(size), tr("%u Eintr."), (unsigned)n);
             } else {
                 fs_format_size(size, sizeof(size), node->size);
             }
@@ -636,7 +681,7 @@ static void paint_status(struct window *win, struct canvas *c)
             files++;
     }
 
-    ksnprintf(left, sizeof(left), "%u Ordner, %u Dateien",
+    ksnprintf(left, sizeof(left), tr("%u Ordner, %u Dateien"),
               (unsigned)dirs, (unsigned)files);
 
     char total[24];

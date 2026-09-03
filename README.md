@@ -251,6 +251,13 @@ er inzwischen fehlt. Endgültig wird es erst beim zweiten Löschen oder beim
 Leeren. Der Korb liegt im Arbeitsspeicher: Was darin liegt, ist nach einem
 Neustart weg.
 
+**Hintergrund:** Neben den fünf Verläufen lässt sich ein eigenes Bild
+einsetzen – in den Einstellungen unter *Hintergrundbild*, das die Bilder
+aus `/Medien` und aus dem eigenen `Bilder`-Ordner durchblättert, oder im
+Dateimanager mit der rechten Maustaste auf ein Bild und *Als Hintergrund*.
+PNG, JPEG, GIF und BMP; das Bild wird füllend skaliert und mittig
+beschnitten. Der Sperrbildschirm zeigt dasselbe Bild abgedunkelt.
+
 **Konsole:** `hilfe` zeigt alle Befehle nach Gebiet geordnet, `hilfe <befehl>`
 und `man <befehl>` erklären einen einzelnen. Die Pfeiltasten holen die letzten
 zwanzig Zeilen zurück. Fast jeder Befehl hat neben dem deutschen Namen den
@@ -294,6 +301,7 @@ gewohnten englischen als Zweitnamen (`kopiere`/`cp`, `suche`/`grep`). Neben
 | `prozesse` | laufende Programme mit Verwandtschaft und geteiltem Speicher |
 | `papierkorb [zurueck <n>\|leeren]` | Geloeschtes ansehen, zurueckholen, endgueltig entfernen |
 | `schrift [name]` | Schriftarten mit Lizenz auflisten oder sofort umschalten |
+| `sprache [de\|en]` / `lang` | Sprache und Tastaturbelegung zeigen oder umschalten |
 | `wer` | angemeldeter Benutzer, seine Nummer, sein Heim und seine Gruppen |
 | `gruppen` | Gruppen mit Nummer und Mitgliedern |
 | `benutzer [neu\|loeschen\|passwort\|verwalter <name> [wert]]` | Konten zeigen und verwalten |
@@ -329,7 +337,7 @@ also so, wie es ein Betriebssystem tut.
 | **Installation** | Schreibt eine eigene GUID-Tabelle, formatiert EFI-Abschnitt und Ablage, kopiert Bootloader und Kernel und setzt den Startsektor für BIOS-Rechner |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
 | **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte |
-| **Eingabe** | USB-Tastatur und -Maus im Boot-Protokoll, dazu der 8042-Controller, wo es ihn noch gibt; deutsche Belegung inkl. AltGr |
+| **Eingabe** | USB-Tastatur und -Maus im Boot-Protokoll, dazu der 8042-Controller, wo es ihn noch gibt; vier Belegungen (de/us/uk/ch) inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
 | **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
@@ -344,6 +352,7 @@ also so, wie es ein Betriebssystem tut.
 | **Systemmonitor** | Programme, Threads und Maschine in drei Ansichten; Rechenzeitanteile werden jede Sekunde gemessen, Speicher je Programm gezählt, fremde Programme beendet nur ein Verwalter |
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
 | **IPC** | Röhren zwischen Eltern und Kind (Ringpuffer im Kern, werden beim Abspalten vererbt) und geteilter Speicher (derselbe Seitenrahmen in mehreren Adressräumen, `PTE_SHARED` hält ihn aus Kopie-beim-Schreiben und Abräumen heraus) |
+| **Sprache** | 46 Prüfungen: Sortierung und Lückenlosigkeit der Tabelle, jeder Eintrag wird auch gefunden, gleiche Platzhalter auf beiden Seiten, Umschalten und Rückfall aufs Deutsche |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
 | **Rollen** | Sechs Fähigkeiten (Konten, Netz, Platte, Protokoll, Strom, Einstellungen) statt „Verwalter ja/nein"; eine Rolle ist ein Name für eine Menge davon |
@@ -362,7 +371,8 @@ also so, wie es ein Betriebssystem tut.
 | **Textverarbeitung** | Absatzformate, fett und unterstrichen je Zeichen, Ausrichtung, Umbruch, Speichern und Laden als HTML |
 | **Präsentation** | Folien mit drei Anordnungen, Übersichtsleiste, Vollbild ohne Fensterrahmen, Schrift passt sich der Folie an |
 | **Webserver** | `starte server` liefert die Ablage über HTTP aus; ein Ring-3-Programm, das lauscht, annimmt und je Verbindung ein Kind abspaltet |
-| **Einstellungen** | Tastaturbelegung (de/us/ch), Zeitzone, Rechnername, Hintergrund und Schriftart in `/Festplatte/retroos.conf` |
+| **Sprache** | Deutsch und Englisch, systemweit und im laufenden Betrieb umschaltbar; 741 Einträge, aus `data/sprache-en.txt` erzeugt |
+| **Einstellungen** | Sprache, Tastaturbelegung (de/us/uk/ch), Zeitzone, Rechnername, Hintergrund samt eigenem Bild und Schriftart in `/Festplatte/retroos.conf` |
 | **Zwischenablage** | Kopieren und Einfügen zwischen Editor, Konsole und Browser |
 | **Programme** | Dateimanager, Browser, Texteditor, Konsole, Systeminformation, Systemmonitor, Protokoll, Aufgaben, Installation, Einstellungen, Benutzer, Papierkorb, Tabelle, Schreiben, Vortrag, Programmieren, elf Ring-3-Programme |
 
@@ -454,6 +464,74 @@ sie einmal auf dem Entwicklungsrechner; im Kernel steht davon nur noch
 eine Tabelle aus Bytes. Umschalten lässt es sich in den Einstellungen –
 das Fenster zeichnet sich sofort in der neuen Schrift und ist damit seine
 eigene Vorschau – oder in der Konsole mit `schrift`.
+
+### Zwei Sprachen in einem System, das auf Deutsch geschrieben ist
+
+RetroOS ist deutsch bis in die Bezeichner hinein. Eine zweite Sprache
+einzuziehen hieß darum nicht, Texte gegen Nummern zu tauschen, sondern
+den deutschen Text selbst zum Schlüssel zu machen: `tr("Einstellungen")`
+liefert „Settings", wenn Englisch eingestellt ist, und sonst genau das,
+was hineinging.
+
+Das hat zwei Vorteile, die den einen Nachteil aufwiegen. Der Quelltext
+bleibt lesbar – wer ihn liest, sieht den Text, den der Benutzer sieht,
+und nicht `STR_SETTINGS_TITLE`. Und ein fehlender Eintrag ist kein
+Absturz und kein leeres Feld, sondern eine deutsche Zeile in einem
+englischen Fenster: unschön, aber bedienbar. Der Nachteil ist die Suche
+bei jedem Aufruf; sie läuft binär über eine sortierte Tabelle und kostet
+ein Dutzend Vergleiche, während das Zeichnen derselben Zeile hunderte
+Pixel kostet.
+
+**Übersetzt wird beim Zeichnen, nicht beim Anlegen.** Nur so wechselt ein
+offenes Fenster die Sprache mit, statt sie bis zum Neustart zu behalten.
+Fenstertitel, Menüeinträge, Knopfbeschriftungen und Statuszeilen gehen
+ohnehin durch eine Handvoll Funktionen – dort steht das `tr()` ein Mal
+und wirkt überall. Umgekehrt bleibt alles deutsch, was in eine **Datei**
+geht: Die Wichtigkeit einer Aufgabe steht als `hoch` in der Liste, die
+Anordnung einer Folie als `Titelfolie`. Eine Datei, deren Format von der
+eingestellten Sprache abhängt, wäre auf dem nächsten Rechner nicht mehr
+lesbar. Gelesen wird beides.
+
+Die Tabelle selbst steht nicht im Quelltext, sondern in
+`data/sprache-en.txt` – ein Paar je Zeile, durch einen Tabulator
+getrennt. `make sprache` sortiert sie und erzeugt daraus `lang_data.c`.
+Sortiert, weil die Suche binär ist; und weil eine von Hand eingefügte
+Zeile das lautlos zerstören würde, besteht eine Prüfung im Testlauf
+darauf. Eine zweite vergleicht die Platzhalter beider Hälften: Aus
+„%s von %s belegt" darf nicht „%s in use" werden, sonst liest
+`ksnprintf` irgendwann eine Zahl als Zeiger.
+
+Die **Tastatur wandert mit** der Sprache – aber nur, solange sie noch die
+ist, die zur alten Sprache gehörte. Wer sich bewusst eine andere Belegung
+gesucht hat, behält sie; sonst wäre ein Blick in die englische Oberfläche
+jedes Mal der Verlust seiner Umlaute. Zur Auswahl stehen vier Belegungen:
+deutsch, amerikanisch, britisch und schweizerisch. Die britische ist
+fast die amerikanische, vier Tasten sitzen anders – und das Pfundzeichen
+fehlt, weil der eingebaute Zeichensatz nur bis 127 reicht; Umschalt+3
+liefert darum das Doppelkreuz.
+
+Nicht übersetzt ist, was auch auf Deutsch niemand liest: die Meldungen
+des Kerns auf der seriellen Schnittstelle, die Einträge im Systemprotokoll
+und in der Prüfspur. Sie gehören der Fehlersuche und nicht der Bedienung.
+
+### Ein Bild statt eines Verlaufs
+
+Die fünf eingebauten Verläufe kosten nichts und sind sofort da. Ein Bild
+ist etwas anderes: Es muss geladen, entpackt und auf die
+Bildschirmgröße gebracht werden, und danach liegt es als ein Stück im
+Speicher. Genau einmal – der Hintergrund wird bei jeder Bewegung eines
+Fensters neu gezeichnet, und ein PNG bei jedem Mausschubser aufs Neue zu
+entpacken wäre die sicherste Art, die Oberfläche zäh zu machen.
+
+Skaliert wird **füllend und mittig beschnitten**: Das Bild bedeckt die
+Fläche ganz und behält sein Seitenverhältnis; was übersteht, wird beim
+Zeichnen abgeschnitten, was ohnehin geschieht. Der Verlauf wird trotzdem
+zuerst gemalt – Bilder dürfen durchsichtig sein, und was durchscheint,
+soll der Verlauf sein und nicht das Bild vom letzten Bildaufbau.
+
+Ein Pfad, hinter dem kein Bild mehr liegt, fällt beim nächsten Start aus
+den Einstellungen heraus, statt sie zu vergiften: Sonst stünde bei jedem
+Start derselbe tote Pfad da und der Verlauf käme nie zurück.
 
 ### Was das System von sich erzählt
 
@@ -765,9 +843,9 @@ kernel/
                       RSA, P-256, ASN.1, X.509, Wurzelzertifikate
     gfx/              DEFLATE, PNG, JPEG, GIF, BMP, Skalieren und Zeichnen
     lib/              Zeichenketten, Ausgabe, Systemprotokoll, Prüfspur,
-                      128-Bit-Division
+                      Sprachtabelle, 128-Bit-Division
     gui/              Grafik, Schrift, Symbole, Fenstersystem, Desktop,
-                      Anmeldebildschirm, Bedienelemente
+                      Hintergrundbild, Anmeldebildschirm, Bedienelemente
     js/               Zerteiler, Deuter, Bibliothek und Anbindung an den Baum
     apps/             Dateimanager, Browser, Installation, Einstellungen,
                       Benutzerverwaltung, Systemmonitor, Protokoll, Aufgaben,
@@ -776,13 +854,13 @@ kernel/
                       Konsole samt Werkzeugkasten, Systeminformation,
                       Dialoge
 userland/             Ring-3-Programme samt kleiner Laufzeitbibliothek
-data/                 Wurzelzertifikate und Beispielbilder
+data/                 Wurzelzertifikate, Beispielbilder, Sprachtabelle
 third_party/lucide/   Symbolvorlagen (ISC) samt Lizenz
 third_party/fonts/    Schriftvorlagen (OFL u. a.) samt Lizenzen
 tests/                Testsammlungen für den Entwicklungsrechner
 boot/limine.conf      Bootloader-Eintrag
-scripts/              Bootloader holen, Schrift, Symbole, Zertifikate und
-                      Bilder erzeugen
+scripts/              Bootloader holen, Schrift, Symbole, Zertifikate,
+                      Bilder und Sprachtabelle erzeugen
 ```
 
 Erzeugte und eingecheckte Dateien: die Schriften in

@@ -126,6 +126,42 @@ void gfx_fill(struct canvas *c, struct rect r, uint32_t color)
         memset32(&c->px[(r.y + y) * c->stride + r.x], color, (size_t)r.w);
 }
 
+/* Legt eine Farbe mit der angegebenen Deckkraft ueber eine Flaeche.
+ * Wird gebraucht, wo etwas Gezeichnetes durchscheinen soll - der
+ * Sperrbildschirm dunkelt so das Hintergrundbild ab, statt es durch
+ * einen Verlauf zu ersetzen. */
+void gfx_fill_blend(struct canvas *c, struct rect r, uint32_t argb)
+{
+    uint32_t alpha = argb >> 24;
+
+    if (alpha == 0)
+        return;
+    if (alpha == 255) {
+        gfx_fill(c, r, argb & 0x00FFFFFFu);
+        return;
+    }
+
+    r = rect_intersect(r, c->clip);
+
+    uint32_t inverse = 255 - alpha;
+    uint32_t sr = ((argb >> 16) & 0xFF) * alpha;
+    uint32_t sg = ((argb >> 8) & 0xFF) * alpha;
+    uint32_t sb = (argb & 0xFF) * alpha;
+
+    for (int32_t y = 0; y < r.h; y++) {
+        uint32_t *row = &c->px[(r.y + y) * c->stride + r.x];
+
+        for (int32_t x = 0; x < r.w; x++) {
+            uint32_t back = row[x];
+            uint32_t rr = (sr + ((back >> 16) & 0xFF) * inverse) / 255;
+            uint32_t gg = (sg + ((back >> 8) & 0xFF) * inverse) / 255;
+            uint32_t bb = (sb + (back & 0xFF) * inverse) / 255;
+
+            row[x] = (rr << 16) | (gg << 8) | bb;
+        }
+    }
+}
+
 void gfx_hline(struct canvas *c, int32_t x, int32_t y, int32_t len, uint32_t color)
 {
     gfx_fill(c, rect_make(x, y, len, 1), color);

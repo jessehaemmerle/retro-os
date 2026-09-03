@@ -37,3 +37,4 @@ tests/protokoll-test
 tests/netzfilter-test
 tests/kaefig-test
 tests/konsole-test
+tests/sprache-test
