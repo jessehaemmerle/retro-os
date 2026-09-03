@@ -7,6 +7,7 @@
 
 #include "input.h"
 #include "acpi.h"
+#include "arch.h"
 #include "io.h"
 #include "ps2.h"
 
@@ -17,22 +18,50 @@
 #define STATUS_OUTPUT_FULL 0x01
 #define STATUS_INPUT_FULL  0x02
 
+/* Gewartet wird nach der Uhr und nicht nach einer Anzahl Schleifen.
+ * Wie lange ein Durchlauf dauert, haengt vom Rechner ab - und vom
+ * Emulator, der einen Port-Zugriff schon einmal um Groessenordnungen
+ * langsamer bedient als der naechste. Eine Zahl, die auf dem einen
+ * Rechner eine halbe Sekunde ist, ist auf dem anderen eine
+ * Millisekunde, und dann faellt ein Geraet durch, das nur etwas
+ * bedaechtig antwortet. */
+static bool wait_for(uint8_t mask, bool set, uint32_t ms)
+{
+    uint64_t start = timer_ms();
+
+    for (;;) {
+        uint8_t status = inb(PS2_STATUS);
+
+        if (status != 0xFF && ((status & mask) != 0) == set)
+            return true;
+
+        /* Solange die Uhr noch nicht laeuft - ganz frueh beim
+         * Hochfahren -, bleibt nur das Zaehlen. */
+        if (timer_ms() - start > ms)
+            return false;
+    }
+}
+
 bool ps2_wait_write(void)
 {
-    for (int i = 0; i < 100000; i++) {
-        if (!(inb(PS2_STATUS) & STATUS_INPUT_FULL))
-            return true;
-    }
-    return false;
+    return wait_for(STATUS_INPUT_FULL, false, 50);
 }
 
 bool ps2_wait_read(void)
 {
-    for (int i = 0; i < 100000; i++) {
-        if (inb(PS2_STATUS) & STATUS_OUTPUT_FULL)
-            return true;
-    }
-    return false;
+    return wait_for(STATUS_OUTPUT_FULL, true, 50);
+}
+
+/* Wie ps2_wait_read, aber mit eigener Frist. Ein Ruecksetzbefehl darf
+ * laenger brauchen als eine gewoehnliche Quittung: Eine Maus prueft
+ * sich dabei selbst, und das dauert auf echter Hardware bis zu einer
+ * halben Sekunde. */
+bool ps2_read_byte_ms(uint8_t *out, uint32_t ms)
+{
+    if (!wait_for(STATUS_OUTPUT_FULL, true, ms))
+        return false;
+    *out = inb(PS2_DATA);
+    return true;
 }
 
 void ps2_write_cmd(uint8_t cmd)
@@ -59,10 +88,7 @@ uint8_t ps2_read_data(void)
  * Mausanschluss jemand haengt. */
 bool ps2_read_byte(uint8_t *out)
 {
-    if (!ps2_wait_read())
-        return false;
-    *out = inb(PS2_DATA);
-    return true;
+    return ps2_read_byte_ms(out, 50);
 }
 
 /* Ein Byte an das Geraet an Port 2 (Maus) schicken und Quittung lesen. */
@@ -151,9 +177,15 @@ bool ps2_init(void)
     ps2_write_cmd(0x20);
     uint8_t config = ps2_read_data();
 
-    config |= (1 << 0);   /* IRQ Port 1 (Tastatur) */
-    config |= (1 << 1);   /* IRQ Port 2 (Maus)     */
-    config |= (1 << 6);   /* Scancode-Uebersetzung */
+    config |= (1 << 0);   /* IRQ Port 1 (Tastatur)  */
+    config |= (1 << 1);   /* IRQ Port 2 (Maus)      */
+    config |= (1 << 6);   /* Scancode-Uebersetzung  */
+
+    /* Bit 5 schaltet den Takt des zweiten Ports ab. Steht es, bekommt
+     * die Maus nichts zu hoeren, ganz gleich wie viele Befehle man ihr
+     * schickt. Der Befehl 0xA8 weiter unten loescht es zwar auch, aber
+     * darauf soll es nicht ankommen. */
+    config &= (uint8_t)~(1 << 5);
 
     ps2_write_cmd(0x60);
     ps2_write_data(config);
@@ -178,7 +210,7 @@ bool ps2_init(void)
 
     port2 = ps2_read_byte(&result) && result == 0x00;
     if (!port2)
-        kprintf("PS/2        : Port 2 meldet 0x%02x - keine Maus\n", result);
+        kprintf("PS/2        : Port 2 meldet 0x%02x\n", result);
 
     present = true;
     return true;

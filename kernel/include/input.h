@@ -63,8 +63,13 @@ void mouse_feed_byte(uint8_t byte);
 /* Nachsehen, ob im Controller ein Mausbyte liegt, das kein Interrupt
  * abgeholt hat. Wird aus der Hauptschleife der Oberflaeche gerufen. */
 void mouse_pump(void);
-/* Haengt eine Maus am PS/2-Anschluss? */
+/* Hat sich beim Erkennen eine Maus gemeldet? */
 bool mouse_attached(void);
+/* Zaehler fuer die Fehlersuche: wie viele Bytes ueber den Interrupt
+ * hereinkamen und wie viele die Hauptschleife selbst geholt hat. */
+uint32_t mouse_irq_count(void);
+uint32_t mouse_polled_count(void);
+uint8_t  mouse_packet_size(void);
 /* Leer, solange alles gewoehnlich laeuft; sonst eine kurze Anmerkung
  * fuer die Systeminformation. */
 const char *mouse_note(void);

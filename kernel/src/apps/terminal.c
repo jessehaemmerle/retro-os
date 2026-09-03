@@ -41,6 +41,7 @@
 #include "lang.h"
 #include "display.h"
 #include "keymap.h"
+#include "ps2.h"
 
 int kvsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 
@@ -2585,6 +2586,56 @@ static void cmd_font(struct term_state *st, const char *name)
                     font_name(i), font_license(i));
 }
 
+/* Zeigt, was der Zeiger gerade tut. Bewegt er sich nicht, steht hier,
+ * woran es liegt: kein Controller, kein Geraet, kein Interrupt - oder
+ * eben doch alles in Ordnung und der Fehler liegt woanders. */
+static void cmd_mouse(struct term_state *st)
+{
+    struct mouse_state ms;
+
+    mouse_poll(&ms);
+
+    term_line(st, C_HIGHLIGHT, tr("Zeigegeraet:"));
+
+    if (!ps2_present())
+        term_line(st, C_NORMAL, tr("  PS/2-Controller : keiner"));
+    else
+        term_printf(st, C_NORMAL, tr("  PS/2-Controller : da, Port 2 %s"),
+                    ps2_port2_present() ? tr("gemeldet") : tr("stumm"));
+
+    term_printf(st, C_NORMAL, tr("  PS/2-Maus       : %s"),
+                mouse_attached() ? tr("hat geantwortet")
+                                 : tr("hat sich nicht gemeldet"));
+    term_printf(st, C_NORMAL, tr("  Paketlaenge     : %u Byte"),
+                (unsigned)mouse_packet_size());
+    term_printf(st, C_NORMAL, tr("  Bytes ueber IRQ : %u"),
+                (unsigned)mouse_irq_count());
+    term_printf(st, C_NORMAL, tr("  Bytes abgefragt : %u"),
+                (unsigned)mouse_polled_count());
+    term_printf(st, C_NORMAL, tr("  Zeiger          : %d, %d"),
+                (int)ms.x, (int)ms.y);
+    bool usb_mouse = false;
+
+    for (size_t i = 0; i < usb_device_count(); i++) {
+        const struct usb_device_info *info =
+            usb_device_details(usb_device_at(i));
+
+        if (info && info->interface_protocol == HID_PROTOCOL_MOUSE)
+            usb_mouse = true;
+    }
+
+    term_printf(st, C_NORMAL, tr("  USB-Maus        : %s"),
+                usb_mouse ? tr("angemeldet") : tr("keine"));
+
+    if (mouse_irq_count() == 0 && mouse_polled_count() == 0 && !usb_mouse) {
+        term_line(st, C_NORMAL, "");
+        term_line(st, C_ERROR, tr("Es kommt nichts an."));
+        term_line(st, C_NORMAL,
+                  "In VirtualBox: System - Mainboard - Zeigegeraet auf "
+                  "\"PS/2-Maus\" stellen.");
+    }
+}
+
 static void cmd_display(struct term_state *st, const char *arg)
 {
     struct config *cfg = config_current();
@@ -3045,6 +3096,9 @@ static void term_execute(struct window *win, struct term_state *st, char *input)
 
     } else if (!strcasecmp(cmd, "bildschirm") || !strcasecmp(cmd, "display")) {
         cmd_display(st, a1);
+
+    } else if (!strcasecmp(cmd, "maus") || !strcasecmp(cmd, "mouse")) {
+        cmd_mouse(st);
 
     } else if (!strcasecmp(cmd, "threads") || !strcasecmp(cmd, "ps")) {
         cmd_threads(st);

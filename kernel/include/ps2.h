@@ -12,6 +12,8 @@ void    ps2_write_data(uint8_t data);
 uint8_t ps2_read_data(void);
 /* Wie ps2_read_data, aber false bei Zeitueberschreitung. */
 bool    ps2_read_byte(uint8_t *out);
+/* Mit eigener Frist in Millisekunden. */
+bool    ps2_read_byte_ms(uint8_t *out, uint32_t ms);
 
 /* Ein Byte an das Geraet an Port 2 (Maus) schicken; liefert die Quittung. */
 uint8_t ps2_mouse_command(uint8_t byte);

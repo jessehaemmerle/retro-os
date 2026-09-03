@@ -426,6 +426,10 @@ static const struct sh_command commands[] = {
     { "warte", "sleep", "System", "warte <millisekunden>",
       "eine Weile nichts tun", NULL },
     { "version", "ver", "System", "version", "Systemversion", NULL },
+    { "maus", "mouse", "System", "maus",
+      "Zeigegeraet und woran es haengt",
+      "Bewegt sich der Zeiger nicht, steht hier, ob ueberhaupt Bytes\n"
+      "ankommen und ueber welchen Weg." },
     { "bildschirm", "display", "System", "bildschirm [1280x800|2x|auto]",
       "Aufloesung und Vergroesserung",
       "Ohne Angabe stehen die moeglichen Aufloesungen da. Die\n"

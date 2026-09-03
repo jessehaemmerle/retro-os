@@ -309,6 +309,7 @@ gewohnten englischen als Zweitnamen (`kopiere`/`cp`, `suche`/`grep`). Neben
 | `rechte <datei> [modus]` | Rechte zeigen oder setzen (`750` oder `rwxr-x---`) |
 | `besitzer <datei> [name[:gruppe]]` | Eigentümer zeigen oder setzen |
 | `sperren` | Bildschirm sperren |
+| `maus` / `mouse` | Zeigegerät: was erkannt wurde und ob Bytes ankommen |
 | `firewall [an\|aus\|standard\|regel\|weg\|leeren\|speichern]` | Paketfilter zeigen und regeln |
 | `pruefspur [alle\|abgewiesen\|speichern]` | Sicherheitsereignisse ansehen |
 | `kaefig [<profil> <programm> [text]]` | Profile zeigen oder ein Programm eingesperrt starten |
@@ -971,9 +972,13 @@ und das Einstellungsfenster schreibt *(fest)* daneben.
 **Das Zeigergerät muss eine PS/2-Maus sein.** *System → Mainboard →
 Zeigegerät* auf `PS/2-Maus` stellen. Ab Werk steht dort ein
 USB-Tablett, und VirtualBox hängt es an einen OHCI-Controller – RetroOS
-spricht xHCI und OHCI nicht, der Mausanschluss bliebe leer. Die
-Systeminformation sagt es dann auch: *nur Tastatur – keine Maus an
-Port 2*.
+spricht xHCI und OHCI nicht, der Mausanschluss bliebe leer.
+
+Ob es daran liegt, sagt der Befehl `maus` in der Konsole: Er zeigt, ob
+ein PS/2-Controller da ist, ob sich an Port 2 jemand gemeldet hat und
+wie viele Bytes bisher angekommen sind – über den Interrupt und über
+die Abfrage aus der Hauptschleife. Stehen beide Zähler auf null, kommt
+gar nichts an, und die Einstellung ist die Ursache.
 
 ## Fehlersuche
 

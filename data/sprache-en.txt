@@ -812,3 +812,23 @@ Vergroesserung: %ux%s	Scaling: %ux%s
  (automatisch)	 (automatic)
 Aufloesung und Vergroesserung	resolution and scaling
 Ohne Angabe stehen die moeglichen Aufloesungen da. Die\nVergroesserung blaest jeden Punkt zum Quadrat auf - auf einem\nsehr feinen Bildschirm ist die Schrift damit wieder lesbar.	Without arguments the possible resolutions are listed. Scaling\nblows every point up into a square - on a very fine display that\nmakes the text readable again.
+
+# --- Zeigegeraet ---
+Zeigegeraet:	Pointing device:
+  PS/2-Controller : keiner	  PS/2 controller : none
+  PS/2-Controller : da, Port 2 %s	  PS/2 controller : present, port 2 %s
+gemeldet	answered
+stumm	silent
+  PS/2-Maus       : %s	  PS/2 mouse      : %s
+hat geantwortet	answered
+hat sich nicht gemeldet	did not answer
+  Paketlaenge     : %u Byte	  Packet length   : %u bytes
+  Bytes ueber IRQ : %u	  Bytes via IRQ   : %u
+  Bytes abgefragt : %u	  Bytes polled    : %u
+  Zeiger          : %d, %d	  Pointer         : %d, %d
+  USB-Maus        : %s	  USB mouse       : %s
+angemeldet	attached
+Es kommt nichts an.	Nothing is arriving.
+In VirtualBox: System - Mainboard - Zeigegeraet auf "PS/2-Maus" stellen.	In VirtualBox: System - Motherboard - Pointing Device to "PS/2 Mouse".
+Zeigegeraet und woran es haengt	the pointing device and what it hangs on
+Bewegt sich der Zeiger nicht, steht hier, ob ueberhaupt Bytes\nankommen und ueber welchen Weg.	If the pointer does not move, this says whether any bytes arrive\nat all, and by which route.

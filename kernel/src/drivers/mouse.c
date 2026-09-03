@@ -4,19 +4,26 @@
  * "Magic Sequence" mit den Abtastraten 200/100/80 meldet sie sich als Typ 3
  * und liefert ein viertes Byte fuer das Scrollrad.
  *
- * Zwei Dinge halten den Treiber auch dort am Leben, wo der Anschluss
+ * Drei Dinge halten den Treiber auch dort am Leben, wo der Anschluss
  * nicht so sauber emuliert wird wie in QEMU.
  *
- * Erstens wird nicht blind losgeschickt: Antwortet auf den
- * Ruecksetzbefehl niemand, gibt es keine Maus, und der Treiber sagt das
- * und haelt still. Sonst wartet jeder folgende Befehl auf eine Antwort,
- * die nie kommt - und das beim Hochfahren, wo noch niemand zusieht.
+ * Erstens wird nachgesehen, ob ueberhaupt jemand antwortet - aber die
+ * Antwort entscheidet nichts. Sie steht in der Systeminformation und
+ * im Protokoll, damit man weiss, woran man ist; eingeschaltet wird die
+ * Maus in jedem Fall. Eine Erkennung, die im Zweifel abschaltet, macht
+ * aus einem langsamen Geraet ein totes, und das ist der schlechtere
+ * Fehler: Wer keine Maus hat, merkt nichts davon, dass sie trotzdem
+ * eingeschaltet wurde.
  *
  * Zweitens ist der Interrupt nicht der einzige Weg herein. Bleibt IRQ 12
  * aus - eine Umlegung, die nicht stimmt, ein Emulator, der ihn nur
  * manchmal ausloest -, holt die Hauptschleife die Bytes selbst ab. Und
  * findet der Tastatur-Interrupt ein Byte, das der Maus gehoert, reicht
  * er es hierher weiter, statt es als Tastendruck zu verwerfen.
+ *
+ * Drittens wird das vierte Byte nur genommen, wenn die Maus sauber
+ * gesagt hat, dass sie eines schickt. Wer hier falsch liegt, verschiebt
+ * jedes Paket um ein Byte, und dann bewegt sich gar nichts mehr.
  */
 
 #include "input.h"
@@ -185,7 +192,10 @@ static void mouse_irq(struct registers *regs)
  * mitten hinein platzen und dasselbe Byte ein zweites Mal lesen. */
 void mouse_pump(void)
 {
-    if (!attached)
+    /* Nicht an "attached" gebunden: Gerade wenn die Erkennung nichts
+     * gefunden hat, ist das hier der Weg, auf dem doch etwas
+     * hereinkommt. */
+    if (!ps2_present())
         return;
 
     /* Die Schleife hat eine Obergrenze: Ein Anschluss, der pausenlos
@@ -207,6 +217,10 @@ void mouse_pump(void)
 }
 
 bool mouse_attached(void) { return attached; }
+
+uint32_t mouse_irq_count(void)    { return irq_count; }
+uint32_t mouse_polled_count(void) { return polled_count; }
+uint8_t  mouse_packet_size(void)  { return packet_size; }
 
 /* Ein Zusatz fuer die Systeminformation, und zwar nur dann, wenn es
  * etwas zu sagen gibt: Der Normalfall braucht keine Anmerkung. */
@@ -234,44 +248,44 @@ void mouse_init(int32_t screen_w, int32_t screen_h)
     irq_count = 0;
     polled_count = 0;
 
-    /* Die Maus am PS/2-Anschluss gibt es nur, wenn der Controller da
-     * ist. Sonst bleibt es bei der USB-Maus. */
-    if (!ps2_present() || !ps2_port2_present()) {
-        kprintf("Maus        : keine am PS/2-Anschluss\n");
+    /* Ohne 8042 gibt es hier nichts zu tun; dann kommt die Maus ueber
+     * USB oder gar nicht. */
+    if (!ps2_present()) {
+        kprintf("Maus        : kein PS/2-Controller\n");
         return;
     }
 
-    /* Zuruecksetzen und nachsehen, ob ueberhaupt jemand antwortet.
-     * Eine Maus quittiert mit 0xFA, meldet danach 0xAA (Selbsttest
-     * bestanden) und ihre Kennung. Kommt schon die Quittung nicht, ist
-     * der Anschluss leer - dann wird hier nicht weitergemacht. */
-    if (!ps2_mouse_command_ok(0xFF, NULL)) {
-        kprintf("Maus        : keine Antwort am PS/2-Anschluss\n");
-        kprintf("Maus        : in VirtualBox das Zeigergeraet auf "
-                "\"PS/2-Maus\" stellen\n");
-        return;
+    /* Zuruecksetzen und nachsehen, ob jemand antwortet. Eine Maus
+     * quittiert mit 0xFA, meldet danach 0xAA (Selbsttest bestanden)
+     * und ihre Kennung. Das Zuruecksetzen darf dauern - eine Maus
+     * prueft sich dabei selbst. */
+    bool answered = ps2_mouse_command_ok(0xFF, NULL);
+
+    if (answered) {
+        uint8_t selftest = 0;
+        uint8_t ignored = 0;
+
+        answered = ps2_read_byte_ms(&selftest, 800) && selftest == 0xAA;
+        ps2_read_byte_ms(&ignored, 200);   /* Kennung, hier 0x00 */
     }
 
-    uint8_t selftest = 0;
-    uint8_t ignored = 0;
-
-    if (!ps2_read_byte(&selftest) || selftest != 0xAA) {
-        kprintf("Maus        : Selbsttest meldet 0x%02x\n", selftest);
-        return;
-    }
-    ps2_read_byte(&ignored);      /* Kennung, nach dem Ruecksetzen 0x00   */
-
-    attached = true;
+    attached = answered;
+    packet_size = 3;
 
     ps2_mouse_command(0xF6);      /* Standardwerte                        */
 
-    /* Scrollrad freischalten und Typ abfragen. */
+    /* Scrollrad freischalten und Typ abfragen. Das vierte Byte wird
+     * nur genommen, wenn beides sauber durchgeht - eine geratene
+     * Paketlaenge verschiebt jedes folgende Paket. */
     set_sample_rate(200);
     set_sample_rate(100);
     set_sample_rate(80);
-    ps2_mouse_command(0xF2);
-    uint8_t id = ps2_read_data();
-    packet_size = (id == 3 || id == 4) ? 4 : 3;
+
+    uint8_t id = 0;
+
+    if (ps2_mouse_command_ok(0xF2, NULL) && ps2_read_byte(&id) &&
+        (id == 3 || id == 4))
+        packet_size = 4;
 
     set_sample_rate(100);         /* 100 Pakete je Sekunde                */
     ps2_mouse_command(0xE8);      /* Aufloesung ...                        */
@@ -281,7 +295,16 @@ void mouse_init(int32_t screen_w, int32_t screen_h)
     packet_index = 0;
     irq_install(12, mouse_irq);
 
-    kprintf("Maus        : Typ %u, %u-Byte-Pakete\n", id, packet_size);
+    /* Auch wenn niemand geantwortet hat, wird eingeschaltet und der
+     * Interrupt angemeldet: Es kostet nichts, und ein Anschluss, der
+     * nur beim Erkennen geschwiegen hat, funktioniert danach oft
+     * trotzdem. */
+    if (attached)
+        kprintf("Maus        : PS/2, Typ %u, %u-Byte-Pakete\n", id,
+                packet_size);
+    else
+        kprintf("Maus        : PS/2 meldet sich nicht - trotzdem "
+                "eingeschaltet\n");
 }
 
 bool mouse_poll(struct mouse_state *out)
