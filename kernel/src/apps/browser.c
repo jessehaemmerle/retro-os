@@ -1641,12 +1641,78 @@ static void click_node(struct window *win, struct node *node)
     }
 }
 
+/* --- Menue der rechten Maustaste ------------------------------------- */
+
+enum {
+    BR_CTX_BACK = 1,
+    BR_CTX_RELOAD,
+    BR_CTX_HOME,
+    BR_CTX_COPY,
+    BR_CTX_COPY_URL,
+    BR_CTX_SAVE,
+};
+
+static void br_context_selected(int id, void *user)
+{
+    struct window *win = user;
+
+    if (!gui_window_alive(win))
+        return;
+
+    struct br_state *st = win->user;
+
+    switch (id) {
+    case BR_CTX_BACK:     br_action(win, BR_BACK);   break;
+    case BR_CTX_RELOAD:   br_action(win, BR_RELOAD); break;
+    case BR_CTX_HOME:     br_action(win, BR_HOME);   break;
+    case BR_CTX_SAVE:     br_action(win, BR_SAVE);   break;
+    case BR_CTX_COPY:     copy_page_text(win);       break;
+    case BR_CTX_COPY_URL:
+        clipboard_set(st->url, strlen(st->url));
+        ksnprintf(st->status, sizeof(st->status), tr("Adresse kopiert: %s"),
+                  st->url);
+        break;
+    default:
+        break;
+    }
+    gui_invalidate();
+}
+
+static void br_context_menu(struct window *win, int32_t x, int32_t y)
+{
+    struct br_state *st = win->user;
+    struct rect client = gui_client_rect(win);
+
+    struct menu_item items[] = {
+        { tr("Zurueck"),  ICON_BACK,   true, st->history_len > 0, BR_CTX_BACK },
+        { tr("Neu laden"), ICON_RELOAD, true, st->url[0] != '\0', BR_CTX_RELOAD },
+        { tr("Startseite"), ICON_HOME,  true, true, BR_CTX_HOME },
+        { NULL, ICON_FILE, false, false, 0 },
+        { tr("Seitentext kopieren"), ICON_SAVE, true, st->doc.root != NULL,
+          BR_CTX_COPY },
+        { tr("Adresse kopieren"), ICON_NETWORK, true, st->url[0] != '\0',
+          BR_CTX_COPY_URL },
+        { tr("Herunterladen"), ICON_DOWNLOAD, true, st->url[0] != '\0',
+          BR_CTX_SAVE },
+    };
+
+    gui_open_menu(client.x + x, client.y + y, items, ARRAY_LEN(items),
+                  br_context_selected, win);
+}
+
 static void br_event(struct window *win, const struct gui_event *ev)
 {
     struct br_state *st = win->user;
 
     switch (ev->type) {
     case EV_MOUSE_DOWN: {
+        /* Die rechte Taste fragt ueberall im Fenster dasselbe - auch
+         * in der Leiste, wo sonst die Knoepfe liegen. */
+        if (ev->button == MB_RIGHT) {
+            br_context_menu(win, ev->x, ev->y);
+            return;
+        }
+
         if (ev->y < BR_TOOLBAR_H) {
             for (int i = 0; i < BR_SAVE + 1; i++) {
                 if (rect_contains(button_rect(i), ev->x, ev->y)) {

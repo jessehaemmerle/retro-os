@@ -3411,6 +3411,80 @@ static void recall(struct term_state *st, int direction)
     st->cursor = (int32_t)strlen(st->input);
 }
 
+/* Legt die Zwischenablage in die Eingabezeile - ueber Strg+V wie
+ * ueber die rechte Maustaste. Zeilenumbrueche bleiben draussen: Eine
+ * eingefuegte Zeile darf nicht von selbst losrennen. */
+static void term_paste(struct term_state *st)
+{
+    size_t bytes = 0;
+    const char *text = clipboard_get(&bytes);
+    size_t len = strlen(st->input);
+
+    for (size_t i = 0; text && i < bytes && len < TERM_INPUT_MAX; i++) {
+        if (text[i] < 32 || (unsigned char)text[i] == 127)
+            continue;
+        memmove(&st->input[st->cursor + 1], &st->input[st->cursor],
+                len - (size_t)st->cursor + 1);
+        st->input[st->cursor++] = text[i];
+        len++;
+    }
+    st->caret_on = true;
+    gui_invalidate();
+}
+
+/* --- Menue der rechten Maustaste ------------------------------------- */
+
+enum {
+    TERM_CTX_PASTE = 1,
+    TERM_CTX_COPY,
+    TERM_CTX_CLEAR,
+};
+
+static void term_context_selected(int id, void *user)
+{
+    struct window *win = user;
+
+    if (!gui_window_alive(win))
+        return;
+
+    struct term_state *st = win->user;
+
+    switch (id) {
+    case TERM_CTX_PASTE:
+        term_paste(st);
+        break;
+    case TERM_CTX_COPY:
+        clipboard_set(st->input, strlen(st->input));
+        break;
+    case TERM_CTX_CLEAR:
+        st->line_count = 0;
+        st->scroll = 0;
+        break;
+    default:
+        break;
+    }
+    gui_invalidate();
+}
+
+static void term_context_menu(struct window *win, int32_t x, int32_t y)
+{
+    struct term_state *st = win->user;
+    struct rect client = gui_client_rect(win);
+
+    struct menu_item items[] = {
+        { tr("Einfuegen"), ICON_NEW_FILE, true, !clipboard_empty(),
+          TERM_CTX_PASTE },
+        { tr("Eingabezeile kopieren"), ICON_SAVE, true, st->input[0] != '\0',
+          TERM_CTX_COPY },
+        { NULL, ICON_FILE, false, false, 0 },
+        { tr("Bildschirm leeren"), ICON_TRASH, true, st->line_count > 0,
+          TERM_CTX_CLEAR },
+    };
+
+    gui_open_menu(client.x + x, client.y + y, items, ARRAY_LEN(items),
+                  term_context_selected, win);
+}
+
 static void term_key(struct window *win, const struct gui_event *ev)
 {
     struct term_state *st = win->user;
@@ -3446,19 +3520,7 @@ static void term_key(struct window *win, const struct gui_event *ev)
                  ? (char)(ev->ascii + 32) : ev->ascii;
 
         if (c == 'v') {
-            size_t bytes = 0;
-            const char *text = clipboard_get(&bytes);
-
-            for (size_t i = 0; text && i < bytes && len < TERM_INPUT_MAX; i++) {
-                if (text[i] < 32 || (unsigned char)text[i] == 127)
-                    continue;      /* Zeilenumbrueche bleiben draussen */
-                memmove(&st->input[st->cursor + 1], &st->input[st->cursor],
-                        len - (size_t)st->cursor + 1);
-                st->input[st->cursor++] = text[i];
-                len++;
-            }
-            st->caret_on = true;
-            gui_invalidate();
+            term_paste(st);
             return;
         }
         if (c == 'c' && (ev->mods & MOD_SHIFT)) {
@@ -3539,6 +3601,10 @@ static void term_event(struct window *win, const struct gui_event *ev)
     switch (ev->type) {
     case EV_KEY_DOWN:
         term_key(win, ev);
+        break;
+    case EV_MOUSE_DOWN:
+        if (ev->button == MB_RIGHT)
+            term_context_menu(win, ev->x, ev->y);
         break;
     case EV_SCROLL: {
         int32_t max_off = MAX(st->line_count - term_visible_lines(win), 0);

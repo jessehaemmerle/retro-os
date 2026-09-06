@@ -146,6 +146,11 @@ void    gui_move_to_workspace(struct window *win, uint8_t index);
  * der Taskleiste. */
 size_t  gui_workspace_windows(uint8_t index);
 
+/* Das Fenstermenue an einer Stelle des Bildschirms aufklappen -
+ * rechte Maustaste auf der Titelleiste oder auf dem Knopf in der
+ * Taskleiste. */
+void gui_window_menu(struct window *win, int32_t x, int32_t y);
+
 /* Findet ein bereits offenes Fenster derselben Anwendung. */
 struct window *gui_find_by_paint(win_paint_fn fn);
 
@@ -164,6 +169,12 @@ struct menu_item {
 };
 
 typedef void (*menu_select_fn)(int id, void *user);
+
+/* Die naechste waehlbare Zeile ueber oder unter der jetzigen -
+ * Trennlinien und blasse Zeilen werden uebersprungen, und es geht
+ * reihum. Ist nichts waehlbar, bleibt current stehen. */
+int menu_next_index(const struct menu_item *items, size_t count, int current,
+                    int delta);
 
 void gui_open_menu(int32_t x, int32_t y, const struct menu_item *items,
                    size_t count, menu_select_fn on_select, void *user);

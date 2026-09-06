@@ -912,3 +912,25 @@ Download fertig	Download finished
 Suche	Search
 Programme, Dateien, Einstellungen ...	Programs, files, settings ...
 Nichts gefunden.	Nothing found.
+
+# --- Menue der rechten Maustaste ------------------------------------
+Maximieren	Maximize
+Ablegen	Minimize
+Links andocken	Snap left
+Rechts andocken	Snap right
+Arbeitsflaeche	Workspace
+Schliessen	Close
+Heller Modus	Light mode
+Dunkler Modus	Dark mode
+Naechster Hintergrund	Next background
+Ausschneiden	Cut
+Kopieren	Copy
+Einfuegen	Paste
+Alles markieren	Select all
+Eingabezeile kopieren	Copy input line
+Bildschirm leeren	Clear screen
+Neu laden	Reload
+Seitentext kopieren	Copy page text
+Adresse kopieren	Copy address
+Herunterladen	Download
+Adresse kopiert: %s	Address copied: %s

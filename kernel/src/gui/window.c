@@ -468,11 +468,14 @@ void gui_open_menu(int32_t x, int32_t y, const struct menu_item *items,
             width = w;
     }
 
+    /* Das Menue bleibt auf der Arbeitsflaeche - ueber der Taskleiste,
+     * nicht darauf. Wer mit der rechten Taste auf einen Knopf der
+     * Leiste geht, bekommt es darueber aufgeklappt. */
     struct canvas *screen = gfx_screen();
     if (x + width > screen->w)
         x = screen->w - width;
-    if (y + height > screen->h)
-        y = screen->h - height;
+    if (y + height > desktop_work_height())
+        y = desktop_work_height() - height;
 
     menu_rect   = rect_make(MAX(x, 0), MAX(y, 0), width, height);
     menu_active = true;
@@ -675,6 +678,110 @@ static void window_paint(struct canvas *c, struct window *win, bool focused)
             gfx_line(c, gx + o + 9, gy + 11, gx + 11, gy + o + 9, COL_SHADOW);
         }
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Fenstermenue                                                        */
+/* ------------------------------------------------------------------ */
+
+/* Was mit einem Fenster geschehen kann, ohne dass man die Knoepfe der
+ * Titelleiste trifft: die rechte Maustaste auf der Leiste oder auf dem
+ * Knopf in der Taskleiste. Dort steht auch, was es als Knopf nicht
+ * gibt - das Andocken und der Wechsel der Arbeitsflaeche. */
+enum {
+    WM_RESTORE = 1,
+    WM_MINIMIZE,
+    WM_SNAP_LEFT,
+    WM_SNAP_RIGHT,
+    WM_CLOSE,
+    WM_WORKSPACE,          /* + Nummer der Flaeche */
+};
+
+static void window_menu_selected(int id, void *user)
+{
+    struct window *win = user;
+
+    /* Zwischen dem Aufklappen und der Wahl kann das Fenster
+     * verschwunden sein - ein Programm darf sich selbst beenden. */
+    if (!gui_window_alive(win))
+        return;
+
+    if (id >= WM_WORKSPACE) {
+        uint8_t target = (uint8_t)(id - WM_WORKSPACE);
+
+        gui_move_to_workspace(win, target);
+        gui_switch_workspace(target);
+        return;
+    }
+
+    switch (id) {
+    case WM_RESTORE:
+        gui_toggle_maximize(win);
+        break;
+    case WM_MINIMIZE:
+        win->minimized = true;
+        dirty = true;
+        break;
+    case WM_SNAP_LEFT:
+        gui_snap(win, true);
+        break;
+    case WM_SNAP_RIGHT:
+        gui_snap(win, false);
+        break;
+    case WM_CLOSE:
+        gui_close_window(win);
+        break;
+    default:
+        break;
+    }
+    dirty = true;
+}
+
+void gui_window_menu(struct window *win, int32_t x, int32_t y)
+{
+    if (!win || !win->used)
+        return;
+
+    /* Die Beschriftungen der Flaechen muessen das Menue ueberleben -
+     * gui_open_menu merkt sich die Zeiger, nicht den Text. */
+    static char ws_label[GUI_WORKSPACES][24];
+
+    struct menu_item items[MENU_MAX_ITEMS];
+    size_t n = 0;
+
+    items[n++] = (struct menu_item){
+        .label = win->maximized ? tr("Wiederherstellen") : tr("Maximieren"),
+        .icon = ICON_RESTORE, .has_icon = true,
+        .enabled = can_maximize(win), .id = WM_RESTORE };
+    items[n++] = (struct menu_item){
+        .label = tr("Ablegen"), .icon = ICON_DOWNLOAD, .has_icon = true,
+        .enabled = !(win->flags & WF_NO_MIN), .id = WM_MINIMIZE };
+    items[n++] = (struct menu_item){
+        .label = tr("Links andocken"), .icon = ICON_PREV, .has_icon = true,
+        .enabled = (win->flags & WF_RESIZABLE) != 0, .id = WM_SNAP_LEFT };
+    items[n++] = (struct menu_item){
+        .label = tr("Rechts andocken"), .icon = ICON_NEXT, .has_icon = true,
+        .enabled = (win->flags & WF_RESIZABLE) != 0, .id = WM_SNAP_RIGHT };
+
+    items[n++] = (struct menu_item){ .label = NULL };
+
+    for (size_t i = 0; i < GUI_WORKSPACES; i++) {
+        ksnprintf(ws_label[i], sizeof(ws_label[i]), "%s %u",
+                  tr("Arbeitsflaeche"), (unsigned)(i + 1));
+        items[n++] = (struct menu_item){
+            .label = ws_label[i], .icon = ICON_WORKSPACES, .has_icon = true,
+            /* Die Flaeche, auf der es schon liegt, waere ein Weg ohne
+             * Wirkung. */
+            .enabled = win->workspace != i,
+            .id = WM_WORKSPACE + (int)i };
+    }
+
+    items[n++] = (struct menu_item){ .label = NULL };
+    items[n++] = (struct menu_item){
+        .label = tr("Schliessen"), .icon = ICON_STOP, .has_icon = true,
+        .enabled = !(win->flags & WF_NO_CLOSE), .id = WM_CLOSE };
+
+    gui_open_menu(x, y, items, n, window_menu_selected, win);
 }
 
 /* ------------------------------------------------------------------ */
@@ -957,6 +1064,13 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
     }
 
     if (rect_contains(title, x, y)) {
+        /* Die rechte Taste auf der Leiste fragt, was mit dem Fenster
+         * geschehen soll - statt es zu schieben. */
+        if (button == MB_RIGHT) {
+            gui_window_menu(win, x, y);
+            return;
+        }
+
         /* Doppelklick auf die Leiste ist ueberall dasselbe wie der
          * Knopf daneben. */
         if (dbl && can_maximize(win)) {
@@ -1148,6 +1262,35 @@ static bool window_shortcut(const struct key_event *ke)
     }
 }
 
+/* Schiebt die Auswahl im Menue um eine waehlbare Zeile weiter. Das
+ * Suchen selbst steht in menuutil.c - dort laesst es sich pruefen. */
+static void menu_step(int delta)
+{
+    int at = menu_next_index(menu_items, menu_count, menu_hover, delta);
+
+    if (at != menu_hover) {
+        menu_hover = at;
+        dirty = true;
+    }
+}
+
+/* Fuehrt aus, was gerade ausgewaehlt ist. */
+static void menu_activate(void)
+{
+    if (menu_hover < 0 || (size_t)menu_hover >= menu_count)
+        return;
+    if (!menu_items[menu_hover].label || !menu_items[menu_hover].enabled)
+        return;
+
+    int id = menu_items[menu_hover].id;
+    menu_select_fn cb = menu_cb;
+    void *user = menu_user;
+
+    gui_close_menu();
+    if (cb)
+        cb(id, user);
+}
+
 static void handle_key(struct key_event *ke)
 {
     if (lock_active()) {
@@ -1155,8 +1298,24 @@ static void handle_key(struct key_event *ke)
         return;
     }
 
-    if (menu_active && ke->pressed && ke->key == KEY_ESCAPE) {
-        gui_close_menu();
+    /* Ein offenes Menue nimmt die Tastatur an sich: Pfeile waehlen,
+     * Eingabe fuehrt aus, Escape macht zu. Wer die rechte Maustaste
+     * benutzt hat, soll nicht zur Maus zurueckmuessen. */
+    if (menu_active && ke->pressed) {
+        if (ke->key == KEY_ESCAPE) {
+            gui_close_menu();
+            return;
+        }
+        if (ke->key == KEY_UP || ke->key == KEY_DOWN) {
+            menu_step(ke->key == KEY_DOWN ? 1 : -1);
+            return;
+        }
+        if (ke->key == KEY_ENTER) {
+            menu_activate();
+            return;
+        }
+        /* Alles andere geht ins Leere, solange das Menue offen ist -
+         * sonst tippte man in ein Fenster, das man nicht sieht. */
         return;
     }
 

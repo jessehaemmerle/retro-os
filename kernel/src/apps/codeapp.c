@@ -842,6 +842,102 @@ static void co_click_text(struct window *win, int32_t x, int32_t y)
     gui_invalidate();
 }
 
+static void co_copy(struct co_state *st)
+{
+    if (!co_has_selection(st))
+        return;
+
+    size_t from = MIN(st->anchor, st->cursor);
+
+    clipboard_set(st->text + from, MAX(st->anchor, st->cursor) - from);
+}
+
+static void co_paste(struct window *win, struct co_state *st)
+{
+    size_t bytes = 0;
+    const char *paste = clipboard_get(&bytes);
+
+    if (!paste)
+        return;
+
+    co_delete_selection(st);
+    for (size_t i = 0; i < bytes && paste[i]; i++) {
+        if (paste[i] == '\r')
+            continue;
+        co_insert(st, paste[i]);
+    }
+    co_ensure_visible(win, st);
+    co_update_title(win, st);
+    gui_invalidate();
+}
+
+/* --- Menue der rechten Maustaste ------------------------------------- */
+
+enum {
+    CO_CTX_CUT = 1,
+    CO_CTX_COPY,
+    CO_CTX_PASTE,
+    CO_CTX_ALL,
+    CO_CTX_RUN,
+};
+
+static void co_context_selected(int id, void *user)
+{
+    struct window *win = user;
+
+    if (!gui_window_alive(win))
+        return;
+
+    struct co_state *st = win->user;
+
+    switch (id) {
+    case CO_CTX_CUT:
+        co_copy(st);
+        co_delete_selection(st);
+        break;
+    case CO_CTX_COPY:
+        co_copy(st);
+        break;
+    case CO_CTX_PASTE:
+        co_paste(win, st);
+        break;
+    case CO_CTX_ALL:
+        st->anchor = 0;
+        st->cursor = st->len;
+        st->selecting = true;
+        break;
+    case CO_CTX_RUN:
+        co_run(win);
+        break;
+    default:
+        break;
+    }
+
+    co_update_title(win, st);
+    gui_invalidate();
+}
+
+static void co_context_menu(struct window *win, int32_t x, int32_t y)
+{
+    struct co_state *st = win->user;
+    struct rect client = gui_client_rect(win);
+    bool sel = co_has_selection(st);
+
+    struct menu_item items[] = {
+        { tr("Ausschneiden"), ICON_FILE,     true, sel, CO_CTX_CUT },
+        { tr("Kopieren"),     ICON_SAVE,     true, sel, CO_CTX_COPY },
+        { tr("Einfuegen"),    ICON_NEW_FILE, true, !clipboard_empty(),
+          CO_CTX_PASTE },
+        { NULL,               ICON_FILE,     false, false, 0 },
+        { tr("Alles markieren"), ICON_LIST,  true, st->len > 0, CO_CTX_ALL },
+        { NULL,               ICON_FILE,     false, false, 0 },
+        { tr("Ausfuehren"),   ICON_PLAY,     true, st->len > 0, CO_CTX_RUN },
+    };
+
+    gui_open_menu(client.x + x, client.y + y, items, ARRAY_LEN(items),
+                  co_context_selected, win);
+}
+
 static void co_key(struct window *win, const struct gui_event *ev)
 {
     struct co_state *st = win->user;
@@ -863,30 +959,11 @@ static void co_key(struct window *win, const struct gui_event *ev)
             co_run(win);
             return;
         case 'c': case 'C':
-            if (co_has_selection(st)) {
-                size_t from = MIN(st->anchor, st->cursor);
-
-                clipboard_set(st->text + from,
-                              MAX(st->anchor, st->cursor) - from);
-            }
+            co_copy(st);
             return;
-        case 'v': case 'V': {
-            size_t bytes = 0;
-            const char *paste = clipboard_get(&bytes);
-
-            if (paste) {
-                co_delete_selection(st);
-                for (size_t i = 0; i < bytes && paste[i]; i++) {
-                    if (paste[i] == '\r')
-                        continue;
-                    co_insert(st, paste[i]);
-                }
-                co_ensure_visible(win, st);
-                co_update_title(win, st);
-                gui_invalidate();
-            }
+        case 'v': case 'V':
+            co_paste(win, st);
             return;
-        }
         case 'a': case 'A':
             st->anchor = 0;
             st->cursor = st->len;
@@ -1051,6 +1128,13 @@ static void co_event(struct window *win, const struct gui_event *ev)
                 ev->y, st->scroll, st->line_count, co_visible_lines(win));
             gui_invalidate();
         } else if (rect_contains(area, ev->x, ev->y)) {
+            /* Die rechte Taste laesst die Auswahl stehen - sonst waere
+             * "Kopieren" im Menue immer blass. */
+            if (ev->button == MB_RIGHT) {
+                co_context_menu(win, ev->x, ev->y);
+                break;
+            }
+
             st->selecting = false;
             co_click_text(win, ev->x, ev->y);
             st->anchor = st->cursor;

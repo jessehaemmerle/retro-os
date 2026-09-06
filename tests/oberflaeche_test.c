@@ -11,6 +11,7 @@
 
 #include "theme.h"
 #include "notify.h"
+#include "gui.h"
 
 static int fehler;
 static int geprueft;
@@ -201,6 +202,70 @@ static void test_ring(void)
     pruefe_zahl("und wieder leer", 0, (long)notify_count());
 }
 
+/* --- Menue mit der Tastatur ------------------------------------------ */
+
+/* Baut ein Menue aus einer kurzen Beschreibung: '+' waehlbar, '-'
+ * blass, '|' Trennlinie. */
+static size_t menue(const char *muster, struct menu_item *out)
+{
+    size_t n = 0;
+
+    for (const char *p = muster; *p; p++, n++) {
+        memset(&out[n], 0, sizeof(out[n]));
+        out[n].label   = (*p == '|') ? NULL : "Zeile";
+        out[n].enabled = (*p == '+');
+        out[n].id      = (int)n;
+    }
+    return n;
+}
+
+static void test_menue(void)
+{
+    printf("Menue mit der Tastatur\n");
+
+    struct menu_item items[16];
+    size_t n = menue("+++", items);
+
+    /* Von nirgendwo aus (-1) faengt es oben an, rueckwaerts unten. */
+    pruefe_zahl("erste Zeile", 0, menu_next_index(items, n, -1, 1));
+    pruefe_zahl("letzte Zeile", 2, menu_next_index(items, n, -1, -1));
+
+    pruefe_zahl("weiter", 1, menu_next_index(items, n, 0, 1));
+    pruefe_zahl("zurueck", 0, menu_next_index(items, n, 1, -1));
+
+    /* Reihum. */
+    pruefe_zahl("unten wieder oben", 0, menu_next_index(items, n, 2, 1));
+    pruefe_zahl("oben wieder unten", 2, menu_next_index(items, n, 0, -1));
+
+    /* Trennlinien und blasse Zeilen werden uebersprungen. */
+    n = menue("+|-+", items);
+    pruefe_zahl("ueber Linie und Blasses hinweg", 3,
+                menu_next_index(items, n, 0, 1));
+    pruefe_zahl("und zurueck", 0, menu_next_index(items, n, 3, -1));
+
+    /* Am Anfang und am Ende eine Trennlinie. */
+    n = menue("|++|", items);
+    pruefe_zahl("Linie am Anfang", 1, menu_next_index(items, n, -1, 1));
+    pruefe_zahl("Linie am Ende", 2, menu_next_index(items, n, -1, -1));
+
+    /* Nur eine waehlbare Zeile: Sie bleibt, wo sie ist. */
+    n = menue("-+-", items);
+    pruefe_zahl("die einzige, vorwaerts", 1, menu_next_index(items, n, 1, 1));
+    pruefe_zahl("die einzige, rueckwaerts", 1, menu_next_index(items, n, 1, -1));
+
+    /* Gar nichts waehlbar: Es bleibt stehen, statt sich zu drehen. */
+    n = menue("--|--", items);
+    pruefe_zahl("nichts waehlbar", 2, menu_next_index(items, n, 2, 1));
+    pruefe_zahl("nichts waehlbar, rueckwaerts", -1,
+                menu_next_index(items, n, -1, -1));
+
+    /* Unsinn faellt nicht auf die Nase. */
+    n = menue("++", items);
+    pruefe_zahl("kein Schritt", 1, menu_next_index(items, n, 1, 0));
+    pruefe_zahl("leeres Menue", 3, menu_next_index(items, 0, 3, 1));
+    pruefe_zahl("kein Menue", 3, menu_next_index(NULL, 4, 3, 1));
+}
+
 int main(void)
 {
     printf("=== Oberflaeche ===\n");
@@ -210,6 +275,7 @@ int main(void)
     test_schluessel();
     test_abdunkeln();
     test_ring();
+    test_menue();
 
     printf("\n%d Pruefungen, %d Fehler\n", geprueft, fehler);
     return fehler ? 1 : 0;

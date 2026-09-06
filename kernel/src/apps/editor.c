@@ -340,6 +340,64 @@ static void ed_paste(struct ed_state *st)
     ed_recount(st);
 }
 
+/* --- Menue der rechten Maustaste ------------------------------------- */
+
+enum {
+    ED_CTX_CUT = 1,
+    ED_CTX_COPY,
+    ED_CTX_PASTE,
+    ED_CTX_ALL,
+};
+
+static void ed_context_selected(int id, void *user)
+{
+    struct window *win = user;
+
+    /* Zwischen dem Aufklappen und der Wahl kann das Fenster zu sein. */
+    if (!gui_window_alive(win))
+        return;
+
+    struct ed_state *st = win->user;
+
+    switch (id) {
+    case ED_CTX_CUT:   ed_copy(st, true);  break;
+    case ED_CTX_COPY:  ed_copy(st, false); break;
+    case ED_CTX_PASTE: ed_paste(st);       break;
+    case ED_CTX_ALL:
+        st->anchor = 0;
+        st->cursor = st->len;
+        st->selecting = true;
+        break;
+    default:
+        break;
+    }
+
+    ed_update_title(win, st);
+    gui_invalidate();
+}
+
+static void ed_context_menu(struct window *win, int32_t x, int32_t y)
+{
+    struct ed_state *st = win->user;
+    struct rect client = gui_client_rect(win);
+    bool sel = ed_has_selection(st);
+
+    /* Was nicht geht, steht trotzdem da - blass. Ein Menue, dessen
+     * Zeilen je nach Lage verschwinden, laesst einen jedes Mal neu
+     * suchen. */
+    struct menu_item items[] = {
+        { tr("Ausschneiden"),  ICON_FILE,     true, sel, ED_CTX_CUT },
+        { tr("Kopieren"),      ICON_SAVE,     true, sel, ED_CTX_COPY },
+        { tr("Einfuegen"),     ICON_NEW_FILE, true, !clipboard_empty(),
+          ED_CTX_PASTE },
+        { NULL,                ICON_FILE,     false, false, 0 },
+        { tr("Alles markieren"), ICON_LIST,   true, st->len > 0, ED_CTX_ALL },
+    };
+
+    gui_open_menu(client.x + x, client.y + y, items, ARRAY_LEN(items),
+                  ed_context_selected, win);
+}
+
 static void ed_key(struct window *win, const struct gui_event *ev)
 {
     struct ed_state *st = win->user;
@@ -525,6 +583,13 @@ static void ed_event(struct window *win, const struct gui_event *ev)
                 ev->y, st->scroll, st->line_count, ed_visible_lines(win));
             gui_invalidate();
         } else if (rect_contains(area, ev->x, ev->y)) {
+            /* Die rechte Taste laesst die Auswahl stehen - sonst waere
+             * "Kopieren" im Menue immer blass. */
+            if (ev->button == MB_RIGHT) {
+                ed_context_menu(win, ev->x, ev->y);
+                break;
+            }
+
             st->selecting = false;
             ed_click_text(win, ev->x, ev->y);
             st->anchor = st->cursor;

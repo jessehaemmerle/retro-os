@@ -28,6 +28,17 @@
 #define MENU_ID_LOGOUT 203
 #define MENU_ID_SWITCH 204
 
+/* Das Menue der rechten Maustaste auf der Arbeitsflaeche. Eigene
+ * Nummern, denn es hat seinen eigenen Empfaenger. */
+#define CTX_OPEN       1
+#define CTX_SEARCH     2
+#define CTX_SHOT       3
+#define CTX_NOTIFY     4
+#define CTX_DARK       5
+#define CTX_BACKGROUND 6
+#define CTX_SETTINGS   7
+#define CTX_FILES      8
+
 static int      selected_icon = -1;
 static bool     start_pressed;
 static char     clock_text[16];
@@ -496,6 +507,106 @@ bool desktop_notification_click(int32_t x, int32_t y)
     return true;
 }
 
+/* --- Menue der rechten Maustaste ------------------------------------- */
+
+/* Auf welches Symbol geklickt wurde, als das Menue aufging - beim
+ * Auswaehlen kann die Auswahl schon eine andere sein. */
+static int ctx_icon = -1;
+
+static void desktop_context_selected(int id, void *user)
+{
+    UNUSED(user);
+
+    struct config *cfg = config_current();
+
+    switch (id) {
+    case CTX_OPEN: {
+        const struct app_entry *app = ctx_icon >= 0
+                                          ? desktop_icon_at_index((size_t)ctx_icon)
+                                          : NULL;
+
+        if (app && app->launch)
+            app->launch();
+        break;
+    }
+    case CTX_SEARCH:
+        app_search();
+        break;
+    case CTX_SHOT:
+        screenshot_request();
+        break;
+    case CTX_NOTIFY:
+        app_notifications();
+        break;
+    case CTX_DARK:
+        /* Der kurze Weg zwischen hell und dunkel. Wer es dauerhaft
+         * will, speichert es in den Einstellungen - hier gilt es fuer
+         * diese Sitzung. */
+        cfg->appearance = theme_is_dark() ? THEME_HELL : THEME_DUNKEL;
+        theme_set_mode(cfg->appearance);
+        break;
+    case CTX_BACKGROUND:
+        cfg->background = (uint32_t)((cfg->background + 1) % background_count());
+        break;
+    case CTX_SETTINGS:
+        app_settings();
+        break;
+    case CTX_FILES:
+        app_filemanager();
+        break;
+    default:
+        break;
+    }
+    gui_invalidate();
+}
+
+static void open_desktop_menu(int32_t x, int32_t y, int icon)
+{
+    struct menu_item items[MENU_MAX_ITEMS];
+    size_t n = 0;
+
+    ctx_icon = icon;
+
+    /* Auf einem Symbol steht sein Programm oben - danach dasselbe wie
+     * ueberall auf der Flaeche. */
+    if (icon >= 0) {
+        items[n++] = (struct menu_item){
+            .label = tr("Oeffnen"), .icon = ICON_PLAY, .has_icon = true,
+            .enabled = true, .id = CTX_OPEN };
+        items[n++] = (struct menu_item){ .label = NULL };
+    }
+
+    items[n++] = (struct menu_item){
+        .label = tr("Suche"), .icon = ICON_SEARCH, .has_icon = true,
+        .enabled = true, .id = CTX_SEARCH };
+    items[n++] = (struct menu_item){
+        .label = tr("Dateimanager"), .icon = ICON_FOLDER_OPEN, .has_icon = true,
+        .enabled = true, .id = CTX_FILES };
+    items[n++] = (struct menu_item){
+        .label = tr("Bildschirmfoto"), .icon = ICON_CAMERA, .has_icon = true,
+        .enabled = true, .id = CTX_SHOT };
+    items[n++] = (struct menu_item){
+        .label = tr("Benachrichtigungen"), .icon = ICON_BELL, .has_icon = true,
+        .enabled = true, .id = CTX_NOTIFY };
+
+    items[n++] = (struct menu_item){ .label = NULL };
+
+    items[n++] = (struct menu_item){
+        .label = theme_is_dark() ? tr("Heller Modus") : tr("Dunkler Modus"),
+        .icon = theme_is_dark() ? ICON_SUN : ICON_MOON, .has_icon = true,
+        .enabled = true, .id = CTX_DARK };
+    items[n++] = (struct menu_item){
+        .label = tr("Naechster Hintergrund"), .icon = ICON_IMAGE,
+        .has_icon = true, .enabled = true, .id = CTX_BACKGROUND };
+
+    items[n++] = (struct menu_item){ .label = NULL };
+    items[n++] = (struct menu_item){
+        .label = tr("Einstellungen"), .icon = ICON_SETTINGS, .has_icon = true,
+        .enabled = true, .id = CTX_SETTINGS };
+
+    gui_open_menu(x, y, items, n, desktop_context_selected, NULL);
+}
+
 /* --- Startmenue ------------------------------------------------------ */
 
 static void start_menu_selected(int id, void *user)
@@ -641,6 +752,8 @@ bool desktop_mouse(int32_t x, int32_t y, uint8_t button, bool down, bool dbl)
     if (!down)
         return false;
 
+    bool context = (button == MB_RIGHT);
+
     /* Taskleiste */
     if (y >= screen->h - TASKBAR_HEIGHT) {
         if (rect_contains(start_button_rect(), x, y)) {
@@ -673,6 +786,15 @@ bool desktop_mouse(int32_t x, int32_t y, uint8_t button, bool down, bool dbl)
                 continue;
 
             struct window *w = taskbar_window_at_index(i);
+
+            /* Die rechte Taste fragt, was mit dem Fenster geschehen
+             * soll - dasselbe Menue wie auf der Titelleiste. */
+            if (context) {
+                gui_window_menu(w, x, y - 4);
+                gui_invalidate();
+                return true;
+            }
+
             if (w == gui_focused() && !w->minimized)
                 w->minimized = true;
             else
@@ -693,6 +815,11 @@ bool desktop_mouse(int32_t x, int32_t y, uint8_t button, bool down, bool dbl)
         selected_icon = (int)i;
         gui_invalidate();
 
+        if (context) {
+            open_desktop_menu(x, y, (int)i);
+            return true;
+        }
+
         if (dbl && button == MB_LEFT) {
             const struct app_entry *app = desktop_icon_at_index(i);
             if (app && app->launch)
@@ -704,6 +831,13 @@ bool desktop_mouse(int32_t x, int32_t y, uint8_t button, bool down, bool dbl)
     if (selected_icon != -1) {
         selected_icon = -1;
         gui_invalidate();
+    }
+
+    /* Auf der leeren Flaeche geht das Menue ohne Symbolzeile auf. */
+    if (context) {
+        open_desktop_menu(x, y, -1);
+        gui_invalidate();
+        return true;
     }
     return false;
 }

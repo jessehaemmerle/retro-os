@@ -80,7 +80,8 @@ SUCHE := suche_test.c shim.c \
 
 OBERFLAECHE := oberflaeche_test.c shim.c \
                ../kernel/src/gui/theme.c \
-               ../kernel/src/gui/notify.c
+               ../kernel/src/gui/notify.c \
+               ../kernel/src/gui/menuutil.c
 
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c
