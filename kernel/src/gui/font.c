@@ -10,6 +10,7 @@
 /* font_active selbst wird in font_data.c gesetzt, damit schon der
  * allererste Text Punkte findet - noch vor jedem Aufruf hier. */
 static size_t current;
+static enum font_smoothing smoothing = FONT_SHARP;
 
 size_t font_count(void) { return FONT_FACES; }
 
@@ -31,6 +32,14 @@ void font_select(size_t index)
         return;
     current = index;
     font_active = font_faces[index].glyphs;
+    font_active_sub = font_faces[index].subpixels;
+}
+
+enum font_smoothing font_smoothing(void) { return smoothing; }
+
+void font_set_smoothing(enum font_smoothing mode)
+{
+    smoothing = mode;
 }
 
 bool font_select_by_name(const char *name)

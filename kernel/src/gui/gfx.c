@@ -420,9 +420,64 @@ void gfx_bevel_thin(struct canvas *c, struct rect r, bool raised)
     gfx_vline(c, r.x + r.w - 1, r.y, r.h, br);
 }
 
+/* Mischt einen Punkt ein, dessen drei Kanaele verschieden stark
+ * gedeckt sind. Genau das ist der Unterschied zwischen grauer und
+ * Subpixel-Glaettung: Dort deckt eine Kante alle drei Kanaele gleich,
+ * hier jeden fuer sich. */
+static void blend_channels(struct canvas *c, int32_t x, int32_t y,
+                           uint32_t color, uint8_t ar, uint8_t ag, uint8_t ab)
+{
+    if (!(ar | ag | ab) || !rect_contains(c->clip, x, y))
+        return;
+
+    uint32_t *slot = &c->px[y * c->stride + x];
+    uint32_t back = *slot;
+
+    uint32_t r = (((color >> 16) & 0xFF) * ar + ((back >> 16) & 0xFF) * (255 - ar)) / 255;
+    uint32_t g = (((color >>  8) & 0xFF) * ag + ((back >>  8) & 0xFF) * (255 - ag)) / 255;
+    uint32_t b = ((color & 0xFF) * ab + (back & 0xFF) * (255 - ab)) / 255;
+
+    *slot = (r << 16) | (g << 8) | b;
+}
+
+/* Der geglaettete Weg: dieselbe Zelle, aber dreifach abgetastet. */
+static void char_smooth(struct canvas *c, int32_t x, int32_t y,
+                        unsigned char ch, uint32_t color, bool bold,
+                        enum font_smoothing mode)
+{
+    const uint8_t *glyph = font_glyph_sub(ch);
+
+    for (int32_t row = 0; row < FONT_HEIGHT; row++) {
+        const uint8_t *p = &glyph[row * 3];
+        uint32_t bits = ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
+
+        /* Fett ist auch hier das um einen Punkt versetzte Zweitbild -
+         * ein Punkt sind drei Abtastungen. */
+        if (bold)
+            bits |= bits >> 3;
+
+        if (!bits)
+            continue;
+
+        for (int32_t col = 0; col < FONT_WIDTH; col++) {
+            uint8_t ar, ag, ab;
+
+            font_pixel_coverage(bits, col, mode, &ar, &ag, &ab);
+            blend_channels(c, x + col, y + row, color, ar, ag, ab);
+        }
+    }
+}
+
 void gfx_char(struct canvas *c, int32_t x, int32_t y, unsigned char ch,
               uint32_t color, bool bold)
 {
+    enum font_smoothing mode = font_smoothing();
+
+    if (mode != FONT_SHARP) {
+        char_smooth(c, x, y, ch, color, bold, mode);
+        return;
+    }
+
     const uint8_t *glyph = font_glyph(ch);
 
     for (int32_t row = 0; row < FONT_HEIGHT; row++) {

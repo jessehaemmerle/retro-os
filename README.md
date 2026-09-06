@@ -290,6 +290,16 @@ bekommen einen Punkt; ein Klick zeigt rechts, was ansteht.
 Zwischenzeit und ein Kurzzeitmesser. `Tab` wechselt, die Leertaste
 startet und hält an.
 
+**Willkommen:** Beim ersten Start geht ein Fenster mit zwölf Kapiteln
+auf, das der Reihe nach durch das System führt – Fenster und
+Arbeitsflächen, die rechte Maustaste, Suche und Meldungen, Dateien,
+Programme, Konsole, Netz, Sicherheit, Aussehen, Installation. Wo es
+etwas auszuprobieren gibt, steht unten rechts ein Knopf, der das
+beschriebene Programm gleich aufmacht: Erklären und Ausprobieren liegen
+damit einen Klick auseinander. Der Haken unten links entscheidet, ob es
+beim nächsten Start wieder aufgeht – auf einem installierten System
+bleibt das gemerkt. Später steht es im Startmenü unter *Willkommen*.
+
 **Kontextmenüs:** Die rechte Maustaste fragt überall, was hier möglich
 ist. Auf der Arbeitsfläche: Suche, Dateimanager, Bildschirmfoto,
 Benachrichtigungen, der kurze Weg zwischen hell und dunkel, der nächste
@@ -307,6 +317,17 @@ Zeilen je nach Lage verschwinden, lässt einen jedes Mal neu suchen. Und
 jedes Menü lässt sich auch mit der Tastatur bedienen: Pfeiltasten
 wählen, `Eingabe` führt aus, `Escape` macht zu; Trennlinien und blasse
 Zeilen werden dabei übersprungen.
+
+**Kantenglättung:** Die Schrift lässt sich weich zeichnen – in den
+Einstellungen unter *Kantenglättung*. `Graustufen` mittelt und taugt auf
+jedem Bildschirm; `Subpixel (RGB)` und `Subpixel (BGR)` steuern die drei
+Leuchtpunkte eines LCD-Bildpunkts einzeln an. Das ist das Verfahren, das
+unter dem Namen ClearType bekannt ist: Es verdreifacht die waagerechte
+Auflösung, weil ein Bildpunkt eben nicht ein Punkt ist, sondern drei
+nebeneinander. Es braucht dafür einen LCD mit RGB-Streifen und keine
+Vergrößerung; auf einer Röhre oder bei zweifacher Skalierung sieht man
+nur Farbsäume. `Aus` bleibt die Voreinstellung – RetroOS ist absichtlich
+kantig.
 
 **Dunkelmodus:** In den Einstellungen unter *Erscheinungsbild*: `Hell`,
 `Dunkel` oder `Automatisch` – dann ist es zwischen 19 und 7 Uhr dunkel.
@@ -455,7 +476,7 @@ also so, wie es ein Betriebssystem tut.
 | **TLS** | TLS 1.3 als Client, X.509-Ketten gegen 152 eingebaute Wurzelzertifikate |
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
-| **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs mit Maus und Tastatur, Kontextmenüs, Dialoge, vier Arbeitsflächen, Benachrichtigungen, Suche über alles, Hell- und Dunkelmodus |
+| **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs mit Maus und Tastatur, Kontextmenüs, Dialoge, Begrüßungsfenster, vier Arbeitsflächen, Benachrichtigungen, Suche über alles, Hell- und Dunkelmodus |
 | **Protokoll** | Ring über die letzten 512 Meldungen mit Zeit, Dringlichkeit und Herkunft; alles, was `kprintf` schreibt, landet zeilenweise darin – der ganze Startvorgang ist danach im Fenster nachlesbar |
 | **Systemmonitor** | Programme, Threads und Maschine in drei Ansichten; Rechenzeitanteile werden jede Sekunde gemessen, Speicher je Programm gezählt, fremde Programme beendet nur ein Verwalter |
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
@@ -467,7 +488,7 @@ also so, wie es ein Betriebssystem tut.
 | **Rechner** | 56 Prüfungen: Grundrechnen und Ketten, Festkomma und Runden, jeder Übergang des Zustandsautomaten, Teilen durch null, Überlauf, Prozent und Wurzel |
 | **PNG schreiben** | 40 Prüfungen: geschriebene Bilder mit dem eigenen Leser zurückgelesen, Punkt für Punkt – dazu Aufbau, Prüfsumme und die Blockgrenze bei 65535 Bytes |
 | **Suche** | 32 Prüfungen: Treffen und Danebenliegen samt Grenzfällen, jede Regel der Bewertung einzeln (genau vor Anhang, Anfang vor Mitte, Wortanfang vor Wortmitte, kurz vor lang), stabiles Sortieren bei Gleichstand |
-| **Oberfläche** | 76 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten, das Blättern durch ein Menü über Trennlinien und blasse Zeilen hinweg – auch durch eines, in dem gar nichts wählbar ist |
+| **Oberfläche** | 110 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten, das Blättern durch ein Menü über Trennlinien und blasse Zeilen hinweg – auch durch eines, in dem gar nichts wählbar ist, dazu der Fünf-Punkte-Filter der Kantenglättung samt Rändern und die Vertauschung von Rot und Blau zwischen RGB- und BGR-Panels |
 | **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
@@ -477,7 +498,7 @@ also so, wie es ein Betriebssystem tut.
 | **Benutzer** | Mehrere Konten mit Nummer, Gruppe, Heimatverzeichnis und Verwalterrecht; das Passwort liegt als 4096-fach wiederholter HMAC-SHA256 über einem eigenen Salz in `/Festplatte/benutzer.conf` |
 | **Rechte** | Eigentümer, Gruppe und neun Bits je Eintrag, dazu das Klebebit; geprüft beim Nachschlagen, Aufzählen, Lesen, Schreiben, Anlegen, Umbenennen und Löschen |
 | **Anmeldung** | Anmeldebildschirm beim Start, Sperren, Abmelden und Benutzerwechsel; nach drei Fehlversuchen eine Zwangspause |
-| **Schriften** | Zehn freie Monospace-Schriften in der 8×16-Zelle – DejaVu, Liberation, JetBrains, IBM Plex, Fira, Source Code Pro, Inconsolata, Ubuntu, Unifont und VT323; umschaltbar im laufenden Betrieb |
+| **Schriften** | Zehn freie Monospace-Schriften in der 8×16-Zelle – DejaVu, Liberation, JetBrains, IBM Plex, Fira, Source Code Pro, Inconsolata, Ubuntu, Unifont und VT323; umschaltbar im laufenden Betrieb, wahlweise hart, grau geglättet oder subpixelgenau (ClearType-Verfahren) |
 | **Symbole** | Lucide (ISC) in 16 und 32 Punkt, aus den SVG-Vorlagen erzeugt und mit dunkler Umrandung versehen, damit sie auf hellem wie dunklem Grund lesen |
 | **Papierkorb** | Gelöschtes wandert nach `/Papierkorb` und merkt sich, wo es herkam; Wiederherstellen, endgültiges Löschen, Leeren |
 | **Downloads** | Was der Browser nicht anzeigen kann, legt er unter `Downloads` ab – ebenso alles, was der Knopf in der Leiste holt |
@@ -581,7 +602,11 @@ Zuweisung.
 Die zehn Vorlagen liegen als woff2 unter `third_party/fonts`, auf Latin-1
 verkleinert und zusammen gut 130 KB groß. `scripts/gen_font.py` rastert
 sie einmal auf dem Entwicklungsrechner; im Kernel steht davon nur noch
-eine Tabelle aus Bytes. Umschalten lässt es sich in den Einstellungen –
+eine Tabelle aus Bytes – und daneben dieselben Zeichen ein zweites Mal,
+dreifach abgetastet in der Breite, ein Bit je Subpixel. Aus diesen 48
+Byte je Zeichen rechnet der Kernel die Kantenglättung zur Laufzeit mit
+einem Fünf-Punkte-Filter (1-2-3-2-1). Fertige Graustufen abzulegen wäre
+achtmal so groß gewesen und hätte dasselbe ergeben. Umschalten lässt es sich in den Einstellungen –
 das Fenster zeichnet sich sofort in der neuen Schrift und ist damit seine
 eigene Vorschau – oder in der Konsole mit `schrift`.
 

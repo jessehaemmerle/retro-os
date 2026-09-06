@@ -17,6 +17,7 @@
 #include "display.h"
 #include "fb.h"
 #include "gui.h"
+#include "apps.h"
 #include "input.h"
 #include "io.h"
 #include "mm.h"
@@ -156,6 +157,13 @@ NORETURN void kmain(void)
         session_login(user_by_uid(UID_ROOT));
         kprintf("Benutzer    : root (keine Datenbank - alles erlaubt)\n");
     }
+
+    /* Die Begruessung geht als Letztes auf - dann liegt sie vor allem
+     * anderen. Wer den Haken darin herausnimmt, sieht sie beim
+     * naechsten Start nicht mehr; auf einem System ohne Platte gibt es
+     * nichts, wo das stehen bleiben koennte, und sie kommt wieder. */
+    if (config_current()->welcome)
+        app_welcome();
 
     kprintf("Oberflaeche : bereit\n\n");
 

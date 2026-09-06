@@ -12,6 +12,7 @@
 #include "theme.h"
 #include "notify.h"
 #include "gui.h"
+#include "font.h"
 
 static int fehler;
 static int geprueft;
@@ -266,6 +267,115 @@ static void test_menue(void)
     pruefe_zahl("kein Menue", 3, menu_next_index(NULL, 4, 3, 1));
 }
 
+/* --- Kantenglaettung -------------------------------------------------- */
+
+/* Baut eine Zeile aus einem Muster: '#' ist ein gesetzter Subpixel.
+ * Ganz links steht das hoechstwertige Bit. */
+static uint32_t zeile(const char *muster)
+{
+    uint32_t row = 0;
+
+    for (int i = 0; i < 24 && muster[i]; i++) {
+        if (muster[i] == '#')
+            row |= 1u << (23 - i);
+    }
+    return row;
+}
+
+static void test_deckung(void)
+{
+    printf("Kantenglaettung\n");
+
+    /* Nichts gesetzt heisst nichts gedeckt, alles gesetzt heisst
+     * ganz. */
+    pruefe_zahl("leer", 0, font_coverage(0, 5));
+    pruefe_zahl("voll", 255, font_coverage(0xFFFFFF, 12));
+
+    /* Ein einzelner Subpixel bringt drei von neun Gewichten - und
+     * seine Nachbarn bekommen etwas davon ab. Genau das ist der
+     * Filter: Ohne ihn waere ein einzelner Punkt ein farbiger
+     * Strich. */
+    uint32_t einer = zeile("            #");
+
+    pruefe("Mitte am staerksten",
+           font_coverage(einer, 12) > font_coverage(einer, 11));
+    pruefe("Nachbar bekommt etwas ab", font_coverage(einer, 11) > 0);
+    pruefe("uebernaechster auch", font_coverage(einer, 10) > 0);
+    pruefe("danach nichts mehr", font_coverage(einer, 9) == 0);
+    pruefe("symmetrisch",
+           font_coverage(einer, 11) == font_coverage(einer, 13));
+
+    /* Ein Strich von einem Punkt Breite - drei Subpixel - deckt nicht
+     * ganz, aber deutlich mehr als die Haelfte. Waere er blasser,
+     * saehe geglaettete Schrift duenner aus als harte. */
+    uint32_t strich = zeile("           ###");
+
+    pruefe("Strich deutlich gedeckt", font_coverage(strich, 12) > 200);
+    pruefe("aber nicht ganz", font_coverage(strich, 12) < 255);
+
+    /* Ausserhalb der Zeile ist nichts - und es faellt nichts um. */
+    pruefe_zahl("links draussen", 0, font_coverage(zeile("#"), -5));
+    pruefe_zahl("rechts draussen", 0, font_coverage(zeile("#"), 99));
+}
+
+static void test_kanaele(void)
+{
+    printf("Die drei Kanaele\n");
+
+    uint32_t row = zeile("      ######");
+    uint8_t r, g, b;
+
+    /* Grau: alle drei gleich. */
+    font_pixel_coverage(row, 2, FONT_GRAY, &r, &g, &b);
+    pruefe("grau ist grau", r == g && g == b);
+
+    /* Subpixel: an einer Kante gerade nicht. */
+    font_pixel_coverage(row, 2, FONT_RGB, &r, &g, &b);
+    pruefe("an der Kante verschieden", !(r == g && g == b));
+
+    /* RGB und BGR sind dasselbe, nur andersherum. */
+    uint8_t r2, g2, b2;
+
+    font_pixel_coverage(row, 2, FONT_BGR, &r2, &g2, &b2);
+    pruefe_zahl("rot wird blau", r, b2);
+    pruefe_zahl("gruen bleibt gruen", g, g2);
+    pruefe_zahl("blau wird rot", b, r2);
+
+    /* Mitten im Strich deckt alles. */
+    font_pixel_coverage(zeile("########################"), 4, FONT_RGB,
+                        &r, &g, &b);
+    pruefe_zahl("voll rot", 255, r);
+    pruefe_zahl("voll gruen", 255, g);
+    pruefe_zahl("voll blau", 255, b);
+}
+
+static void test_glaettung_schluessel(void)
+{
+    printf("Kantenglaettung in der Datei\n");
+
+    enum font_smoothing m = FONT_RGB;
+
+    pruefe("aus gelesen", font_smoothing_parse("aus", &m) && m == FONT_SHARP);
+    pruefe("grau gelesen", font_smoothing_parse("grau", &m) && m == FONT_GRAY);
+    pruefe("rgb gelesen", font_smoothing_parse("rgb", &m) && m == FONT_RGB);
+    pruefe("bgr gelesen", font_smoothing_parse("bgr", &m) && m == FONT_BGR);
+
+    pruefe("Unsinn abgelehnt", !font_smoothing_parse("weich", &m));
+    pruefe("nichts abgelehnt", !font_smoothing_parse(NULL, &m));
+    pruefe("kein Ziel", !font_smoothing_parse("aus", NULL));
+
+    for (int i = 0; i < 4; i++) {
+        enum font_smoothing zurueck = FONT_SHARP;
+
+        pruefe("hin und zurueck",
+               font_smoothing_parse(font_smoothing_key((enum font_smoothing)i),
+                                    &zurueck) &&
+               zurueck == (enum font_smoothing)i);
+        pruefe("und hat einen Namen",
+               font_smoothing_name((enum font_smoothing)i)[0] != '\0');
+    }
+}
+
 int main(void)
 {
     printf("=== Oberflaeche ===\n");
@@ -276,6 +386,9 @@ int main(void)
     test_abdunkeln();
     test_ring();
     test_menue();
+    test_deckung();
+    test_kanaele();
+    test_glaettung_schluessel();
 
     printf("\n%d Pruefungen, %d Fehler\n", geprueft, fehler);
     return fehler ? 1 : 0;

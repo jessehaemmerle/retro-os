@@ -43,6 +43,7 @@ void app_calendar(void);
 void app_clock(void);
 void app_notifications(void);
 void app_search(void);
+void app_welcome(void);
 
 /* Oeffnet einen Eintrag mit dem Programm, das zu ihm gehoert - ein
  * Ordner landet im Dateimanager, eine Datei bei ihrer Endung. */

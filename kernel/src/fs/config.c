@@ -58,6 +58,8 @@ void config_defaults(void)
     strlcpy(current.hostname, "retroos", sizeof(current.hostname));
     current.background = 0;
     current.appearance = THEME_HELL;
+    current.smoothing = FONT_SHARP;
+    current.welcome = true;
     strlcpy(current.font, font_name(0), sizeof(current.font));
 }
 
@@ -124,6 +126,13 @@ static void apply_pair(const char *key, const char *value)
         strlcpy(current.wallpaper, value, sizeof(current.wallpaper));
     } else if (strcasecmp(key, "schrift") == 0) {
         strlcpy(current.font, value, sizeof(current.font));
+    } else if (strcasecmp(key, "willkommen") == 0) {
+        current.welcome = strcasecmp(value, "nein") != 0;
+    } else if (strcasecmp(key, "kantenglaettung") == 0) {
+        enum font_smoothing sm;
+
+        if (font_smoothing_parse(value, &sm))
+            current.smoothing = sm;
     } else if (strcasecmp(key, "erscheinungsbild") == 0) {
         enum theme_mode m;
 
@@ -217,7 +226,9 @@ bool config_save(void)
               "aufloesung = %s\n"
               "skalierung = %s\n"
               "schrift = %s\n"
-              "erscheinungsbild = %s\n",
+              "erscheinungsbild = %s\n"
+              "kantenglaettung = %s\n"
+              "willkommen = %s\n",
               current.language,
               current.keymap,
               current.clock == CLOCK_UTC ? "utc" : "lokal",
@@ -228,7 +239,9 @@ bool config_save(void)
               current.resolution,
               scale_text,
               current.font,
-              theme_mode_key(current.appearance));
+              theme_mode_key(current.appearance),
+              font_smoothing_key(current.smoothing),
+              current.welcome ? "ja" : "nein");
 
     /* Das Schreiben selbst erledigt das System; wer es anstossen darf,
      * entscheidet die Oberflaeche. */
@@ -284,6 +297,7 @@ void config_apply(void)
     /* Der Dunkelmodus liegt vor dem Hintergrundbild: Was danach kommt,
      * darf schon in der richtigen Farbwelt gerechnet werden. */
     theme_set_mode(current.appearance);
+    font_set_smoothing(current.smoothing);
 
     if (current.wallpaper[0]) {
         perm_system_begin();

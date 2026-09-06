@@ -934,3 +934,128 @@ Seitentext kopieren	Copy page text
 Adresse kopieren	Copy address
 Herunterladen	Download
 Adresse kopiert: %s	Address copied: %s
+
+# --- Kantenglaettung ------------------------------------------------
+Kantenglaettung	Font smoothing
+Aus	Off
+Graustufen	Grayscale
+Subpixel (RGB)	Subpixel (RGB)
+Subpixel (BGR)	Subpixel (BGR)
+Subpixel taugt nur auf einem LCD ohne Vergroesserung.	Subpixel only works on an LCD without scaling.
+
+# --- Begruessungsfenster --------------------------------------------
+Beim Start zeigen	Show at startup
+Willkommen	Welcome
+Netz und Browser	Network and browser
+Aussehen	Appearance
+Willkommen bei RetroOS	Welcome to RetroOS
+RetroOS ist ein Betriebssystem, das bei null anfaengt: eigener	RetroOS is an operating system that starts from nothing: its
+Kern, eigene Treiber, eigenes Fenstersystem, eigener Browser.	own kernel, drivers, window system and browser.
+Es startet auf echter Hardware wie in einer virtuellen Maschine.	It boots on real hardware and in a virtual machine alike.
+Links stehen die Kapitel. Jedes erklaert einen Teil des Systems,	The chapters are on the left. Each explains one part of the
+und wo es etwas auszuprobieren gibt, steht unten rechts	system, and where there is something to try out, a button
+ein Knopf, der es gleich aufmacht.	at the bottom right opens it right away.
+Der Haken unten links entscheidet, ob dieses Fenster beim	The box at the bottom left decides whether this window opens
+naechsten Start wieder aufgeht.	again at the next start.
+Fenster	Windows
+Arbeitsflaeche und Fenster	Desktop and windows
+Doppelklick auf ein Symbol startet ein Programm, der Start-Knopf	Double-click an icon to start a program; the Start button at
+unten links zeigt alle. Fenster lassen sich an der Titelleiste	the bottom left lists them all. Windows are dragged by their
+ziehen und an der Ecke unten rechts groesser machen.	title bar and resized at the bottom right corner.
+Alt+Eingabe maximiert, Alt+Links und Alt+Rechts docken an eine	Alt+Enter maximizes, Alt+Left and Alt+Right snap to one half,
+Haelfte an, Alt+Tabulator holt das naechste Fenster nach vorne,	Alt+Tab brings the next window to the front, and Alt+F4
+Alt+F4 schliesst.	closes.
+Es gibt vier Arbeitsflaechen: die Felder rechts in der	There are four workspaces: the boxes on the right of the
+Taskleiste oder Strg+Alt+Links/Rechts. Alt+Umschalt dazu	taskbar, or Ctrl+Alt+Left/Right. Alt+Shift with the arrows
+nimmt das vorderste Fenster mit hinueber.	takes the front window along.
+Rechte Maustaste	Right mouse button
+Die rechte Maustaste	The right mouse button
+Sie fragt ueberall, was hier moeglich ist.	It asks everywhere what is possible here.
+Auf der Arbeitsflaeche: Suche, Dateimanager, Bildschirmfoto,	On the desktop: search, file manager, screenshot, light or
+heller oder dunkler Modus, der naechste Hintergrund.	dark mode, the next background.
+Auf der Titelleiste und auf einem Knopf der Taskleiste steht das	On the title bar and on a taskbar button it is the window
+Fenstermenue - andocken, auf eine andere Arbeitsflaeche	menu: snap, move to another workspace, close.
+schieben, schliessen.	 
+Im Text: Ausschneiden, Kopieren, Einfuegen. Jedes Menue laesst	In text: cut, copy, paste. Every menu can also be driven
+sich auch mit den Pfeiltasten bedienen.	with the arrow keys.
+Suche, Meldungen	Search, messages
+Suchen und Benachrichtigungen	Search and notifications
+Suche oeffnen	Open search
+Alt+Leertaste oeffnet die Suche. Getippt wird, gesucht wird	Alt+Space opens the search. You type, it searches at once -
+sofort - in Programmen, Dateien und Einstellungen zugleich.	across programs, files and settings at the same time.
+Die Pfeiltasten waehlen, Eingabe oeffnet, Escape macht zu.	The arrow keys select, Enter opens, Escape closes.
+Was das System nur mitteilen will - ein fertiges Bildschirmfoto,	What the system merely wants to tell you - a finished
+ein gepacktes Archiv, ein beendeter Download -, erscheint rechts	screenshot, a packed archive, a completed download - appears
+unten und geht nach fuenf Sekunden von selbst wieder.	at the bottom right and leaves again after five seconds.
+Der Verlauf bleibt hinter der Glocke in der Taskleiste stehen.	The history stays behind the bell in the taskbar.
+Dateien und Datentraeger	Files and drives
+Dateimanager oeffnen	Open file manager
+Der Zweig /Festplatte liegt auf dem Datentraeger, alles	The /Festplatte branch lives on the drive, everything else in
+andere im Arbeitsspeicher - und ist nach dem Ausschalten weg.	memory - and is gone once the machine is switched off.
+Geloeschtes wandert in den Papierkorb und laesst sich von dort	Deleted things go to the trash and can be brought back from
+zurueckholen. Die rechte Maustaste im Dateimanager packt einen	there. The right mouse button packs a folder into a ZIP,
+Ordner in ein ZIP, packt eines aus, aendert Rechte oder legt ein	unpacks one, changes permissions or sets an image as the
+Bild als Hintergrund fest.	background.
+Doppelklick oeffnet jede Datei mit dem Programm, das zu ihrer	A double-click opens every file with the program that belongs
+Endung gehoert.	to its extension.
+Die Programme	The programs
+Rechner oeffnen	Open calculator
+Editor und Programmieren fuer Text und Quelltext - das zweite	Editor and Code for text and source - the second one runs
+fuehrt JavaScript gleich im Fenster aus.	JavaScript right there in the window.
+Tabelle rechnet mit Formeln, Schreiben kennt Absatzformate,	Sheet computes with formulas, Write knows paragraph styles,
+Vortrag hat einen Vorfuehrmodus.	Slides has a presentation mode.
+Dazu Rechner, Bildbetrachter, Kalender, Uhr mit Stoppuhr,	Plus calculator, image viewer, calendar, clock with stopwatch,
+Aufgabenliste, Systemmonitor und Protokoll.	task list, system monitor and log.
+Alle stehen im Startmenue - oder eine Suche weit entfernt.	All of them are in the start menu - or one search away.
+Die Konsole	The console
+Konsole oeffnen	Open console
+hilfe zeigt alle Befehle nach Gebiet geordnet, hilfe <befehl>	hilfe lists every command by topic, hilfe <command> and
+und man <befehl> erklaeren einen einzelnen.	man <command> explain a single one.
+Fast jeder Befehl hat neben dem deutschen Namen den gewohnten	Almost every command carries the familiar English name
+englischen als Zweitnamen: kopiere und cp, suche und grep.	alongside the German one: kopiere and cp, suche and grep.
+Es gibt Roehren, Umleitungen, Variablen und Skripte - und	There are pipes, redirection, variables and scripts - and
+Befehle fuer Netz, Platten, Benutzer und Prozesse.	commands for network, disks, users and processes.
+Die Pfeiltasten holen die letzten zwanzig Zeilen zurueck.	The arrow keys bring back the last twenty lines.
+Browser oeffnen	Open browser
+Die Adresse kommt per DHCP, Namen loest DNS auf. Der Browser	The address comes from DHCP, names are resolved by DNS. The
+spricht HTTP und HTTPS - TLS 1.3 mit eigener Kryptografie und	browser speaks HTTP and HTTPS - TLS 1.3 with its own crypto
+152 eingebauten Wurzelzertifikaten.	and 152 built-in root certificates.
+Er stellt HTML mit CSS dar, zeigt Bilder und fuehrt JavaScript	It renders HTML with CSS, shows images and runs JavaScript.
+aus. Der gruene Pfeil laedt eine Adresse als Datei herunter.	The green arrow downloads an address as a file.
+RetroOS kann auch selbst zuhoeren: Der Webserver ist ein	RetroOS can listen as well: the web server is an ordinary
+gewoehnliches Programm im Ring 3.	program in ring 3.
+Benutzer und Sicherheit	Users and security
+Benutzer verwalten	Manage users
+Jede Datei hat Eigentuemer, Gruppe und Rechte nach dem Muster	Every file has an owner, a group and permissions in the
+rwxrwxrwx. Rollen fassen Faehigkeiten zusammen - Konten, Netz,	rwxrwxrwx pattern. Roles gather capabilities - accounts,
+Platte, Protokoll, Strom, Einstellungen -, statt nur zwischen	network, disk, log, power, settings - instead of telling
+Verwalter und Nicht-Verwalter zu unterscheiden.	administrators from everyone else and nothing more.
+Programme laufen in einem Kaefig: erlaubte Systemaufrufe, ein	Programs run in a cage: permitted system calls, a root path
+Wurzelpfad im Dateibaum, eine Speichergrenze.	in the file tree, a memory limit.
+Die Pruefspur haelt fest, wer was woran versucht hat.	The audit trail records who tried what on which object.
+Sprache, Farben, Schrift	Language, colors, type
+Einstellungen oeffnen	Open settings
+Sprache und Tastaturbelegung, Aufloesung und Vergroesserung,	Language and keyboard layout, resolution and scaling,
+Hintergrund und eigenes Hintergrundbild, zehn Schriftarten.	background and your own wallpaper, ten typefaces.
+Erscheinungsbild schaltet zwischen hell und dunkel - oder	Appearance switches between light and dark - or automatic,
+automatisch, dann ist es zwischen 19 und 7 Uhr dunkel.	which is dark between 7 pm and 7 am.
+Kantenglaettung macht die Schrift weich: Graustufen taugt auf	Font smoothing softens the type: grayscale works on every
+jedem Bildschirm, Subpixel steuert die drei Leuchtpunkte eines	screen, subpixel drives the three lights of an LCD pixel
+LCD einzeln an - das Verfahren, das als ClearType bekannt ist.	one by one - the method known as ClearType.
+Es braucht einen LCD ohne Vergroesserung.	It needs an LCD without scaling.
+Auf die Festplatte	Onto the hard disk
+Bis hierher laeuft alles vom Startmedium: Jede Aenderung	Up to here everything runs from the boot medium: every
+ist nach dem Ausschalten weg.	change is gone once the machine is switched off.
+Das Installationsprogramm schreibt eine Partitionstabelle,	The installer writes a partition table, formats FAT32,
+formatiert FAT32, kopiert Bootloader und Kern und macht den	copies boot loader and kernel and makes the drive bootable -
+Datentraeger startbar - fuer UEFI wie fuer BIOS.	for UEFI as well as for BIOS.
+Danach bleiben Einstellungen, Benutzer und Dateien erhalten,	After that settings, users and files are kept, and this
+und dieses Fenster merkt sich, ob es noch aufgehen soll.	window remembers whether it should still open.
+Geschrieben in C und etwas Assembler, ohne fremde Bibliotheken.	Written in C and a little assembler, without foreign
+Der Quelltext ist auf Deutsch kommentiert und erklaert, warum	libraries. The source is commented in German and explains
+etwas so ist - nicht, was dasteht.	why something is the way it is - not what it says.
+Die Schriften stammen von DejaVu, Liberation, JetBrains, IBM,	The typefaces come from DejaVu, Liberation, JetBrains, IBM,
+Mozilla, Adobe, Ubuntu und anderen, die Symbole von Lucide.	Mozilla, Adobe, Ubuntu and others, the icons from Lucide.
+Ihre Lizenzen liegen unter third_party.	Their licenses live under third_party.
+Was sich ohne Bildschirm pruefen laesst, wird geprueft: ueber	What can be checked without a screen is checked: over 1400
+1400 Pruefungen in einundzwanzig Sammlungen.	checks in twenty-one collections.

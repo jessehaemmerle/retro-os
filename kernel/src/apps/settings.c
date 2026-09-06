@@ -43,6 +43,7 @@ enum row_id {
     ROW_BACKGROUND,
     ROW_WALLPAPER,
     ROW_FONT,
+    ROW_SMOOTHING,
     ROW_HOSTNAME,
     ROW_COUNT
 };
@@ -221,6 +222,9 @@ static void row_value(int row, char *out, size_t size)
     case ROW_FONT:
         strlcpy(out, font_name(font_current()), size);
         break;
+    case ROW_SMOOTHING:
+        strlcpy(out, tr(font_smoothing_name(c->smoothing)), size);
+        break;
     case ROW_HOSTNAME:
         strlcpy(out, c->hostname, size);
         break;
@@ -243,6 +247,7 @@ static const char *row_label(int row)
     case ROW_BACKGROUND: return tr("Hintergrund");
     case ROW_WALLPAPER:  return tr("Hintergrundbild");
     case ROW_FONT:       return tr("Schrift");
+    case ROW_SMOOTHING:  return tr("Kantenglaettung");
     case ROW_HOSTNAME:   return tr("Rechnername");
     default:             return "";
     }
@@ -396,6 +401,22 @@ static void row_step(struct settings_ui *ui, int row, int delta)
                     sizeof(ui->status));
             break;
         }
+        gui_invalidate();
+        break;
+    }
+    case ROW_SMOOTHING: {
+        /* Vier Stufen im Kreis. Die beiden Subpixel-Stufen richten
+         * sich nach der Bauart des Bildschirms - stimmt sie nicht,
+         * sieht man es sofort an den Farbsaeumen. */
+        int next = ((int)c->smoothing + 4 + (delta > 0 ? 1 : 3)) % 4;
+
+        c->smoothing = (enum font_smoothing)next;
+        font_set_smoothing(c->smoothing);
+
+        if (c->smoothing == FONT_RGB || c->smoothing == FONT_BGR)
+            strlcpy(ui->status,
+                    tr("Subpixel taugt nur auf einem LCD ohne Vergroesserung."),
+                    sizeof(ui->status));
         gui_invalidate();
         break;
     }
@@ -607,7 +628,7 @@ void app_settings(void)
         strlcpy(ui->status, tr("Ohne Festplatte bleibt nichts gespeichert."),
                 sizeof(ui->status));
 
-    struct window *win = gui_create_window(tr("Einstellungen"), 0, 0, 620, 472,
+    struct window *win = gui_create_window(tr("Einstellungen"), 0, 0, 620, 502,
                                            WF_CENTER, ICON_SETTINGS);
     if (!win) {
         kfree(ui);

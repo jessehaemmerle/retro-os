@@ -19,6 +19,8 @@
  *     skalierung = auto
  *     schrift = DejaVu Sans Mono
  *     erscheinungsbild = dunkel
+ *     kantenglaettung = rgb
+ *     willkommen = ja
  *
  * Textform, weil man sie dann mit dem Editor des Systems selbst
  * reparieren kann - und von einem anderen Rechner aus ebenso.
@@ -28,6 +30,7 @@
 
 #include "retro.h"
 #include "theme.h"
+#include "font.h"
 
 #define CONFIG_PATH "/Festplatte/retroos.conf"
 
@@ -50,6 +53,8 @@ struct config {
     uint32_t        scale;           /* 0 = automatisch              */
     char            font[24];        /* Name der Bildschirmschrift  */
     enum theme_mode appearance;      /* hell, dunkel, automatisch   */
+    enum font_smoothing smoothing;   /* Kantenglaettung der Schrift  */
+    bool            welcome;         /* Begruessung beim Start zeigen */
 };
 
 /* Die aktuellen Werte. Aendern und danach config_save() rufen. */

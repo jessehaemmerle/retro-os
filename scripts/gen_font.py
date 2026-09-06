@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Erzeugt die Bitmap-Schriften des Kernels aus den Dateien in third_party/fonts.
 
+Erzeugt werden je Schrift zwei Tafeln: die harte Bitmap (ein Bit je
+Punkt) und dieselben Zeichen in dreifacher Breite (ein Bit je
+Subpixel). Aus der zweiten rechnet der Kernel zur Laufzeit die
+Kantenglaettung - grau oder nach dem ClearType-Verfahren, das die
+drei Leuchtpunkte eines LCD einzeln ansteuert. Dreifach abgetastet
+und im Kernel gefiltert kostet das 48 Byte je Zeichen statt 384, und
+das Ergebnis ist dasselbe.
+
 RetroOS zeichnet Text in einer festen Zelle von 8x16 Pixeln - die halbe
 Oberflaeche rechnet mit diesen beiden Zahlen. Eine Schrift auszutauschen
 heisst darum nicht, das Layout zu aendern, sondern nur, andere Punkte in
@@ -65,6 +73,12 @@ def open_face(slug, size, tmp):
     return ImageFont.truetype(ttf, size)
 
 
+def open_face3(slug, size, tmp):
+    """Dieselbe Schrift in dreifacher Groesse - fuer die Abtastung der
+    Subpixel."""
+    return open_face(slug, size * 3, tmp)
+
+
 def render(font, ch, xoff, baseline):
     img = Image.new("1", (WIDTH, HEIGHT), 0)
     draw = ImageDraw.Draw(img)
@@ -77,6 +91,49 @@ def render(font, ch, xoff, baseline):
                 bits |= 1 << (7 - x)
         rows.append(bits)
     return rows
+
+
+def render_sub(font, ch, xoff, baseline):
+    """Dasselbe Zeichen in dreifacher Breite: 24 Abtastungen je Zeile.
+
+    Gezeichnet wird in dreifacher Groesse in ein Feld von 24x48 und
+    danach senkrecht auf 16 Zeilen gemittelt - so bleibt die
+    waagerechte Aufloesung, um die es geht, und die Senkrechte wird
+    nicht grob."""
+    big = Image.new("L", (WIDTH * 3, HEIGHT * 3), 0)
+    draw = ImageDraw.Draw(big)
+    draw.text((xoff * 3, baseline * 3), ch, font=font, fill=255, anchor="ls")
+
+    small = big.resize((WIDTH * 3, HEIGHT), Image.BOX)
+    rows = []
+
+    for y in range(HEIGHT):
+        bits = 0
+        for x in range(WIDTH * 3):
+            if small.getpixel((x, y)) >= 128:
+                bits |= 1 << (WIDTH * 3 - 1 - x)
+        rows.append(bits)
+    return rows
+
+
+def sub_table(font3, ident, xoff, baseline):
+    out = ["static const uint8_t sub_%s[FONT_GLYPHS][FONT_SUB_BYTES] = {"
+           % ident.lower()]
+    for code in range(FIRST, LAST + 1):
+        try:
+            rows = render_sub(font3, chr(code), xoff, baseline)
+        except Exception:
+            rows = [0] * HEIGHT
+        if code == 0x20:
+            rows = [0] * HEIGHT
+        body = ", ".join("0x%02X, 0x%02X, 0x%02X"
+                         % ((r >> 16) & 0xFF, (r >> 8) & 0xFF, r & 0xFF)
+                         for r in rows)
+        out.append("    { %s },  /* 0x%02X %s */" %
+                   (body, code, chr(code) if 33 <= code < 127 else " "))
+    out.append("};")
+    out.append("")
+    return out
 
 
 def table(font, ident, xoff, baseline):
@@ -102,8 +159,9 @@ def main():
            " *",
            " * %d Schriftarten zu je %d Zeichen (0x%02X-0x%02X), jedes Zeichen"
            % (len(FACES), LAST - FIRST + 1, FIRST, LAST),
-           " * %d Zeilen mit %d Pixeln. Die Vorlagen und ihre Lizenzen liegen"
+           " * %d Zeilen mit %d Pixeln - dazu dieselben Zeichen in dreifacher"
            % (HEIGHT, WIDTH),
+           " * Breite fuer die Kantenglaettung. Die Vorlagen und ihre Lizenzen liegen",
            " * unter third_party/fonts.",
            " */",
            "",
@@ -114,16 +172,20 @@ def main():
         for ident, name, slug, lic, size, xoff, baseline in FACES:
             font = open_face(slug, size, tmp)
             out += table(font, ident, xoff, baseline)
+            out += sub_table(open_face3(slug, size, tmp), ident, xoff, baseline)
 
     out.append("const struct font_face font_faces[FONT_FACES] = {")
     for ident, name, slug, lic, size, xoff, baseline in FACES:
-        out.append('    { "%s", "%s", glyphs_%s },' % (name, lic, ident.lower()))
+        out.append('    { "%s", "%s", glyphs_%s, sub_%s },'
+                   % (name, lic, ident.lower(), ident.lower()))
     out.append("};")
     out.append("")
     out.append("/* Bis config_apply() etwas anderes sagt, gilt die erste Schrift.")
     out.append(" * Statisch gesetzt, damit auch der Bildschirmtext vor dem Laden")
     out.append(" * der Einstellungen schon Punkte findet. */")
     out.append("const uint8_t (*font_active)[FONT_HEIGHT] = glyphs_%s;"
+               % FACES[0][0].lower())
+    out.append("const uint8_t (*font_active_sub)[FONT_SUB_BYTES] = sub_%s;"
                % FACES[0][0].lower())
     out.append("")
 
