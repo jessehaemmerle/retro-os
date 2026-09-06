@@ -41,6 +41,12 @@ void app_screenshot(void);
 void app_archive(void);
 void app_calendar(void);
 void app_clock(void);
+void app_notifications(void);
+void app_search(void);
+
+/* Oeffnet einen Eintrag mit dem Programm, das zu ihm gehoert - ein
+ * Ordner landet im Dateimanager, eine Datei bei ihrer Endung. */
+void app_open_node(struct fs_node *node);
 
 /* --- Archive --- */
 /* Oeffnet ein ZIP-Archiv in seinem Fenster. */

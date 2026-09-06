@@ -104,6 +104,13 @@ ICONS = [
     # Archiv, Kalender und Uhr.
     ("ICON_ARCHIVE",     "file-archive",     "#F2C14E"),
     ("ICON_ALARM",       "alarm-clock",      "#E08A6A"),
+
+    # Benachrichtigungen, Suche, Erscheinungsbild, Arbeitsflaechen
+    ("ICON_BELL",        "bell",             "#F2C14E"),
+    ("ICON_SEARCH",      "search",           "#9BD1E8"),
+    ("ICON_MOON",        "moon",             "#B9C4FF"),
+    ("ICON_SUN",         "sun",              "#F2C14E"),
+    ("ICON_WORKSPACES",  "layout-grid",      "#8ED9A8"),
 ]
 
 # Groesse -> (Strichbreite, Breite der Umrandung). Kleine Bilder

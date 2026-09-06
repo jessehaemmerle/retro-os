@@ -894,3 +894,21 @@ ein Archiv auspacken	unpack an archive
 Ausgepackt wird in einen Ordner daneben, der wie das Archiv\nheisst. Eintraege mit Pfaden nach draussen werden uebergangen.	Unpacked into a folder next to it, named after the archive.\nEntries with paths leading outside are skipped.
 hineinsehen, ohne auszupacken	look inside without unpacking
 Eine offene Aufgabe	One open task
+
+# --- Erscheinungsbild, Benachrichtigungen, Suche ---------------------
+Erscheinungsbild	Appearance
+Hell	Light
+Dunkel	Dark
+Automatisch	Automatic
+Automatisch heisst: zwischen 19 und 7 Uhr dunkel.	Automatic means dark between 7 pm and 7 am.
+Benachrichtigungen	Notifications
+Keine Benachrichtigungen.	No notifications.
+Alle loeschen	Clear all
+Meldung	message
+Meldungen	messages
+Gepackt	Packed
+Ausgepackt	Unpacked
+Download fertig	Download finished
+Suche	Search
+Programme, Dateien, Einstellungen ...	Programs, files, settings ...
+Nichts gefunden.	Nothing found.

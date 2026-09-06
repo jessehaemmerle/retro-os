@@ -28,6 +28,7 @@
 #include "kstring.h"
 #include "mm.h"
 #include "displayutil.h"
+#include "theme.h"
 
 /* Kachelgroesse fuer den Vergleich. Klein genug, dass ein blinkender
  * Schreibzeiger nicht das halbe Fenster mitschickt, gross genug, dass
@@ -390,10 +391,12 @@ void gfx_gradient_h(struct canvas *c, struct rect r, uint32_t left, uint32_t rig
 /* Die typische Doppelkante: aussen hart, innen weich. */
 void gfx_bevel(struct canvas *c, struct rect r, bool raised)
 {
-    uint32_t tl_out = raised ? RGB(0xFF, 0xFF, 0xFF) : RGB(0x86, 0x86, 0x86);
-    uint32_t tl_in  = raised ? RGB(0xE0, 0xE0, 0xE0) : RGB(0x3A, 0x3A, 0x3A);
-    uint32_t br_out = raised ? RGB(0x3A, 0x3A, 0x3A) : RGB(0xFF, 0xFF, 0xFF);
-    uint32_t br_in  = raised ? RGB(0x86, 0x86, 0x86) : RGB(0xE0, 0xE0, 0xE0);
+    /* Die Kante nimmt ihre vier Toene aus der Tafel - im Dunkelmodus
+     * sind das nicht Weiss und Grau, sondern Grau und Schwarz. */
+    uint32_t tl_out = raised ? COL_HILIGHT : COL_SHADOW;
+    uint32_t tl_in  = raised ? COL_FACE_LIGHT : COL_DARK;
+    uint32_t br_out = raised ? COL_DARK : COL_HILIGHT;
+    uint32_t br_in  = raised ? COL_SHADOW : COL_FACE_LIGHT;
 
     gfx_hline(c, r.x, r.y, r.w, tl_out);
     gfx_vline(c, r.x, r.y, r.h, tl_out);
@@ -408,8 +411,8 @@ void gfx_bevel(struct canvas *c, struct rect r, bool raised)
 
 void gfx_bevel_thin(struct canvas *c, struct rect r, bool raised)
 {
-    uint32_t tl = raised ? RGB(0xFF, 0xFF, 0xFF) : RGB(0x86, 0x86, 0x86);
-    uint32_t br = raised ? RGB(0x86, 0x86, 0x86) : RGB(0xFF, 0xFF, 0xFF);
+    uint32_t tl = raised ? COL_HILIGHT : COL_SHADOW;
+    uint32_t br = raised ? COL_SHADOW : COL_HILIGHT;
 
     gfx_hline(c, r.x, r.y, r.w, tl);
     gfx_vline(c, r.x, r.y, r.h, tl);

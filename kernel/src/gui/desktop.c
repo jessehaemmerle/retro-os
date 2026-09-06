@@ -13,6 +13,7 @@
 #include "lang.h"
 #include "theme.h"
 #include "wallpaper.h"
+#include "notify.h"
 
 #define ICON_CELL_W    104
 #define ICON_CELL_H    88
@@ -101,12 +102,26 @@ static void paint_wallpaper(struct canvas *c)
      * soll der Verlauf sein und nicht das Bild vom letzten
      * Bildaufbau. */
     background_colors(config_current()->background, &top, &bottom);
+
+    /* Im Dunkelmodus bleibt der gewaehlte Verlauf derselbe - er wird
+     * nur gedaempft. Wer sich fuer Weinrot entschieden hat, soll
+     * abends nicht Grau bekommen. */
+    if (theme_is_dark()) {
+        top    = theme_shade(top, 45);
+        bottom = theme_shade(bottom, 45);
+    }
+
     gfx_gradient_v(c, area, top, bottom);
 
     /* Ein eigenes Bild ersetzt das Rautenmuster: Wer sein Foto auf den
      * Schreibtisch legt, will kein Muster darueber. */
-    if (wallpaper_draw(c, area))
+    if (wallpaper_draw(c, area)) {
+        /* Ein Foto laesst sich nicht umfaerben - ein Schleier darueber
+         * nimmt ihm aber die Helligkeit, die im Dunkelmodus stoert. */
+        if (theme_is_dark())
+            gfx_fill_blend(c, area, 0x66000000u);
         return;
+    }
 
     /* Ein dezentes Rautenmuster - kostet kaum Rechenzeit und nimmt der
      * Flaeche die Leere. */
@@ -205,6 +220,58 @@ static struct rect user_rect(void)
                      TASKBAR_HEIGHT - 6);
 }
 
+/* Die Glocke sitzt links neben dem Benutzer. Ist etwas Ungelesenes
+ * da, traegt sie eine Zahl - sonst nur sich selbst. */
+static struct rect bell_rect(void)
+{
+    struct canvas *c = gfx_screen();
+    struct user   *u = session_user();
+    int32_t        uw = u ? (26 + gfx_text_width(u->name)) : 0;
+    int32_t        w = notify_unread() ? 40 : 26;
+
+    return rect_make(c->w - 88 - uw - w, c->h - TASKBAR_HEIGHT + 3, w,
+                     TASKBAR_HEIGHT - 6);
+}
+
+/* Die Arbeitsflaechen stehen links neben der Glocke: vier kleine
+ * Felder, das gerade sichtbare hell. Wer will, klickt hin - wer die
+ * Tastatur mag, nimmt Strg+Alt+Pfeil. */
+#define WS_BOX_W 18
+
+static struct rect workspace_rect(size_t index)
+{
+    struct rect bell = bell_rect();
+    int32_t     w = WS_BOX_W * GUI_WORKSPACES + 6;
+
+    return rect_make(bell.x - w - 6 + 3 + (int32_t)index * WS_BOX_W,
+                     bell.y, WS_BOX_W - 2, bell.h);
+}
+
+static void paint_workspaces(struct canvas *c)
+{
+    struct rect all = rect_make(workspace_rect(0).x - 3, workspace_rect(0).y,
+                                WS_BOX_W * GUI_WORKSPACES + 4,
+                                workspace_rect(0).h);
+
+    gfx_bevel_thin(c, all, false);
+
+    for (size_t i = 0; i < GUI_WORKSPACES; i++) {
+        struct rect r = workspace_rect(i);
+        bool here = (i == gui_workspace());
+        char label[4];
+
+        gfx_fill(c, r, here ? COL_SELECT : COL_FACE);
+        ksnprintf(label, sizeof(label), "%u", (unsigned)(i + 1));
+        gfx_text(c, r.x + (r.w - gfx_text_width(label)) / 2, r.y + 4, label,
+                 here ? COL_SELECT_TEXT : COL_TEXT_DIM);
+
+        /* Ein Punkt sagt: Dort steht etwas offen. */
+        if (!here && gui_workspace_windows((uint8_t)i))
+            gfx_fill(c, rect_make(r.x + r.w / 2 - 1, r.y + r.h - 5, 3, 2),
+                     COL_ACCENT);
+    }
+}
+
 static size_t taskbar_button_count(void)
 {
     size_t n = 0;
@@ -212,7 +279,8 @@ static size_t taskbar_button_count(void)
     for (size_t i = 0; i < gui_window_count(); i++) {
         struct window *w = gui_window_at(i);
 
-        if (w->visible && !(w->flags & WF_NO_TASKBAR))
+        if (w->visible && !(w->flags & WF_NO_TASKBAR) &&
+            gui_on_current_workspace(w))
             n++;
     }
     return n;
@@ -225,7 +293,8 @@ static struct window *taskbar_window_at_index(size_t index)
     for (size_t i = 0; i < gui_window_count(); i++) {
         struct window *w = gui_window_at(i);
 
-        if (!w->visible || (w->flags & WF_NO_TASKBAR))
+        if (!w->visible || (w->flags & WF_NO_TASKBAR) ||
+            !gui_on_current_workspace(w))
             continue;
         if (n++ == index)
             return w;
@@ -237,7 +306,7 @@ static struct rect taskbar_button_rect(size_t index)
 {
     struct canvas *c = gfx_screen();
     int32_t first = START_WIDTH + 12;
-    int32_t room  = clock_rect().x - first - 8;
+    int32_t room  = workspace_rect(0).x - first - 12;
     size_t  count = taskbar_button_count();
 
     if (count == 0)
@@ -303,6 +372,22 @@ static void paint_taskbar(struct canvas *c)
         gfx_reset_clip(c);
     }
 
+    paint_workspaces(c);
+
+    struct rect br = bell_rect();
+
+    gfx_bevel_thin(c, br, false);
+    icon_draw(c, br.x + 5, br.y + 2, ICON_BELL, 1);
+
+    size_t unread = notify_unread();
+
+    if (unread) {
+        char count[8];
+
+        ksnprintf(count, sizeof(count), "%u", (unsigned)MIN(unread, 99u));
+        gfx_text_bold(c, br.x + 23, br.y + 4, count, COL_ACCENT);
+    }
+
     struct user *me = session_user();
 
     if (me) {
@@ -317,6 +402,98 @@ static void paint_taskbar(struct canvas *c)
     gfx_bevel_thin(c, ck, false);
     int32_t tw = gfx_text_width(clock_text);
     gfx_text(c, ck.x + (ck.w - tw) / 2, ck.y + 4, clock_text, COL_TEXT);
+}
+
+/* --- Einblendung ----------------------------------------------------- */
+
+#define TOAST_W 320
+#define TOAST_H 68
+
+static struct rect toast_rect(void)
+{
+    struct canvas *c = gfx_screen();
+
+    return rect_make(c->w - TOAST_W - 14,
+                     desktop_work_height() - TOAST_H - 14, TOAST_W, TOAST_H);
+}
+
+/* Bricht einen Meldungstext auf zwei Zeilen um. Was dann noch nicht
+ * hineinpasst, endet mit Auslassungspunkten - der ganze Text steht im
+ * Verlauf. */
+static void toast_lines(const char *text, int32_t max_w, char out[2][64])
+{
+    int32_t per_line = MAX(max_w / FONT_WIDTH, 8);
+    int32_t len = (int32_t)strlen(text);
+
+    out[0][0] = out[1][0] = '\0';
+
+    if (len <= per_line) {
+        strlcpy(out[0], text, 64);
+        return;
+    }
+
+    int32_t cut = per_line;
+
+    for (int32_t i = per_line; i > per_line / 2; i--) {
+        if (text[i] == ' ') {
+            cut = i;
+            break;
+        }
+    }
+
+    strlcpy(out[0], text, (size_t)MIN(cut + 1, 64));
+
+    const char *rest = text + cut + (text[cut] == ' ' ? 1 : 0);
+
+    if ((int32_t)strlen(rest) <= per_line) {
+        strlcpy(out[1], rest, 64);
+        return;
+    }
+
+    strlcpy(out[1], rest, (size_t)MIN(per_line - 2, 61));
+    ksnprintf(out[1] + strlen(out[1]), 64 - strlen(out[1]), "...");
+}
+
+void desktop_paint_notification(struct canvas *c)
+{
+    const struct notification *n = notify_toast();
+
+    if (!n)
+        return;
+
+    struct rect r = toast_rect();
+
+    /* Ein Schatten setzt die Einblendung von dem ab, was gerade
+     * darunter steht - sie gehoert zu keinem Fenster. */
+    gfx_fill_blend(c, rect_make(r.x + 4, r.y + 4, r.w, r.h), 0x50000000u);
+    gfx_fill(c, r, COL_FACE);
+    gfx_bevel(c, r, true);
+    gfx_fill(c, rect_make(r.x + 3, r.y + 3, 4, r.h - 6), COL_ACCENT);
+
+    icon_draw(c, r.x + 14, r.y + 16, n->icon, 1);
+    gfx_text_bold(c, r.x + 38, r.y + 10, tr(n->title), COL_TEXT);
+    gfx_text(c, r.x + r.w - gfx_text_width(n->time) - 10, r.y + 10, n->time,
+             COL_TEXT_DIM);
+
+    char line[2][64];
+
+    toast_lines(tr(n->text), r.w - 50, line);
+    for (int i = 0; i < 2 && line[i][0]; i++)
+        gfx_text(c, r.x + 38, r.y + 28 + i * (FONT_HEIGHT + 2), line[i],
+                 COL_TEXT_DIM);
+}
+
+/* Ein Klick auf die Einblendung oeffnet den Verlauf; sie verschwindet
+ * dabei. true heisst: verbraucht, kein Fenster darunter bekommt ihn. */
+bool desktop_notification_click(int32_t x, int32_t y)
+{
+    if (!notify_toast_visible() || !rect_contains(toast_rect(), x, y))
+        return false;
+
+    notify_toast_dismiss();
+    app_notifications();
+    gui_invalidate();
+    return true;
 }
 
 /* --- Startmenue ------------------------------------------------------ */
@@ -426,9 +603,28 @@ void desktop_tick(void)
 {
     char now[16];
 
+    /* Der automatische Dunkelmodus fragt einmal je Durchlauf nach der
+     * Stunde. Umgeschaltet wird nur, wenn sich dadurch etwas
+     * aendert. */
+    struct datetime dt;
+
+    rtc_read(&dt);
+    if (theme_tick((int32_t)dt.hour))
+        gui_invalidate();
+
     rtc_format_time(now, sizeof(now));
     if (strcmp(now, clock_text) != 0) {
         strlcpy(clock_text, now, sizeof(clock_text));
+        gui_invalidate();
+    }
+
+    /* Die Einblendung geht von selbst - jemand muss nur merken, dass
+     * ihre Zeit um ist. */
+    static bool toast_was;
+    bool toast_now = notify_toast_visible();
+
+    if (toast_now != toast_was) {
+        toast_was = toast_now;
         gui_invalidate();
     }
 
@@ -454,6 +650,19 @@ bool desktop_mouse(int32_t x, int32_t y, uint8_t button, bool down, bool dbl)
             } else {
                 open_start_menu();
             }
+            gui_invalidate();
+            return true;
+        }
+
+        for (size_t i = 0; i < GUI_WORKSPACES; i++) {
+            if (!rect_contains(workspace_rect(i), x, y))
+                continue;
+            gui_switch_workspace((uint8_t)i);
+            return true;
+        }
+
+        if (rect_contains(bell_rect(), x, y)) {
+            app_notifications();
             gui_invalidate();
             return true;
         }

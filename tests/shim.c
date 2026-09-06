@@ -117,6 +117,13 @@ void rtc_read(struct datetime *out)
     out->hour = 12; out->minute = 0; out->second = 0;
 }
 
+/* Die Uhr steht - eine Meldung soll immer dieselbe Zeit tragen. */
+void rtc_format_time(char *buf, size_t size)
+{
+    if (size)
+        snprintf(buf, size, "12:00");
+}
+
 static uint64_t fake_ms;
 
 uint64_t timer_ms(void)   { return fake_ms += 1; }

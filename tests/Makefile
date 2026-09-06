@@ -75,6 +75,13 @@ RECHNER := rechner_test.c shim.c \
 BILDSCHIRM := bildschirm_test.c shim.c \
               ../kernel/src/gui/displayutil.c
 
+SUCHE := suche_test.c shim.c \
+         ../kernel/src/gui/searchutil.c
+
+OBERFLAECHE := oberflaeche_test.c shim.c \
+               ../kernel/src/gui/theme.c \
+               ../kernel/src/gui/notify.c
+
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c
 
@@ -112,11 +119,11 @@ BAUM := dom_test.c shim.c \
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
         protokoll netzfilter kaefig konsole sprache bildschirm rechner \
-        pngschreiben packen archiv winkel \
+        pngschreiben packen archiv winkel suche oberflaeche \
         testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
      netzfilter kaefig konsole sprache bildschirm rechner pngschreiben \
-     packen archiv winkel
+     packen archiv winkel suche oberflaeche
 
 krypto: krypto-test
 	@./krypto-test
@@ -190,6 +197,18 @@ rechner: rechner-test
 
 rechner-test: $(RECHNER)
 	@$(CC) $(CFLAGS) $(RECHNER) -o $@
+
+suche: suche-test
+	@./suche-test
+
+suche-test: $(SUCHE)
+	@$(CC) $(CFLAGS) $(SUCHE) -o $@
+
+oberflaeche: oberflaeche-test
+	@./oberflaeche-test
+
+oberflaeche-test: $(OBERFLAECHE)
+	@$(CC) $(CFLAGS) $(OBERFLAECHE) -o $@
 
 bildschirm: bildschirm-test
 	@./bildschirm-test

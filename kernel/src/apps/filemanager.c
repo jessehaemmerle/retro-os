@@ -6,6 +6,7 @@
  */
 
 #include "apps.h"
+#include "notify.h"
 #include "font.h"
 #include "kstring.h"
 #include "mm.h"
@@ -212,6 +213,23 @@ static enum icon_id entry_icon(const struct fs_node *node)
     return fs_is_text(node) ? ICON_FILE_TEXT : ICON_FILE;
 }
 
+static void fm_open_file(struct fs_node *node);
+
+/* Oeffnet einen Eintrag mit dem Programm, das zu ihm gehoert. Steht
+ * hier, weil hier die Zuordnung von Endung zu Programm wohnt - die
+ * Suche und der Dateimanager brauchen dieselbe. */
+void app_open_node(struct fs_node *node)
+{
+    if (!node)
+        return;
+
+    if (node->type == FS_DIR) {
+        filemanager_open(node);
+        return;
+    }
+    fm_open_file(node);
+}
+
 static void fm_open_selected(struct window *win)
 {
     struct fm_state *st = win->user;
@@ -225,9 +243,12 @@ static void fm_open_selected(struct window *win)
         fm_set_dir(win, node, true);
         return;
     }
+    fm_open_file(node);
+}
 
-    /* Jede Endung hat ihr Programm; was keines hat, geht in den
-     * Editor. */
+/* Jede Endung hat ihr Programm; was keines hat, geht in den Editor. */
+static void fm_open_file(struct fs_node *node)
+{
     const char *dot = strrchr(node->name, '.');
 
     if (!dot) {
@@ -542,7 +563,7 @@ static void fm_pack(struct window *win)
 
     if (archive_pack(sel, path, sizeof(path), error, sizeof(error))) {
         fm_refresh(win);
-        dialog_message(tr("Packen"), path);
+        notify_post(ICON_ARCHIVE, "Gepackt", path);
     } else {
         dialog_message(tr("Packen"), error);
     }
@@ -562,7 +583,10 @@ static void fm_unpack(struct window *win)
     bool ok = archive_unpack(sel, path, sizeof(path), message, sizeof(message));
 
     fm_refresh(win);
-    dialog_message(tr("Auspacken"), ok ? path : message);
+    if (ok)
+        notify_post(ICON_ARCHIVE, "Ausgepackt", path);
+    else
+        dialog_message(tr("Auspacken"), message);
 }
 
 static void context_selected(int id, void *user)

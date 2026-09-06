@@ -13,6 +13,7 @@
 #include "net.h"
 #include "vfs.h"
 #include "wallpaper.h"
+#include "theme.h"
 
 static struct config current;
 
@@ -56,6 +57,7 @@ void config_defaults(void)
     current.timezone = 60;                 /* Mitteleuropa */
     strlcpy(current.hostname, "retroos", sizeof(current.hostname));
     current.background = 0;
+    current.appearance = THEME_HELL;
     strlcpy(current.font, font_name(0), sizeof(current.font));
 }
 
@@ -122,6 +124,11 @@ static void apply_pair(const char *key, const char *value)
         strlcpy(current.wallpaper, value, sizeof(current.wallpaper));
     } else if (strcasecmp(key, "schrift") == 0) {
         strlcpy(current.font, value, sizeof(current.font));
+    } else if (strcasecmp(key, "erscheinungsbild") == 0) {
+        enum theme_mode m;
+
+        if (theme_mode_parse(value, &m))
+            current.appearance = m;
     }
     /* Unbekannte Schluessel werden stillschweigend uebergangen - eine
      * neuere Fassung darf mehr hineinschreiben. */
@@ -209,7 +216,8 @@ bool config_save(void)
               "hintergrundbild = %s\n"
               "aufloesung = %s\n"
               "skalierung = %s\n"
-              "schrift = %s\n",
+              "schrift = %s\n"
+              "erscheinungsbild = %s\n",
               current.language,
               current.keymap,
               current.clock == CLOCK_UTC ? "utc" : "lokal",
@@ -219,7 +227,8 @@ bool config_save(void)
               current.wallpaper,
               current.resolution,
               scale_text,
-              current.font);
+              current.font,
+              theme_mode_key(current.appearance));
 
     /* Das Schreiben selbst erledigt das System; wer es anstossen darf,
      * entscheidet die Oberflaeche. */
@@ -272,6 +281,10 @@ void config_apply(void)
     /* Ein Bild, das es nicht mehr gibt, soll die Einstellung nicht
      * vergiften: Der Eintrag faellt weg, und der Verlauf uebernimmt
      * wieder. Sonst stuende bei jedem Start derselbe tote Pfad da. */
+    /* Der Dunkelmodus liegt vor dem Hintergrundbild: Was danach kommt,
+     * darf schon in der richtigen Farbwelt gerechnet werden. */
+    theme_set_mode(current.appearance);
+
     if (current.wallpaper[0]) {
         perm_system_begin();
         bool ok = wallpaper_set(current.wallpaper);

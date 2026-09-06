@@ -32,6 +32,7 @@
 #include "apps.h"
 #include "lang.h"
 #include "theme.h"
+#include "notify.h"
 
 #define CURSOR_W 12
 #define CURSOR_H 19
@@ -64,6 +65,7 @@ static struct window windows[GUI_MAX_WINDOWS];
 static struct window *stack[GUI_MAX_WINDOWS];   /* [0] = hinten */
 static size_t stack_count;
 
+static uint8_t  current_ws;
 static bool     dirty = true;
 static int32_t  cursor_x, cursor_y;
 static int32_t  cursor_saved_x = -1, cursor_saved_y = -1;
@@ -99,13 +101,67 @@ struct window *gui_window_at(size_t index)
     return index < stack_count ? stack[index] : NULL;
 }
 
+/* Ein Fenster einer anderen Arbeitsflaeche ist fuer alles, was
+ * folgt, nicht da: Es wird nicht gezeichnet, steht nicht in der
+ * Taskleiste, bekommt keinen Klick und keine Taste. */
+bool gui_on_current_workspace(const struct window *win)
+{
+    return win && win->workspace == current_ws;
+}
+
 struct window *gui_focused(void)
 {
     for (size_t i = stack_count; i > 0; i--) {
-        if (stack[i - 1]->visible && !stack[i - 1]->minimized)
-            return stack[i - 1];
+        struct window *win = stack[i - 1];
+
+        if (win->visible && !win->minimized && gui_on_current_workspace(win))
+            return win;
     }
     return NULL;
+}
+
+uint8_t gui_workspace(void) { return current_ws; }
+
+size_t gui_workspace_windows(uint8_t index)
+{
+    size_t n = 0;
+
+    for (size_t i = 0; i < stack_count; i++) {
+        if (stack[i]->visible && stack[i]->workspace == index &&
+            !(stack[i]->flags & WF_NO_TASKBAR))
+            n++;
+    }
+    return n;
+}
+
+void gui_switch_workspace(uint8_t index)
+{
+    if (index >= GUI_WORKSPACES || index == current_ws)
+        return;
+
+    current_ws = index;
+
+    /* Auf der neuen Flaeche gehoert der Fokus dem obersten Fenster,
+     * das dort liegt - sonst tippte man ins Leere. */
+    struct window *win = gui_focused();
+
+    if (win && win->on_event) {
+        struct gui_event ev = { .type = EV_FOCUS };
+
+        win->on_event(win, &ev);
+    }
+
+    cursor_valid = false;
+    dirty = true;
+}
+
+void gui_move_to_workspace(struct window *win, uint8_t index)
+{
+    if (!win || !win->used || index >= GUI_WORKSPACES)
+        return;
+
+    win->workspace = index;
+    dirty = true;
 }
 
 bool gui_window_alive(const struct window *win)
@@ -231,6 +287,8 @@ void gui_cycle_windows(void)
             continue;
         if (win->flags & WF_NO_TASKBAR)
             continue;
+        if (!gui_on_current_workspace(win))
+            continue;
 
         win->minimized = false;
         gui_focus_window(win);
@@ -302,6 +360,7 @@ struct window *gui_create_window(const char *title, int32_t x, int32_t y,
     win->visible = true;
     win->min_w   = 200;
     win->min_h   = 120;
+    win->workspace = current_ws;
 
     stack[stack_count++] = win;
     dirty = true;
@@ -692,18 +751,29 @@ static void compose(void)
     for (size_t i = 0; i < stack_count; i++) {
         struct window *win = stack[i];
 
-        if (win->visible && !win->minimized)
+        if (win->visible && !win->minimized && gui_on_current_workspace(win))
             window_paint(c, win, win == focus);
     }
 
     /* Die Taskleiste bleibt sichtbar - es sei denn, ein rahmenloses
      * Fenster liegt ganz oben und beansprucht den Bildschirm. */
-    struct window *top = stack_count ? stack[stack_count - 1] : NULL;
+    /* Rahmenlos allein reicht nicht: Auch das Suchfenster ist
+     * rahmenlos, nimmt aber nur ein Stueck des Schirms ein - die
+     * Taskleiste soll darunter stehen bleiben. */
+    struct window *top = NULL;
+
+    for (size_t i = stack_count; i > 0 && !top; i--) {
+        if (gui_on_current_workspace(stack[i - 1]))
+            top = stack[i - 1];
+    }
     bool fullscreen = top && top->visible && !top->minimized &&
-                      (top->flags & WF_BARE);
+                      (top->flags & WF_BARE) &&
+                      top->frame.w >= c->w && top->frame.h >= c->h;
 
     if (!fullscreen)
         desktop_paint_taskbar(c);
+
+    desktop_paint_notification(c);
 
     if (menu_active)
         menu_paint(c);
@@ -743,8 +813,11 @@ static void present(void)
                 char path[FS_PATH_MAX];
                 char error[80];
 
+                /* Geglueckt ist eine Nachricht, misslungen eine
+                 * Rueckfrage: Das eine will man nur wissen, das andere
+                 * beantwortet haben. */
                 if (screenshot_take(path, sizeof(path), error, sizeof(error)))
-                    dialog_message(tr("Bildschirmfoto"), path);
+                    notify_post(ICON_CAMERA, "Bildschirmfoto", path);
                 else
                     dialog_message(tr("Bildschirmfoto"), error);
             }
@@ -777,7 +850,8 @@ static struct window *window_at(int32_t x, int32_t y)
     for (size_t i = stack_count; i > 0; i--) {
         struct window *win = stack[i - 1];
 
-        if (win->visible && !win->minimized && rect_contains(win->frame, x, y))
+        if (win->visible && !win->minimized && gui_on_current_workspace(win) &&
+            rect_contains(win->frame, x, y))
             return win;
     }
     return NULL;
@@ -804,6 +878,11 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
         lock_mouse(x, y, button, true);
         return;
     }
+
+    /* Die Einblendung liegt ueber den Fenstern - dann bekommt sie den
+     * Klick auch zuerst. */
+    if (desktop_notification_click(x, y))
+        return;
 
     if (menu_active) {
         if (rect_contains(menu_rect, x, y)) {
@@ -1002,7 +1081,34 @@ static bool window_shortcut(const struct key_event *ke)
 
     struct window *win = gui_focused();
 
+    /* Strg+Alt+Pfeil wechselt die Arbeitsflaeche, Alt+Umschalt+Pfeil
+     * nimmt das Fenster mit. Ohne beides docken die Pfeile an. */
+    if ((ke->mods & MOD_CTRL) &&
+        (ke->key == KEY_LEFT || ke->key == KEY_RIGHT)) {
+        int step = (ke->key == KEY_RIGHT) ? 1 : GUI_WORKSPACES - 1;
+
+        gui_switch_workspace((uint8_t)((gui_workspace() + step) %
+                                       GUI_WORKSPACES));
+        return true;
+    }
+
+    if ((ke->mods & MOD_SHIFT) &&
+        (ke->key == KEY_LEFT || ke->key == KEY_RIGHT)) {
+        int step = (ke->key == KEY_RIGHT) ? 1 : GUI_WORKSPACES - 1;
+        uint8_t target = (uint8_t)((gui_workspace() + step) % GUI_WORKSPACES);
+
+        if (win) {
+            gui_move_to_workspace(win, target);
+            gui_switch_workspace(target);
+        }
+        return true;
+    }
+
     switch (ke->key) {
+    case ' ':
+        /* Alt+Leertaste: die Suche ueber alles. */
+        app_search();
+        return true;
     case KEY_TAB:
         gui_cycle_windows();
         return true;

@@ -18,6 +18,7 @@
  *     aufloesung = 1280x800
  *     skalierung = auto
  *     schrift = DejaVu Sans Mono
+ *     erscheinungsbild = dunkel
  *
  * Textform, weil man sie dann mit dem Editor des Systems selbst
  * reparieren kann - und von einem anderen Rechner aus ebenso.
@@ -26,6 +27,7 @@
 #define CONFIG_H
 
 #include "retro.h"
+#include "theme.h"
 
 #define CONFIG_PATH "/Festplatte/retroos.conf"
 
@@ -47,6 +49,7 @@ struct config {
     char            resolution[16];  /* "1280x800", leer = so lassen */
     uint32_t        scale;           /* 0 = automatisch              */
     char            font[24];        /* Name der Bildschirmschrift  */
+    enum theme_mode appearance;      /* hell, dunkel, automatisch   */
 };
 
 /* Die aktuellen Werte. Aendern und danach config_save() rufen. */

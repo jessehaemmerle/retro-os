@@ -36,6 +36,8 @@ const struct app_entry app_list[] = {
     { "Installieren",      ICON_DISK,        app_setup,       true,  NULL },
     { "Papierkorb",        ICON_TRASH,       app_trash,       true,  trash_icon },
     { "Bildschirmfoto",    ICON_CAMERA,      app_screenshot,  false, NULL },
+    { "Suche",             ICON_SEARCH,      app_search,      false, NULL },
+    { "Benachrichtigungen", ICON_BELL,       app_notifications, false, NULL },
     { "Ueber RetroOS",     ICON_INFO,        app_about,       false, NULL },
 };
 

@@ -9,6 +9,11 @@
 #define GUI_MAX_WINDOWS 24
 #define WIN_TITLE_MAX   63
 
+/* Wie viele Arbeitsflaechen es gibt. Vier ist die Zahl, die auf jeden
+ * Rechner passt: genug, um Arbeit zu trennen, wenig genug, um zu
+ * wissen, wo man ist. */
+#define GUI_WORKSPACES  4
+
 struct window;
 
 enum gui_event_type {
@@ -72,6 +77,8 @@ struct window {
 
     bool          used;
     bool          visible;
+    /* Auf welcher Arbeitsflaeche das Fenster liegt. */
+    uint8_t       workspace;
     bool          minimized;
     bool          maximized;
     /* Wohin es beim Wiederherstellen zurueckgeht. Gilt nur, solange
@@ -126,11 +133,27 @@ void gui_snap(struct window *win, bool left);
 void gui_cycle_windows(void);
 struct window *gui_window_at(size_t index);
 
+/* --- Arbeitsflaechen --- */
+
+/* Welche gerade zu sehen ist (0 .. GUI_WORKSPACES-1). */
+bool    gui_on_current_workspace(const struct window *win);
+uint8_t gui_workspace(void);
+void    gui_switch_workspace(uint8_t index);
+/* Schiebt ein Fenster hinueber. Der Blick folgt ihm nicht - dafuer
+ * gibt es gui_switch_workspace() gleich danach. */
+void    gui_move_to_workspace(struct window *win, uint8_t index);
+/* Wie viele Fenster auf einer Flaeche liegen - fuer die Anzeige in
+ * der Taskleiste. */
+size_t  gui_workspace_windows(uint8_t index);
+
 /* Findet ein bereits offenes Fenster derselben Anwendung. */
 struct window *gui_find_by_paint(win_paint_fn fn);
 
 /* --- Popup-Menue --- */
-#define MENU_MAX_ITEMS 24
+/* Reicht fuer alle Programme und die Sitzungszeilen darunter. Vorher
+ * standen 24 hier - und die letzten Programme fielen still aus dem
+ * Startmenue heraus. */
+#define MENU_MAX_ITEMS 34
 
 struct menu_item {
     const char  *label;      /* NULL = Trennlinie */
@@ -155,6 +178,9 @@ void desktop_init(void);
 /* Der Hintergrund liegt unter den Fenstern, die Taskleiste darueber. */
 void desktop_paint_background(struct canvas *c);
 void desktop_paint_taskbar(struct canvas *c);
+/* Die Einblendung liegt ueber allem ausser Menue und Mauszeiger. */
+void desktop_paint_notification(struct canvas *c);
+bool desktop_notification_click(int32_t x, int32_t y);
 bool desktop_mouse(int32_t x, int32_t y, uint8_t button, bool down, bool dbl);
 void desktop_tick(void);
 int32_t desktop_work_height(void);   /* Bildschirmhoehe ohne Taskleiste */

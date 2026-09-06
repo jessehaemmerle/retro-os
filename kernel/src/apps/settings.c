@@ -25,6 +25,7 @@
 #include "widgets.h"
 #include "wallpaper.h"
 #include "lang.h"
+#include "rtc.h"
 
 #define ROW_H     30
 #define LABEL_X   16
@@ -33,6 +34,7 @@
 
 enum row_id {
     ROW_LANGUAGE,
+    ROW_APPEARANCE,
     ROW_KEYMAP,
     ROW_RESOLUTION,
     ROW_SCALE,
@@ -180,6 +182,9 @@ static void row_value(int row, char *out, size_t size)
     case ROW_LANGUAGE:
         strlcpy(out, lang_name(lang_current()), size);
         break;
+    case ROW_APPEARANCE:
+        strlcpy(out, tr(theme_mode_name(c->appearance)), size);
+        break;
     case ROW_KEYMAP: {
         const struct keymap *map = keymap_current();
 
@@ -229,6 +234,7 @@ static const char *row_label(int row)
 {
     switch (row) {
     case ROW_LANGUAGE:   return tr("Sprache");
+    case ROW_APPEARANCE: return tr("Erscheinungsbild");
     case ROW_KEYMAP:     return tr("Tastatur");
     case ROW_RESOLUTION: return tr("Aufloesung");
     case ROW_SCALE:      return tr("Vergroesserung");
@@ -269,6 +275,28 @@ static void row_step(struct settings_ui *ui, int row, int delta)
                     tr("Die Sprache gilt sofort - die Tastatur ist mitgewandert."),
                     sizeof(ui->status));
         }
+        break;
+    }
+    case ROW_APPEARANCE: {
+        /* Drei Stufen im Kreis: hell, dunkel, automatisch. */
+        int next = ((int)c->appearance + 3 + (delta > 0 ? 1 : 2)) % 3;
+
+        c->appearance = (enum theme_mode)next;
+        theme_set_mode(c->appearance);
+
+        /* Im automatischen Modus entscheidet erst der naechste
+         * Durchlauf - er kaeme binnen einer Zehntelsekunde, aber das
+         * Fenster soll sofort zeigen, was gilt. */
+        if (c->appearance == THEME_AUTO) {
+            struct datetime dt;
+
+            rtc_read(&dt);
+            theme_tick((int32_t)dt.hour);
+            strlcpy(ui->status,
+                    tr("Automatisch heisst: zwischen 19 und 7 Uhr dunkel."),
+                    sizeof(ui->status));
+        }
+        gui_invalidate();
         break;
     }
     case ROW_KEYMAP: {
@@ -579,7 +607,7 @@ void app_settings(void)
         strlcpy(ui->status, tr("Ohne Festplatte bleibt nichts gespeichert."),
                 sizeof(ui->status));
 
-    struct window *win = gui_create_window(tr("Einstellungen"), 0, 0, 620, 442,
+    struct window *win = gui_create_window(tr("Einstellungen"), 0, 0, 620, 472,
                                            WF_CENTER, ICON_SETTINGS);
     if (!win) {
         kfree(ui);

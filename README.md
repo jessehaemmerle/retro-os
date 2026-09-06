@@ -132,6 +132,10 @@ kleiner aus, denn FAT32 braucht mindestens 65525 Cluster.
 | `_` / `X` in der Titelleiste | Fenster ablegen / schließen |
 | Klick in der Taskleiste | Fenster holen oder ablegen |
 | Startmenü → Sperren | Bildschirm sperren, Fenster bleiben stehen |
+| `Alt`+`Leertaste` | Suche über Programme, Dateien und Einstellungen |
+| `Strg`+`Alt`+`←` / `→` | eine Arbeitsfläche weiter |
+| `Alt`+`Umschalt`+`←` / `→` | Fenster auf die nächste Arbeitsfläche mitnehmen |
+| Glocke in der Taskleiste | Benachrichtigungen ansehen |
 
 **Dateimanager:** Doppelklick öffnet Ordner und Dateien, die rechte Maustaste
 öffnet das Kontextmenü. Über die Tastatur: Pfeiltasten wählen aus, `Eingabe`
@@ -284,6 +288,40 @@ bekommen einen Punkt; ein Klick zeigt rechts, was ansteht.
 Zwischenzeit und ein Kurzzeitmesser. `Tab` wechselt, die Leertaste
 startet und hält an.
 
+**Dunkelmodus:** In den Einstellungen unter *Erscheinungsbild*: `Hell`,
+`Dunkel` oder `Automatisch` – dann ist es zwischen 19 und 7 Uhr dunkel.
+Die Umstellung wirkt sofort und überall, denn die Farbnamen im Quelltext
+(`COL_TEXT`, `COL_FACE`, …) zeigen nicht mehr auf feste Werte, sondern in
+die gerade gültige Tafel. Der gewählte Hintergrundverlauf bleibt derselbe
+und wird nur gedämpft; über ein eigenes Hintergrundbild legt sich ein
+Schleier. Auch die 3D-Kanten wechseln mit: Im Dunkeln sind sie nicht weiß
+und grau, sondern grau und schwarz – eine weiße Kante auf dunklem
+Kunststoff leuchtet wie eine Leuchtstoffröhre.
+
+**Benachrichtigungen:** Was nur mitgeteilt werden will – ein fertiges
+Bildschirmfoto, ein gepacktes Archiv, ein beendeter Download –, hält
+niemanden mehr mit einem Rückfragefenster auf. Es erscheint rechts unten
+für fünf Sekunden und wandert in den Verlauf hinter der Glocke in der
+Taskleiste; eine Zahl daneben sagt, wie viel davon noch niemand gesehen
+hat. Fehler bleiben Rückfragen: Das eine will man wissen, das andere
+beantwortet haben.
+
+**Suche über alles:** `Alt`+`Leertaste` öffnet ein Feld über der
+Arbeitsfläche. Getippt wird, gesucht wird sofort: Programme, Dateien und
+Einstellungen in einer Liste, Pfeiltasten wählen, `Eingabe` öffnet,
+`Escape` macht zu. Bewertet wird nach Trefferstelle und Länge – der
+genaue Name schlägt den Namen mit Anhang, der Wortanfang die Wortmitte,
+das Kurze das Lange. Wer `uhr` tippt, bekommt die Uhr, dann `uhr.elf`,
+dann die Batterieuhr aus den Einstellungen.
+
+**Arbeitsflächen:** Vier Stück, umschaltbar über die Felder rechts in der
+Taskleiste oder mit `Strg`+`Alt`+`←`/`→`. Ein Fenster gehört zu der
+Fläche, auf der es geöffnet wurde; `Alt`+`Umschalt`+`←`/`→` nimmt das
+vorderste mit hinüber. Fenster fremder Flächen sind vollständig
+abwesend – sie werden nicht gezeichnet, stehen nicht in der Taskleiste
+und bekommen weder Klick noch Taste. Ein Punkt unter der Zahl sagt, wo
+noch etwas offen steht.
+
 **Flüssiges Bild:** Ein fertiges Bild geht nicht mehr vollständig an die
 Grafikkarte. RetroOS hält eine Kopie dessen, was zuletzt zu sehen war,
 vergleicht das neu gezeichnete Bild damit in Kacheln von 32 × 16 Punkten
@@ -397,7 +435,7 @@ also so, wie es ein Betriebssystem tut.
 | **TLS** | TLS 1.3 als Client, X.509-Ketten gegen 152 eingebaute Wurzelzertifikate |
 | **Browser** | Dokumentbaum, CSS-Kaskade, Kastenmodell, Bilder, JavaScript |
 | **Energie** | ACPI: RSDP, XSDT, FADT, DSDT mit `_S5_`-Auswertung zum Abschalten |
-| **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge |
+| **Oberfläche** | Fensterstapel, Fokus, Verschieben, Größe ändern, Taskleiste, Popup-Menüs, Dialoge, vier Arbeitsflächen, Benachrichtigungen, Suche über alles, Hell- und Dunkelmodus |
 | **Protokoll** | Ring über die letzten 512 Meldungen mit Zeit, Dringlichkeit und Herkunft; alles, was `kprintf` schreibt, landet zeilenweise darin – der ganze Startvorgang ist danach im Fenster nachlesbar |
 | **Systemmonitor** | Programme, Threads und Maschine in drei Ansichten; Rechenzeitanteile werden jede Sekunde gemessen, Speicher je Programm gezählt, fremde Programme beendet nur ein Verwalter |
 | **Aufgaben** | Liste je Benutzer mit Haken, Wichtigkeit und Termin, sortiert nach dem, was als Nächstes ansteht; als Textdatei im Heimatverzeichnis |
@@ -408,6 +446,8 @@ also so, wie es ein Betriebssystem tut.
 | **Winkel** | 26 Prüfungen: bekannte Werte, Pythagoras über 1441 Grad, die Vorzeichen aller vier Quadranten, die Zeigerrichtungen der Uhr |
 | **Rechner** | 56 Prüfungen: Grundrechnen und Ketten, Festkomma und Runden, jeder Übergang des Zustandsautomaten, Teilen durch null, Überlauf, Prozent und Wurzel |
 | **PNG schreiben** | 40 Prüfungen: geschriebene Bilder mit dem eigenen Leser zurückgelesen, Punkt für Punkt – dazu Aufbau, Prüfsumme und die Blockgrenze bei 65535 Bytes |
+| **Suche** | 32 Prüfungen: Treffen und Danebenliegen samt Grenzfällen, jede Regel der Bewertung einzeln (genau vor Anhang, Anfang vor Mitte, Wortanfang vor Wortmitte, kurz vor lang), stabiles Sortieren bei Gleichstand |
+| **Oberfläche** | 59 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten |
 | **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |

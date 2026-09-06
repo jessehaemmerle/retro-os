@@ -21,6 +21,7 @@
  */
 
 #include "apps.h"
+#include "notify.h"
 #include "clipboard.h"
 #include "css.h"
 #include "font.h"
@@ -716,6 +717,10 @@ static bool save_download(struct br_state *st,
     ksnprintf(st->status, sizeof(st->status), tr("Gespeichert: %s (%s)%s"),
               path, size,
               response->truncated ? tr(" - unvollstaendig!") : "");
+
+    /* Ein Download endet oft, waehrend jemand woanders arbeitet - die
+     * Zeile in der Statusleiste sieht dann niemand. */
+    notify_post(ICON_DOWNLOAD, "Download fertig", st->status);
     return true;
 }
 

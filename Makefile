@@ -21,6 +21,7 @@ AS         := gcc
 
 CFLAGS := -std=gnu11 -O2 -g \
           -Wall -Wextra -Wno-unused-parameter \
+          -Werror=implicit-function-declaration -Werror=int-conversion \
           -ffreestanding -fno-builtin -fno-stack-protector -fno-stack-check \
           -fno-lto -fno-PIC -fno-omit-frame-pointer \
           -m64 -march=x86-64 -mno-80387 -mno-mmx -mno-sse -mno-sse2 \
@@ -39,6 +40,7 @@ UOBJDIR  := $(BUILD)/obj/userland
 
 UCFLAGS := -std=gnu11 -O2 -g \
            -Wall -Wextra -Wno-unused-parameter \
+          -Werror=implicit-function-declaration -Werror=int-conversion \
            -ffreestanding -fno-builtin -fno-stack-protector \
            -fno-pie -m64 -march=x86-64 \
            -mno-80387 -mno-mmx -mno-sse -mno-sse2 \

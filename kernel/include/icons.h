@@ -94,6 +94,13 @@ enum icon_id {
     ICON_ARCHIVE,
     ICON_ALARM,
 
+    /* Benachrichtigungen, Suche, Erscheinungsbild, Arbeitsflaechen */
+    ICON_BELL,
+    ICON_SEARCH,
+    ICON_MOON,
+    ICON_SUN,
+    ICON_WORKSPACES,
+
     ICON_COUNT
 };
 
