@@ -37,6 +37,10 @@ uint32_t gfx_scale(void);
 struct canvas *gfx_screen(void);       /* Backbuffer                        */
 void gfx_flush(void);                  /* Backbuffer -> Framebuffer         */
 void gfx_flush_rect(struct rect r);
+/* Schickt nur, was sich seit dem letzten Mal wirklich geaendert hat.
+ * Verglichen wird mit einer Kopie des zuletzt gezeigten Bildes - der
+ * Aufrufer muss nicht wissen, was er angefasst hat. */
+void gfx_flush_changed(void);
 
 /* --- Clipping --- */
 void gfx_set_clip(struct canvas *c, struct rect r);

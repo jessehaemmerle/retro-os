@@ -10,6 +10,7 @@
 #define DISPLAYUTIL_H
 
 #include "retro.h"
+#include "gfx.h"
 
 struct disp_mode {
     int32_t w, h;
@@ -46,5 +47,29 @@ size_t disp_standard_modes(struct disp_mode *out, size_t max);
  * behalten. */
 void disp_fit_window(int32_t *x, int32_t *y, int32_t *w, int32_t *h,
                      int32_t screen_w, int32_t screen_h);
+
+/* Fasst ein Gitter geaenderter Kacheln zu moeglichst wenigen
+ * Rechtecken zusammen. tiles ist cols*rows Bytes gross, zeilenweise
+ * abgelegt, und ein Byte ungleich null heisst "diese Kachel hat sich
+ * geaendert". Jede eingesammelte Kachel wird dabei geloescht - danach
+ * steht das Gitter wieder auf null.
+ *
+ * Gesucht wird gierig: erst nach rechts, so weit die Zeile geaendert
+ * ist, dann nach unten, so lange die ganze Breite darunter ebenfalls
+ * geaendert ist. Ein verschobenes Fenster wird so zu einem einzigen
+ * Rechteck statt zu Dutzenden Streifen - und jedes Rechteck kostet
+ * einen Weg zur Grafikkarte.
+ *
+ * width/height beschneiden das Ergebnis: Die letzte Kachelspalte und
+ * -zeile ragen ueber den Bildschirm hinaus, wenn seine Groesse kein
+ * Vielfaches der Kachelgroesse ist.
+ *
+ * Passen nicht alle Rechtecke in out, wird der Rest zu einem
+ * umschliessenden Rechteck zusammengefasst. Lieber etwas zu viel
+ * schicken als etwas vergessen. */
+size_t disp_damage_rects(uint8_t *tiles, int32_t cols, int32_t rows,
+                         int32_t tile_w, int32_t tile_h,
+                         int32_t width, int32_t height,
+                         struct rect *out, size_t max);
 
 #endif /* DISPLAYUTIL_H */

@@ -12,6 +12,12 @@
  * ausschliesslich die Maus, wird lediglich der Bereich unter dem Zeiger
  * wiederhergestellt und an der neuen Stelle neu gezeichnet - das kostet
  * ein paar hundert Pixel statt eines ganzen Bildschirms.
+ *
+ * Und auch ein vollstaendiger Aufbau geht nicht vollstaendig an die
+ * Grafikkarte: gfx_flush_changed() vergleicht das fertige Bild mit dem
+ * zuletzt gezeigten und schickt nur die Rechtecke weiter, die sich
+ * unterscheiden. Ein Knopf, der beim Darueberfahren die Farbe wechselt,
+ * kostet damit einen Knopf und nicht einen Bildschirm.
  */
 
 #include "gui.h"
@@ -708,10 +714,11 @@ static void present(void)
     struct canvas *c = gfx_screen();
 
     /* Der ganze Bildaufbau kostet: Der Hintergrund, alle Fenster und
-     * die Taskleiste werden neu gezeichnet, und danach geht ein
-     * Vollbild an die Grafikkarte. Bei jeder Mausbewegung ist das zu
-     * viel - viele Fenster faerben schon beim Darueberfahren einen
-     * Knopf um und verlangen dafuer ein neues Bild.
+     * die Taskleiste werden neu gezeichnet. An die Grafikkarte geht
+     * danach zwar nur noch das, was sich geaendert hat - das Zeichnen
+     * selbst bleibt aber. Bei jeder Mausbewegung ist das zu viel -
+     * viele Fenster faerben schon beim Darueberfahren einen Knopf um
+     * und verlangen dafuer ein neues Bild.
      *
      * Darum wird der Vollaufbau auf 60 Bilder je Sekunde begrenzt.
      * Dazwischen laeuft der Zeiger weiter ueber den billigen Weg
@@ -727,7 +734,7 @@ static void present(void)
             compose();
             cursor_save(c, cursor_x, cursor_y);
             cursor_draw(c, cursor_x, cursor_y);
-            gfx_flush();
+            gfx_flush_changed();
             dirty = false;
 
             /* Genau hier steht auf dem Schirm, was der Benutzer

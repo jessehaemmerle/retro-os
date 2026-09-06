@@ -4,6 +4,22 @@
  * Der Framebuffer einer Grafikkarte liegt haeufig in nicht gecachtem
  * Speicher, dort waere jedes einzelne Pixel teuer. gfx_flush() kopiert das
  * fertige Bild anschliessend in einem Rutsch.
+ *
+ * Ein ganzes Bild sind bei 1024x768 drei Megabyte, und die kosten auf
+ * einer emulierten Grafikkarte spuerbar Zeit - sechzig Mal je Sekunde
+ * ist das der Grund, warum sich der Zeiger hakelig anfuehlt. Meist
+ * aendert sich aber nur ein Knopf, ein Textfeld oder ein verschobenes
+ * Fenster.
+ *
+ * Darum haelt gfx eine zweite Kopie: den Stand, der zuletzt an die
+ * Karte ging. gfx_flush_changed() vergleicht das frisch gezeichnete
+ * Bild kachelweise damit und schickt nur die Kacheln weiter, die sich
+ * wirklich unterscheiden. Der Vergleich liest gecachten Speicher und
+ * ist um ein Vielfaches billiger als das Schreiben, das er spart.
+ *
+ * Die Kopie muss dabei immer genau das enthalten, was auf dem Schirm
+ * steht - jeder Weg zur Karte fuehrt deshalb durch eine der drei
+ * Funktionen hier, und jede von ihnen zieht die Kopie nach.
  */
 
 #include "gfx.h"
@@ -11,6 +27,18 @@
 #include "font.h"
 #include "kstring.h"
 #include "mm.h"
+#include "displayutil.h"
+
+/* Kachelgroesse fuer den Vergleich. Klein genug, dass ein blinkender
+ * Schreibzeiger nicht das halbe Fenster mitschickt, gross genug, dass
+ * das Gitter selbst nicht ins Gewicht faellt. */
+#define TILE_W 32
+#define TILE_H 16
+
+/* Reicht bis 2560x1440 - mehr Kacheln, und es geht das ganze Bild
+ * hinaus statt einzelner Rechtecke. */
+#define MAX_TILES 8192
+#define MAX_RECTS 48
 
 static struct canvas screen;
 
@@ -19,6 +47,16 @@ static struct canvas screen;
 static uint64_t screen_phys;
 static size_t   screen_pages;
 static uint32_t screen_scale = 1;
+
+/* Der zuletzt an die Karte geschickte Stand. Fehlt er (kein Speicher),
+ * geht jedes Bild wieder ganz hinaus - langsamer, aber richtig. */
+static uint32_t *shadow;
+static uint64_t  shadow_phys;
+static size_t    shadow_pages;
+static bool      shadow_valid;
+
+static uint8_t     tiles[MAX_TILES];
+static struct rect rects[MAX_RECTS];
 
 bool rect_contains(struct rect r, int32_t x, int32_t y)
 {
@@ -59,8 +97,15 @@ bool gfx_init(int32_t width, int32_t height, uint32_t scale)
     if (!phys)
         return false;
 
+    /* Die Kopie ist Kuer: Ohne sie geht jedes Bild ganz hinaus, mit
+     * ihr nur die geaenderten Stellen. An zu wenig Speicher dafuer
+     * soll der Moduswechsel nicht scheitern. */
+    uint64_t copy_phys = pmm_alloc_pages(pages);
+
     uint64_t old_phys = screen_phys;
     size_t   old_pages = screen_pages;
+    uint64_t old_copy = shadow_phys;
+    size_t   old_copy_pages = shadow_pages;
 
     screen.px     = phys_to_virt(phys);
     screen.w      = width;
@@ -71,10 +116,20 @@ bool gfx_init(int32_t width, int32_t height, uint32_t scale)
     screen_scale  = scale;
     gfx_reset_clip(&screen);
 
+    shadow       = copy_phys ? phys_to_virt(copy_phys) : NULL;
+    shadow_phys  = copy_phys;
+    shadow_pages = copy_phys ? pages : 0;
+
+    /* Was auf dem Schirm steht, weiss nach einem Moduswechsel niemand -
+     * das naechste Bild geht darum wieder vollstaendig hinaus. */
+    shadow_valid = false;
+
     memset32(screen.px, 0, pixels);
 
     if (old_phys)
         pmm_free_pages(old_phys, old_pages);
+    if (old_copy)
+        pmm_free_pages(old_copy, old_copy_pages);
     return true;
 }
 
@@ -85,8 +140,28 @@ struct canvas *gfx_screen(void)
     return &screen;
 }
 
+/* Zieht die Kopie fuer einen Bereich nach, der gerade hinausgegangen
+ * ist. */
+static void shadow_store(struct rect r)
+{
+    if (!shadow)
+        return;
+
+    for (int32_t row = 0; row < r.h; row++) {
+        size_t off = (size_t)(r.y + row) * (size_t)screen.stride + (size_t)r.x;
+
+        memcpy(&shadow[off], &screen.px[off], (size_t)r.w * 4);
+    }
+}
+
 void gfx_flush(void)
 {
+    if (shadow) {
+        memcpy(shadow, screen.px,
+               (size_t)screen.stride * (size_t)screen.h * 4);
+        shadow_valid = true;
+    }
+
     fb_present(screen.px, (uint32_t)screen.stride, 0, 0,
                (uint32_t)screen.w, (uint32_t)screen.h, screen_scale);
 }
@@ -97,8 +172,65 @@ void gfx_flush_rect(struct rect r)
     if (r.w <= 0 || r.h <= 0)
         return;
 
+    shadow_store(r);
     fb_present(screen.px, (uint32_t)screen.stride, (uint32_t)r.x,
                (uint32_t)r.y, (uint32_t)r.w, (uint32_t)r.h, screen_scale);
+}
+
+/* Unterscheidet sich eine Kachel von der Kopie? Verglichen wird
+ * zeilenweise; die erste Abweichung reicht. */
+static bool tile_changed(int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    for (int32_t row = 0; row < h; row++) {
+        size_t off = (size_t)(y + row) * (size_t)screen.stride + (size_t)x;
+
+        if (memcmp(&shadow[off], &screen.px[off], (size_t)w * 4) != 0)
+            return true;
+    }
+    return false;
+}
+
+void gfx_flush_changed(void)
+{
+    int32_t cols = (screen.w + TILE_W - 1) / TILE_W;
+    int32_t rows = (screen.h + TILE_H - 1) / TILE_H;
+
+    /* Ohne Kopie, nach einem Moduswechsel oder bei einem Bildschirm,
+     * fuer den das Gitter nicht reicht: einmal alles. */
+    if (!shadow || !shadow_valid || (size_t)cols * (size_t)rows > MAX_TILES) {
+        gfx_flush();
+        return;
+    }
+
+    bool any = false;
+
+    for (int32_t ty = 0; ty < rows; ty++) {
+        int32_t y = ty * TILE_H;
+        int32_t h = MIN(TILE_H, screen.h - y);
+
+        for (int32_t tx = 0; tx < cols; tx++) {
+            int32_t x = tx * TILE_W;
+            int32_t w = MIN(TILE_W, screen.w - x);
+            bool changed = tile_changed(x, y, w, h);
+
+            tiles[ty * cols + tx] = changed ? 1 : 0;
+            any = any || changed;
+        }
+    }
+
+    if (!any)
+        return;
+
+    size_t count = disp_damage_rects(tiles, cols, rows, TILE_W, TILE_H,
+                                     screen.w, screen.h, rects, MAX_RECTS);
+
+    for (size_t i = 0; i < count; i++) {
+        struct rect r = rects[i];
+
+        shadow_store(r);
+        fb_present(screen.px, (uint32_t)screen.stride, (uint32_t)r.x,
+                   (uint32_t)r.y, (uint32_t)r.w, (uint32_t)r.h, screen_scale);
+    }
 }
 
 void gfx_set_clip(struct canvas *c, struct rect r)

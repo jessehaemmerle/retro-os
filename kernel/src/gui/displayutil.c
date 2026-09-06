@@ -152,3 +152,107 @@ void disp_fit_window(int32_t *x, int32_t *y, int32_t *w, int32_t *h,
     if (*y < 0)
         *y = 0;
 }
+
+/* --- Schadensverfolgung --------------------------------------------- */
+
+/* Vom Kachelgitter zurueck auf Punkte, beschnitten auf den Bildschirm. */
+static struct rect tile_rect(int32_t tx, int32_t ty, int32_t tw, int32_t th,
+                             int32_t tile_w, int32_t tile_h,
+                             int32_t width, int32_t height)
+{
+    int32_t x0 = tx * tile_w;
+    int32_t y0 = ty * tile_h;
+    int32_t x1 = MIN((tx + tw) * tile_w, width);
+    int32_t y1 = MIN((ty + th) * tile_h, height);
+
+    if (x1 <= x0 || y1 <= y0)
+        return rect_make(0, 0, 0, 0);
+    return rect_make(x0, y0, x1 - x0, y1 - y0);
+}
+
+/* Alles, was noch gesetzt ist, in ein einziges Rechteck - der Ausweg,
+ * wenn die Liste voll ist. */
+static struct rect remaining_rect(uint8_t *tiles, int32_t cols, int32_t rows,
+                                  int32_t tile_w, int32_t tile_h,
+                                  int32_t width, int32_t height)
+{
+    int32_t x0 = cols, y0 = rows, x1 = 0, y1 = 0;
+
+    for (int32_t ty = 0; ty < rows; ty++) {
+        for (int32_t tx = 0; tx < cols; tx++) {
+            if (!tiles[ty * cols + tx])
+                continue;
+
+            tiles[ty * cols + tx] = 0;
+            if (tx < x0) x0 = tx;
+            if (ty < y0) y0 = ty;
+            if (tx + 1 > x1) x1 = tx + 1;
+            if (ty + 1 > y1) y1 = ty + 1;
+        }
+    }
+
+    if (x1 <= x0 || y1 <= y0)
+        return rect_make(0, 0, 0, 0);
+    return tile_rect(x0, y0, x1 - x0, y1 - y0, tile_w, tile_h, width, height);
+}
+
+size_t disp_damage_rects(uint8_t *tiles, int32_t cols, int32_t rows,
+                         int32_t tile_w, int32_t tile_h,
+                         int32_t width, int32_t height,
+                         struct rect *out, size_t max)
+{
+    size_t n = 0;
+
+    if (!tiles || !out || max == 0 || cols <= 0 || rows <= 0)
+        return 0;
+    if (tile_w <= 0 || tile_h <= 0)
+        return 0;
+
+    for (int32_t ty = 0; ty < rows; ty++) {
+        for (int32_t tx = 0; tx < cols; tx++) {
+            if (!tiles[ty * cols + tx])
+                continue;
+
+            /* Der letzte Platz gehoert dem Rest. */
+            if (n + 1 == max) {
+                struct rect r = remaining_rect(tiles, cols, rows, tile_w,
+                                               tile_h, width, height);
+
+                if (r.w > 0 && r.h > 0)
+                    out[n++] = r;
+                return n;
+            }
+
+            int32_t tw = 1;
+            while (tx + tw < cols && tiles[ty * cols + tx + tw])
+                tw++;
+
+            int32_t th = 1;
+            while (ty + th < rows) {
+                bool full = true;
+
+                for (int32_t i = 0; i < tw; i++) {
+                    if (!tiles[(ty + th) * cols + tx + i]) {
+                        full = false;
+                        break;
+                    }
+                }
+                if (!full)
+                    break;
+                th++;
+            }
+
+            for (int32_t r = 0; r < th; r++) {
+                for (int32_t i = 0; i < tw; i++)
+                    tiles[(ty + r) * cols + tx + i] = 0;
+            }
+
+            struct rect r = tile_rect(tx, ty, tw, th, tile_w, tile_h,
+                                      width, height);
+
+            if (r.w > 0 && r.h > 0)
+                out[n++] = r;
+        }
+    }
+    return n;
+}

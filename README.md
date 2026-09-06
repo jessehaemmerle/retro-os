@@ -284,6 +284,17 @@ bekommen einen Punkt; ein Klick zeigt rechts, was ansteht.
 Zwischenzeit und ein Kurzzeitmesser. `Tab` wechselt, die Leertaste
 startet und hält an.
 
+**Flüssiges Bild:** Ein fertiges Bild geht nicht mehr vollständig an die
+Grafikkarte. RetroOS hält eine Kopie dessen, was zuletzt zu sehen war,
+vergleicht das neu gezeichnete Bild damit in Kacheln von 32 × 16 Punkten
+und schickt nur die Rechtecke, die sich wirklich unterscheiden –
+benachbarte Kacheln vorher zu möglichst großen Blöcken zusammengefasst.
+Der Vergleich liest Arbeitsspeicher und ist um ein Vielfaches billiger
+als das Schreiben, das er spart: Beim Verschieben eines Fensters gehen
+rund ein Fünftel der Punkte hinaus statt aller, und ein Bild, das gar
+nichts verändert hat, kostet keinen einzigen. Das merkt man vor allem in
+einer virtuellen Maschine, wo jeder Punkt durch die Emulation muss.
+
 **Hintergrund:** Neben den fünf Verläufen lässt sich ein eigenes Bild
 einsetzen – in den Einstellungen unter *Hintergrundbild*, das die Bilder
 aus `/Medien` und aus dem eigenen `Bilder`-Ordner durchblättert, oder im
@@ -377,7 +388,7 @@ also so, wie es ein Betriebssystem tut.
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
 | **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte |
 | **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; vier Belegungen (de/us/uk/ch) inkl. AltGr |
-| **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift |
+| **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift; Schadensverfolgung schickt nur geänderte Rechtecke an die Karte |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
 | **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
 | **Netzwerk** | Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, HTTP/1.1 |
@@ -397,7 +408,7 @@ also so, wie es ein Betriebssystem tut.
 | **Winkel** | 26 Prüfungen: bekannte Werte, Pythagoras über 1441 Grad, die Vorzeichen aller vier Quadranten, die Zeigerrichtungen der Uhr |
 | **Rechner** | 56 Prüfungen: Grundrechnen und Ketten, Festkomma und Runden, jeder Übergang des Zustandsautomaten, Teilen durch null, Überlauf, Prozent und Wurzel |
 | **PNG schreiben** | 40 Prüfungen: geschriebene Bilder mit dem eigenen Leser zurückgelesen, Punkt für Punkt – dazu Aufbau, Prüfsumme und die Blockgrenze bei 65535 Bytes |
-| **Bildschirm** | 152 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm |
+| **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
 | **Rollen** | Sechs Fähigkeiten (Konten, Netz, Platte, Protokoll, Strom, Einstellungen) statt „Verwalter ja/nein"; eine Rolle ist ein Name für eine Menge davon |

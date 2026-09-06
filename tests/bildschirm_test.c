@@ -253,6 +253,217 @@ static void test_fenster(void)
             140, 120, 500, 280);
 }
 
+
+/* --- Schadensverfolgung --------------------------------------------- */
+
+/* Ein Gitter aus einer Zeichnung: '#' ist geaendert, alles andere
+ * nicht. Bequemer als Zahlenkolonnen, und man sieht beim Lesen, was
+ * geprueft wird. */
+static int32_t gitter(const char **zeilen, uint8_t *tiles, int32_t *cols)
+{
+    int32_t rows = 0;
+
+    *cols = (int32_t)strlen(zeilen[0]);
+    for (int32_t y = 0; zeilen[y]; y++) {
+        for (int32_t x = 0; x < *cols; x++)
+            tiles[y * *cols + x] = zeilen[y][x] == '#';
+        rows++;
+    }
+    return rows;
+}
+
+/* Deckt die Liste genau die Kacheln ab, die gesetzt waren - und keine
+ * doppelt? Das ist die eigentliche Bedingung: Was zu viel geschickt
+ * wird, kostet nur Zeit; was fehlt, bleibt als Rest des alten Bildes
+ * stehen. */
+static void deckt_ab(const char *was, const char **zeilen,
+                     int32_t tile, size_t max, size_t erwartet_rechtecke,
+                     bool exakt)
+{
+    uint8_t tiles[256];
+    uint8_t soll[256];
+    struct rect out[32];
+    int32_t cols = 0;
+    int32_t rows = gitter(zeilen, tiles, &cols);
+
+    memcpy(soll, tiles, (size_t)(cols * rows));
+
+    size_t n = disp_damage_rects(tiles, cols, rows, tile, tile,
+                                 cols * tile, rows * tile, out, max);
+
+    pruefe_zahl(was, (long)erwartet_rechtecke, (long)n);
+
+    /* Das Gitter muss leer zurueckkommen. */
+    for (int32_t i = 0; i < cols * rows; i++) {
+        if (tiles[i]) {
+            pruefe(was, false);
+            return;
+        }
+    }
+
+    uint8_t abgedeckt[256];
+    memset(abgedeckt, 0, sizeof(abgedeckt));
+
+    for (size_t i = 0; i < n; i++) {
+        for (int32_t y = out[i].y / tile; y < (out[i].y + out[i].h) / tile; y++) {
+            for (int32_t x = out[i].x / tile;
+                 x < (out[i].x + out[i].w) / tile; x++) {
+                /* Ohne "exakt" darf sich der Rest mit dem
+                 * ueberschneiden, was schon geschickt wurde. */
+                if (exakt && abgedeckt[y * cols + x])
+                    pruefe(was, false);           /* doppelt geschickt */
+                abgedeckt[y * cols + x] = 1;
+            }
+        }
+    }
+
+    for (int32_t i = 0; i < cols * rows; i++) {
+        if (soll[i] && !abgedeckt[i]) {
+            printf("  FEHLER: %s: Kachel %d fehlt\n", was, (int)i);
+            fehler++;
+            geprueft++;
+            return;
+        }
+        /* Ohne "exakt" darf grosszuegig zusammengefasst werden. */
+        if (exakt && !soll[i] && abgedeckt[i]) {
+            printf("  FEHLER: %s: Kachel %d zu viel\n", was, (int)i);
+            fehler++;
+            geprueft++;
+            return;
+        }
+    }
+    geprueft++;
+}
+
+static void test_schaden(void)
+{
+    printf("Schadensverfolgung\n");
+
+    /* Nichts geaendert, nichts zu schicken. */
+    {
+        const char *leer[] = { "....", "....", NULL };
+        deckt_ab("nichts", leer, 16, 32, 0, true);
+    }
+
+    /* Eine einzelne Kachel. */
+    {
+        const char *eine[] = { "....", ".#..", "....", NULL };
+        uint8_t tiles[64];
+        struct rect out[8];
+        int32_t cols = 0;
+        int32_t rows = gitter(eine, tiles, &cols);
+        size_t n = disp_damage_rects(tiles, cols, rows, 16, 16, 64, 48, out, 8);
+
+        pruefe_zahl("eine Kachel: Anzahl", 1, (long)n);
+        pruefe_zahl("eine Kachel: x", 16, out[0].x);
+        pruefe_zahl("eine Kachel: y", 16, out[0].y);
+        pruefe_zahl("eine Kachel: Breite", 16, out[0].w);
+        pruefe_zahl("eine Kachel: Hoehe", 16, out[0].h);
+    }
+
+    /* Ein Block wird ein Rechteck und nicht vier Streifen - genau
+     * dafuer ist das Ganze da. */
+    {
+        const char *block[] = { "......", ".####.", ".####.", ".####.",
+                                "......", NULL };
+        uint8_t tiles[64];
+        struct rect out[8];
+        int32_t cols = 0;
+        int32_t rows = gitter(block, tiles, &cols);
+        size_t n = disp_damage_rects(tiles, cols, rows, 10, 10, 60, 50, out, 8);
+
+        pruefe_zahl("Block: ein Rechteck", 1, (long)n);
+        pruefe_zahl("Block: x", 10, out[0].x);
+        pruefe_zahl("Block: y", 10, out[0].y);
+        pruefe_zahl("Block: Breite", 40, out[0].w);
+        pruefe_zahl("Block: Hoehe", 30, out[0].h);
+    }
+
+    /* Zwei getrennte Flecken bleiben zwei Rechtecke. */
+    {
+        const char *zwei[] = { "##...", "##...", "...##", "...##", NULL };
+        deckt_ab("zwei Flecken", zwei, 8, 32, 2, true);
+    }
+
+    /* Eine Treppe laesst sich nicht zu einem Rechteck machen. Wichtig
+     * ist nur, dass jede Kachel genau einmal vorkommt. */
+    {
+        const char *treppe[] = { "#....", ".#...", "..#..", "...#.", NULL };
+        deckt_ab("Treppe", treppe, 8, 32, 4, true);
+    }
+
+    /* Ein Kamm: oben durchgehend, darunter Zaehne. Der gierige Weg
+     * nimmt die obere Zeile ganz und dann jeden Zahn. */
+    {
+        const char *kamm[] = { "#####", "#.#.#", NULL };
+        deckt_ab("Kamm", kamm, 8, 32, 4, true);
+    }
+
+    /* Alles geaendert: ein einziges Rechteck ueber den ganzen Schirm. */
+    {
+        uint8_t tiles[64];
+        struct rect out[8];
+
+        memset(tiles, 1, 24);
+        size_t n = disp_damage_rects(tiles, 6, 4, 16, 16, 96, 64, out, 8);
+
+        pruefe_zahl("alles: ein Rechteck", 1, (long)n);
+        pruefe_zahl("alles: Breite", 96, out[0].w);
+        pruefe_zahl("alles: Hoehe", 64, out[0].h);
+    }
+
+    /* Die letzte Spalte und Zeile ragen ueber den Bildschirm hinaus,
+     * wenn seine Groesse kein Vielfaches der Kachel ist. Geschickt
+     * werden darf nur, was es wirklich gibt. */
+    {
+        uint8_t tiles[64];
+        struct rect out[8];
+
+        memset(tiles, 1, 4);
+        size_t n = disp_damage_rects(tiles, 2, 2, 16, 16, 20, 18, out, 8);
+
+        pruefe_zahl("Rand: ein Rechteck", 1, (long)n);
+        pruefe_zahl("Rand: Breite", 20, out[0].w);
+        pruefe_zahl("Rand: Hoehe", 18, out[0].h);
+    }
+
+    /* Mehr Flecken als Plaetze: Der Rest wird zu einem umschliessenden
+     * Rechteck. Zu viel schicken ist erlaubt, etwas vergessen nicht. */
+    {
+        const char *viele[] = { "#.#.#", ".....", "#.#.#", NULL };
+        deckt_ab("Liste voll", viele, 8, 3, 3, false);
+    }
+
+    /* Und der aeusserste Fall: nur ein einziger Platz. */
+    {
+        const char *viele[] = { "#...#", ".....", "#...#", NULL };
+        uint8_t tiles[64];
+        struct rect out[8];
+        int32_t cols = 0;
+        int32_t rows = gitter(viele, tiles, &cols);
+        size_t n = disp_damage_rects(tiles, cols, rows, 10, 10, 50, 30, out, 1);
+
+        pruefe_zahl("ein Platz: Anzahl", 1, (long)n);
+        pruefe_zahl("ein Platz: x", 0, out[0].x);
+        pruefe_zahl("ein Platz: y", 0, out[0].y);
+        pruefe_zahl("ein Platz: Breite", 50, out[0].w);
+        pruefe_zahl("ein Platz: Hoehe", 30, out[0].h);
+    }
+
+    /* Unsinn faellt nicht auf die Nase. */
+    {
+        uint8_t tiles[4] = { 1, 1, 1, 1 };
+        struct rect out[4];
+
+        pruefe_zahl("kein Platz", 0,
+                    (long)disp_damage_rects(tiles, 2, 2, 16, 16, 32, 32, out, 0));
+        pruefe_zahl("keine Kacheln", 0,
+                    (long)disp_damage_rects(tiles, 0, 0, 16, 16, 32, 32, out, 4));
+        pruefe_zahl("Kachelgroesse null", 0,
+                    (long)disp_damage_rects(tiles, 2, 2, 0, 16, 32, 32, out, 4));
+    }
+}
+
 int main(void)
 {
     printf("=== Bildschirm ===\n");
@@ -261,6 +472,7 @@ int main(void)
     test_vergroesserung();
     test_speicher();
     test_fenster();
+    test_schaden();
 
     printf("\n%d Pruefungen, %d Fehler\n", geprueft, fehler);
     return fehler ? 1 : 0;
