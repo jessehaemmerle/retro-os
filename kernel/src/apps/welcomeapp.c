@@ -217,7 +217,7 @@ static const struct chapter chapters[] = {
       "Ihre Lizenzen liegen unter third_party.",
       "",
       "Was sich ohne Bildschirm pruefen laesst, wird geprueft: ueber",
-      "1400 Pruefungen in einundzwanzig Sammlungen.",
+      "1600 Pruefungen in zweiundzwanzig Sammlungen.",
       NULL }
 },
 };

@@ -40,6 +40,12 @@ struct mouse_state {
     int32_t dx, dy;
     int8_t  scroll;
     bool    left, right, middle;
+
+    /* Dieselben Tasten als Maske (MOUSE_BTN_...), dazu die Flanken seit
+     * dem letzten Abholen. Der Zustand allein verraet einen Klick
+     * nicht, der zwischen zwei Abfragen begann und endete. */
+    uint8_t buttons;
+    uint8_t pressed, released;
 };
 
 /* PS/2-Controller und die beiden Geraete einrichten. Gibt false zurueck,
@@ -57,6 +63,10 @@ void keyboard_inject(uint16_t key, bool pressed);
 void mouse_init(int32_t screen_w, int32_t screen_h);
 /* Liefert true, wenn sich seit dem letzten Aufruf etwas geaendert hat. */
 bool mouse_poll(struct mouse_state *out);
+/* Nur die Position, ohne etwas zu verbrauchen. mouse_poll() holt
+ * Bewegung und Tastenflanken ab - wer nur hinsehen will, etwa ein
+ * Diagnosebefehl, darf der Oberflaeche nichts wegnehmen. */
+void mouse_position(int32_t *x, int32_t *y);
 /* Der Tastatur-Interrupt hat ein Byte gefunden, das der Maus gehoert -
  * beide haengen am selben Datenport. Abgeholt wird es hier, unter der
  * Sperre des Maustreibers. */
@@ -84,7 +94,9 @@ void mouse_set_limits(int32_t screen_w, int32_t screen_h);
 /* Bewegung von einem anderen Treiber - etwa der USB-Maus. */
 void mouse_inject(int32_t dx, int32_t dy, int8_t scroll,
                   bool left, bool right, bool middle);
-void mouse_inject_absolute(int32_t x, int32_t y, int8_t scroll,
-                           bool left, bool right, bool middle);
+/* Eine absolute Stelle, wie sie ein Tablett meldet: x und y als Anteil
+ * von 0 bis 65535 der Breite und Hoehe der Oberflaeche. */
+void mouse_inject_unit(int32_t x, int32_t y, int8_t scroll,
+                       bool left, bool right, bool middle);
 
 #endif /* INPUT_H */

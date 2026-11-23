@@ -466,7 +466,7 @@ also so, wie es ein Betriebssystem tut.
 | **Installation** | Schreibt eine eigene GUID-Tabelle, formatiert EFI-Abschnitt und Ablage, kopiert Bootloader und Kernel und setzt den Startsektor für BIOS-Rechner |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
 | **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte |
-| **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; vier Belegungen (de/us/uk/ch) inkl. AltGr |
+| **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; **USB-Tablett und jeder andere Zeiger ohne Boot-Protokoll** über die HID-Berichtsbeschreibung; Tastenflanken statt nur Zustand; vier Belegungen (de/us/uk/ch) inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift; Schadensverfolgung schickt nur geänderte Rechtecke an die Karte |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
 | **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
@@ -489,6 +489,7 @@ also so, wie es ein Betriebssystem tut.
 | **PNG schreiben** | 40 Prüfungen: geschriebene Bilder mit dem eigenen Leser zurückgelesen, Punkt für Punkt – dazu Aufbau, Prüfsumme und die Blockgrenze bei 65535 Bytes |
 | **Suche** | 32 Prüfungen: Treffen und Danebenliegen samt Grenzfällen, jede Regel der Bewertung einzeln (genau vor Anhang, Anfang vor Mitte, Wortanfang vor Wortmitte, kurz vor lang), stabiles Sortieren bei Gleichstand |
 | **Oberfläche** | 110 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten, das Blättern durch ein Menü über Trennlinien und blasse Zeilen hinweg – auch durch eines, in dem gar nichts wählbar ist, dazu der Fünf-Punkte-Filter der Kantenglättung samt Rändern und die Vertauschung von Rot und Blau zwischen RGB- und BGR-Panels |
+| **Zeiger** | 124 Prüfungen: die Berichtsbeschreibung eines Tabletts, einer gewöhnlichen Maus und einer mit Berichtsnummer, Tastatur und Zufall (20 000 zufällige und jede abgeschnittene Beschreibung, auch unter AddressSanitizer), Felder über Bytegrenzen und mit Vorzeichen, Umrechnung auf den Bildschirm samt Rand, PS/2-Pakete mit Überlauf und Rad, und für **jede** der 4096 Kombinationen aus Zustand und Flanken: nie eine doppelte Flanke, nie zu viele Schritte, Ende immer im gemeldeten Zustand |
 | **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
@@ -609,6 +610,61 @@ einem Fünf-Punkte-Filter (1-2-3-2-1). Fertige Graustufen abzulegen wäre
 achtmal so groß gewesen und hätte dasselbe ergeben. Umschalten lässt es sich in den Einstellungen –
 das Fenster zeichnet sich sofort in der neuen Schrift und ist damit seine
 eigene Vorschau – oder in der Konsole mit `schrift`.
+
+### Ein Zeiger, der dort steht, wo die Hand ist
+
+Ein Zeiger, der „nicht richtig" funktioniert, hat selten eine einzige
+Ursache. In RetroOS waren es vier, und jede hatte ihren eigenen
+Ausfall.
+
+**Der Zustand wurde ohne Sperre abgeholt.** `mouse_poll()` las Position,
+Tasten und Änderungsmarke einzeln und setzte die Marke zuletzt zurück.
+Schlug dazwischen ein Paket ein – IRQ 12 auf einem anderen Kern, oder
+auf demselben mitten in der Funktion –, war die neue Position da und die
+Marke gelöscht: Der Zeiger blieb einen Schritt hinter der Hand stehen,
+bis sich die Maus wieder bewegte. Jetzt holt eine einzige Sperre alles
+auf einmal ab. Der Befehl `maus` liest nur noch (`mouse_position()`),
+denn auch er hatte der Oberfläche beim Hinsehen die Eingabe
+weggenommen.
+
+**Klicks gingen verloren.** Die Hauptschleife sah nur den *Zustand* der
+Tasten. Zwischen zwei Durchläufen liegt aber ein ganzes Bild – in einer
+virtuellen Maschine leicht dreißig Millisekunden –, und ein Klick ist
+kürzer: Gedrückt und losgelassen, noch bevor jemand nachgesehen hat,
+sagt der Zustand beide Male „oben". Gemessen in QEMU mit acht
+blitzschnellen Klicks auf denselben Knopf: **vorher 0 von 8, jetzt
+8 von 8.** Der Treiber zählt darum die Flanken mit, und
+`mouse_button_steps()` macht daraus die Folge der Ereignisse.
+
+**Pakete mit Überlaufbit wurden weggeworfen.** Eine schnelle Bewegung
+setzt es – und mit dem Paket ging der Zustand der Tasten verloren, also
+auch ein Loslassen, das dann hing, bis jemand wieder klickte. Es gilt
+jetzt wie jedes andere Paket.
+
+**Das Rad lief verkehrt herum.** PS/2 und HID zählen entgegengesetzt:
+bei PS/2 ist positiv „zum Benutzer hin", bei HID „vom Benutzer weg".
+Beide Wege reichten den Wert unverändert weiter, die Oberfläche rechnet
+mit der zweiten Zählweise – und mit einer PS/2-Maus, wie VirtualBox sie
+ohne Tablett anbietet, scrollte jedes Rad falsch herum. Zu sehen war
+das im Bild: Rad nach unten zeigte frühere Zeilen der Konsole.
+
+Dazu kommt das Tablett. Es hat kein Boot-Protokoll, und genau
+deswegen hatte `usb_hid_attach()` es ausgelassen – Klasse 3.0.0, nicht
+3.1.2. Wie die Berichte eines solchen Geräts aufgebaut sind, steht in
+seiner Berichtsbeschreibung, einer kleinen Bytecode-Sprache aus
+Elementen mit Präfixbyte. `hidparse.c` liest sie so weit, wie ein
+Zeiger sie braucht: Lage und Breite von X, Y, Rad und Tasten, den
+Wertebereich und – wenn vorn eine Berichtsnummer steht – die um acht Bit
+verschobenen Offsets. Ein Maximum, das als `0xFF` in einem Byte steht,
+ist 255 und nicht −1; sonst wäre der Bereich leer und das Tablett stünde
+still. Eine echte Maus bleibt auf dem Boot-Protokoll, das sich bewährt
+hat; nur ein *absolutes* Gerät geht den Weg über die Beschreibung.
+
+Weil ein Tablett Anteile meldet und keine Punkte, rechnet der Zeiger
+erst bei der Ankunft um – mit den Grenzen von jetzt. Die Oberfläche kann
+inzwischen eine andere Auflösung oder Vergrößerung haben. In QEMU
+(`-device qemu-xhci -device usb-tablet`) trifft der Zeiger sieben Ziele
+quer über den Schirm mit **null Punkten Abweichung**.
 
 ### Zwei Sprachen in einem System, das auf Deutsch geschrieben ist
 
@@ -1174,7 +1230,7 @@ gehören mehrere Kerne und starker Prozesswechsel nicht zusammen.
 ## In VirtualBox
 
 Zwei Einstellungen entscheiden darüber, ob RetroOS dort überhaupt
-hochkommt und ob sich der Zeiger bewegt.
+hochkommt – und eine dritte, wie gut sich der Zeiger anfühlt.
 
 **Der Gast muss 64 Bit sein.** *Allgemein → Basis → Version* auf eine
 64-Bit-Variante stellen, am besten `Other/Unknown (64-bit)`. Sonst zeigt
@@ -1195,16 +1251,34 @@ Bochs-Schnittstelle mit, RetroOS kann dort also umschalten. `VMSVGA`
 kann das nicht – dort bleibt es bei dem, was der Bootloader gesetzt hat,
 und das Einstellungsfenster schreibt *(fest)* daneben.
 
-**Das Zeigergerät muss eine PS/2-Maus sein.** *System → Mainboard →
-Zeigegerät* auf `PS/2-Maus` stellen. Ab Werk steht dort ein
-USB-Tablett, und VirtualBox hängt es an einen OHCI-Controller – RetroOS
-spricht xHCI und OHCI nicht, der Mausanschluss bliebe leer.
+**Das Zeigergerät.** Es gibt zwei Einstellungen, die gut funktionieren;
+welche, hängt davon ab, was die VM hat.
 
-Ob es daran liegt, sagt der Befehl `maus` in der Konsole: Er zeigt, ob
-ein PS/2-Controller da ist, ob sich an Port 2 jemand gemeldet hat und
-wie viele Bytes bisher angekommen sind – über den Interrupt und über
-die Abfrage aus der Hauptschleife. Stehen beide Zähler auf null, kommt
-gar nichts an, und die Einstellung ist die Ursache.
+*Mit USB-Tablett (empfohlen).* *System → Zeigegerät* bleibt auf
+`USB-Tablett`, und unter *USB* wird der Controller **`USB 3.0 (xHCI)`**
+eingeschaltet. Ab Werk steht dort `USB 1.1 (OHCI)`, und den spricht
+RetroOS nicht – der Controller muss also gewechselt werden. Ein Tablett
+meldet nicht, wie weit sich die Maus bewegt hat, sondern *wo* der Zeiger
+steht: Der Zeiger im Gast liegt immer genau unter dem des Wirts, ohne
+dass die Maus eingefangen oder beschleunigt werden muss. Die Konsole
+meldet beim Start `USB : Zeiger angemeldet (Tablett, absolut ...)`.
+Geprüft ist dieser Weg in QEMU (`-device qemu-xhci -device usb-tablet`);
+VirtualBox hat eine eigene xHCI-Nachbildung, und ob sie sich ebenso
+verhält, zeigt der Befehl `maus` – bitte dort nachsehen.
+
+*Mit PS/2-Maus.* *System → Mainboard → Zeigegerät* auf `PS/2-Maus`.
+Das geht ohne weitere Einstellung, die Maus wird aber *eingefangen*: Ein
+Klick ins Fenster gibt sie dem Gast, die Host-Taste (ab Werk rechte
+`Strg`) gibt sie zurück. Das ist keine Eigenheit von RetroOS, sondern
+das, was VirtualBox mit einer relativen Maus ohne Gasterweiterungen
+tut.
+
+Ob es an der Einstellung liegt, sagt der Befehl `maus` in der Konsole:
+Er zeigt, ob ein PS/2-Controller da ist, ob sich an Port 2 jemand
+gemeldet hat, wie viele Bytes über den Interrupt und über die Abfrage
+angekommen sind und ob ein USB-Zeiger – Maus oder Tablett – bedient
+wird. Kommt gar nichts an, sagt er auch das und nennt die beiden
+Einstellungen.
 
 ## Fehlersuche
 

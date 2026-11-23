@@ -266,6 +266,8 @@ static void sys_paint(struct window *win, struct canvas *c)
                     art = tr("Tastatur");
                 else if (info->interface_protocol == HID_PROTOCOL_MOUSE)
                     art = tr("Maus");
+                else if (usb_hid_is_tablet(usb_device_at(i)))
+                    art = tr("Tablett");
                 break;
             case USB_CLASS_STORAGE: art = tr("Speicher");  break;
             case 0x09:              art = tr("Verteiler"); break;

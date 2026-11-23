@@ -44,6 +44,9 @@ tests/pngschreiben-test
 tests/packen-test
 tests/archiv-test
 tests/winkel-test
+tests/suche-test
+tests/oberflaeche-test
+tests/zeiger-test
 tests/probe.zip
 tests/probe.zlib
 tests/probe.txt

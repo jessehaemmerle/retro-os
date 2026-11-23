@@ -84,6 +84,10 @@ OBERFLAECHE := oberflaeche_test.c shim.c \
                ../kernel/src/gui/menuutil.c \
                ../kernel/src/gui/fontutil.c
 
+ZEIGER := zeiger_test.c shim.c \
+          ../kernel/src/drivers/hidparse.c \
+          ../kernel/src/drivers/mouseutil.c
+
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c
 
@@ -121,11 +125,11 @@ BAUM := dom_test.c shim.c \
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
         protokoll netzfilter kaefig konsole sprache bildschirm rechner \
-        pngschreiben packen archiv winkel suche oberflaeche \
+        pngschreiben packen archiv winkel suche oberflaeche zeiger \
         testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
      netzfilter kaefig konsole sprache bildschirm rechner pngschreiben \
-     packen archiv winkel suche oberflaeche
+     packen archiv winkel suche oberflaeche zeiger
 
 krypto: krypto-test
 	@./krypto-test
@@ -199,6 +203,12 @@ rechner: rechner-test
 
 rechner-test: $(RECHNER)
 	@$(CC) $(CFLAGS) $(RECHNER) -o $@
+
+zeiger: zeiger-test
+	@./zeiger-test
+
+zeiger-test: $(ZEIGER)
+	@$(CC) $(CFLAGS) $(ZEIGER) -o $@
 
 suche: suche-test
 	@./suche-test

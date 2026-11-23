@@ -2694,9 +2694,11 @@ static void cmd_screenshot(struct term_state *st)
 
 static void cmd_mouse(struct term_state *st)
 {
-    struct mouse_state ms;
+    int32_t px, py;
 
-    mouse_poll(&ms);
+    /* Nur lesen: mouse_poll() wuerde der Oberflaeche die Bewegung und
+     * jeden Klick wegnehmen, der gerade ansteht. */
+    mouse_position(&px, &py);
 
     term_line(st, C_HIGHLIGHT, tr("Zeigegeraet:"));
 
@@ -2718,26 +2720,26 @@ static void cmd_mouse(struct term_state *st)
     term_printf(st, C_NORMAL, tr("  Pakete verworfen: %u"),
                 (unsigned)mouse_resync_count());
     term_printf(st, C_NORMAL, tr("  Zeiger          : %d, %d"),
-                (int)ms.x, (int)ms.y);
-    bool usb_mouse = false;
+                (int)px, (int)py);
+    /* Ein Tablett hat Protokoll 0 und ist trotzdem das Zeigegeraet -
+     * gezaehlt wird darum, was der Treiber wirklich bedient, nicht, was
+     * die Konfiguration "Maus" nennt. */
+    size_t usb_pointers = usb_hid_pointer_count();
 
-    for (size_t i = 0; i < usb_device_count(); i++) {
-        const struct usb_device_info *info =
-            usb_device_details(usb_device_at(i));
+    term_printf(st, C_NORMAL, tr("  USB-Zeiger      : %s"),
+                usb_hid_has_tablet() ? tr("Tablett (absolut)")
+                : usb_pointers       ? tr("Maus")
+                                     : tr("keiner"));
 
-        if (info && info->interface_protocol == HID_PROTOCOL_MOUSE)
-            usb_mouse = true;
-    }
-
-    term_printf(st, C_NORMAL, tr("  USB-Maus        : %s"),
-                usb_mouse ? tr("angemeldet") : tr("keine"));
-
-    if (mouse_irq_count() == 0 && mouse_polled_count() == 0 && !usb_mouse) {
+    if (mouse_irq_count() == 0 && mouse_polled_count() == 0 && !usb_pointers) {
         term_line(st, C_NORMAL, "");
         term_line(st, C_ERROR, tr("Es kommt nichts an."));
         term_line(st, C_NORMAL,
-                  "In VirtualBox: System - Mainboard - Zeigegeraet auf "
-                  "\"PS/2-Maus\" stellen.");
+                  tr("In VirtualBox: unter USB den Controller \"USB 3.0 (xHCI)\""));
+        term_line(st, C_NORMAL,
+                  tr("einschalten und als Zeigegeraet \"USB-Tablett\" waehlen -"));
+        term_line(st, C_NORMAL,
+                  tr("oder unter System - Mainboard \"PS/2-Maus\"."));
     }
 }
 

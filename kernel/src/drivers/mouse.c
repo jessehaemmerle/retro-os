@@ -37,11 +37,26 @@
  * ein Byte je Unterbrechung: Der 8042 hat genau ein Byte Platz. Wer zu
  * langsam abholt, verliert das naechste - und wieder ist das Paket
  * verschoben.
+ *
+ * Die Sperre gilt auch auf der anderen Seite: beim Abholen des Zustands.
+ * mouse_poll() las frueher Position, Tasten und Aenderungsmarke einzeln
+ * und setzte die Marke zuletzt zurueck. Schlug dazwischen ein Paket ein,
+ * war die neue Position da, die Marke aber geloescht - der Zeiger blieb
+ * einen Schritt hinter der Hand stehen, bis sich die Maus wieder
+ * bewegte, und eine Taste, die genau dort gedrueckt oder losgelassen
+ * wurde, ging verloren oder blieb haengen. Das passiert nicht bei jedem
+ * Paket, aber bei jeder Sitzung, und es sieht aus wie ein Zeiger, der
+ * "nicht richtig" funktioniert.
+ *
+ * Und Tasten werden als Flanken mitgezaehlt, nicht nur als Zustand: Wer
+ * zwischen zwei Durchlaeufen der Hauptschleife drueckt und loslaesst,
+ * hat geklickt, auch wenn der Zustand beide Male "oben" sagt.
  */
 
 #include "input.h"
 #include "arch.h"
 #include "io.h"
+#include "mouseutil.h"
 #include "ps2.h"
 #include "spinlock.h"
 
@@ -49,11 +64,15 @@ static uint8_t  packet[4];
 static uint8_t  packet_index;
 static uint8_t  packet_size = 3;
 
-static volatile int32_t pos_x, pos_y;
-static volatile int32_t acc_dx, acc_dy;
-static volatile int8_t  acc_scroll;
-static volatile bool    btn_left, btn_right, btn_middle;
-static volatile bool    dirty;
+/* Der Zustand des Zeigers. Alles hier drin wird nur unter mouse_lock
+ * angefasst - von den Eingaengen wie vom Abholen. */
+static int32_t pos_x, pos_y;
+static int32_t acc_dx, acc_dy;
+static int8_t  acc_scroll;
+static uint8_t btn_state;       /* was jetzt gedrueckt ist                */
+static uint8_t btn_pressed;     /* Flanken seit dem letzten Abholen       */
+static uint8_t btn_released;
+static bool    dirty;
 
 static int32_t limit_x = 1023, limit_y = 767;
 
@@ -71,48 +90,39 @@ static uint64_t last_byte_ms;
  * das eine Paket waere dann um ein Byte verschoben. */
 static struct spinlock mouse_lock = SPINLOCK_INIT("maus");
 
-static void handle_packet(void)
+/* Alles Folgende nur unter der Sperre. */
+
+static void set_buttons(uint8_t now)
 {
-    uint8_t flags = packet[0];
+    btn_pressed  |= (uint8_t)(now & ~btn_state);
+    btn_released |= (uint8_t)(btn_state & ~now);
+    btn_state = now;
+}
 
-    /* Bit 3 ist bei gueltigen Paketen immer gesetzt. */
-    if (!(flags & 0x08)) {
-        packet_index = 0;
-        return;
-    }
-
-    /* Ueberlauf-Bits bedeuten eine unbrauchbare Bewegung. */
-    if (flags & 0xC0)
-        return;
-
-    int32_t dx = (int32_t)packet[1];
-    int32_t dy = (int32_t)packet[2];
-
-    if (flags & 0x10)
-        dx -= 256;
-    if (flags & 0x20)
-        dy -= 256;
-
-    /* Die Maus zaehlt nach oben positiv, der Bildschirm nach unten. */
-    dy = -dy;
-
+static void move_relative(int32_t dx, int32_t dy, int8_t scroll)
+{
     pos_x = CLAMP(pos_x + dx, 0, limit_x);
     pos_y = CLAMP(pos_y + dy, 0, limit_y);
 
     acc_dx += dx;
     acc_dy += dy;
+    acc_scroll = (int8_t)(acc_scroll + scroll);
+}
 
-    if (packet_size == 4) {
-        int8_t z = (int8_t)(packet[3] & 0x0F);
-        if (z & 0x08)
-            z |= (int8_t)0xF0;      /* Vorzeichen ergaenzen */
-        acc_scroll = (int8_t)(acc_scroll + z);
+static void handle_packet(void)
+{
+    struct ps2_motion m;
+
+    /* Aus dem Takt: Das Byte gehoert zu einem Paket, dessen Anfang
+     * verlorenging. */
+    if (!ps2_decode_packet(packet, packet_size, &m)) {
+        packet_index = 0;
+        resync_count++;
+        return;
     }
 
-    btn_left   = (flags & 0x01) != 0;
-    btn_right  = (flags & 0x02) != 0;
-    btn_middle = (flags & 0x04) != 0;
-
+    move_relative(m.dx, m.dy, m.scroll);
+    set_buttons(m.buttons);
     dirty = true;
 }
 
@@ -122,38 +132,45 @@ static void handle_packet(void)
 void mouse_inject(int32_t dx, int32_t dy, int8_t scroll,
                   bool left, bool right, bool middle)
 {
-    pos_x = CLAMP(pos_x + dx, 0, limit_x);
-    pos_y = CLAMP(pos_y + dy, 0, limit_y);
+    uint64_t flags = spin_lock_irq(&mouse_lock);
 
-    acc_dx += dx;
-    acc_dy += dy;
-    acc_scroll = (int8_t)(acc_scroll + scroll);
-
-    btn_left = left;
-    btn_right = right;
-    btn_middle = middle;
-
+    move_relative(dx, dy, scroll);
+    set_buttons((uint8_t)((left ? MOUSE_BTN_LEFT : 0) |
+                          (right ? MOUSE_BTN_RIGHT : 0) |
+                          (middle ? MOUSE_BTN_MIDDLE : 0)));
     dirty = true;
+    spin_unlock_irq(&mouse_lock, flags);
 }
 
-/* Eine absolute Zeigerposition, wie sie ein Grafiktablett meldet -
- * damit die Maus im Fenster des Emulators sofort passt. */
-void mouse_inject_absolute(int32_t x, int32_t y, int8_t scroll,
-                           bool left, bool right, bool middle)
+/* Eine absolute Zeigerposition, wie sie ein Tablett meldet.
+ *
+ * x und y sind Anteile von 0 bis 65535 der Breite und Hoehe, nicht
+ * Punkte: Das Tablett weiss nicht, wie gross die Oberflaeche ist - und
+ * die kann sich aendern, sobald jemand die Aufloesung oder die
+ * Vergroesserung umstellt. Umgerechnet wird erst hier, mit den
+ * Grenzen von jetzt. */
+void mouse_inject_unit(int32_t x, int32_t y, int8_t scroll,
+                       bool left, bool right, bool middle)
 {
-    int32_t nx = CLAMP(x, 0, limit_x);
-    int32_t ny = CLAMP(y, 0, limit_y);
+    uint64_t flags = spin_lock_irq(&mouse_lock);
+
+    x = CLAMP(x, 0, 65535);
+    y = CLAMP(y, 0, 65535);
+
+    int32_t nx = (int32_t)((int64_t)x * limit_x / 65535);
+    int32_t ny = (int32_t)((int64_t)y * limit_y / 65535);
 
     acc_dx += nx - pos_x;
     acc_dy += ny - pos_y;
     pos_x = nx;
     pos_y = ny;
-
     acc_scroll = (int8_t)(acc_scroll + scroll);
-    btn_left = left;
-    btn_right = right;
-    btn_middle = middle;
+
+    set_buttons((uint8_t)((left ? MOUSE_BTN_LEFT : 0) |
+                          (right ? MOUSE_BTN_RIGHT : 0) |
+                          (middle ? MOUSE_BTN_MIDDLE : 0)));
     dirty = true;
+    spin_unlock_irq(&mouse_lock, flags);
 }
 
 /* Ein Byte in die Zustandsmaschine geben. Nur unter der Sperre. */
@@ -283,6 +300,7 @@ void mouse_init(int32_t screen_w, int32_t screen_h)
     limit_y = screen_h - 1;
     pos_x = screen_w / 2;
     pos_y = screen_h / 2;
+    btn_state = btn_pressed = btn_released = 0;
 
     attached = false;
     irq_count = 0;
@@ -349,38 +367,64 @@ void mouse_init(int32_t screen_w, int32_t screen_h)
 
 bool mouse_poll(struct mouse_state *out)
 {
+    uint64_t flags = spin_lock_irq(&mouse_lock);
+
+    /* Ein Griff: Was hier gelesen wird, gehoert zusammen, und was
+     * zurueckgesetzt wird, ist genau das, was gelesen wurde. */
     bool changed = dirty;
 
-    out->x      = pos_x;
-    out->y      = pos_y;
-    out->dx     = acc_dx;
-    out->dy     = acc_dy;
-    out->scroll = acc_scroll;
-    out->left   = btn_left;
-    out->right  = btn_right;
-    out->middle = btn_middle;
+    out->x       = pos_x;
+    out->y       = pos_y;
+    out->dx      = acc_dx;
+    out->dy      = acc_dy;
+    out->scroll  = acc_scroll;
+    out->buttons = btn_state;
+    out->pressed = btn_pressed;
+    out->released = btn_released;
+    out->left    = (btn_state & MOUSE_BTN_LEFT) != 0;
+    out->right   = (btn_state & MOUSE_BTN_RIGHT) != 0;
+    out->middle  = (btn_state & MOUSE_BTN_MIDDLE) != 0;
 
     acc_dx = acc_dy = 0;
     acc_scroll = 0;
+    btn_pressed = btn_released = 0;
     dirty = false;
 
+    spin_unlock_irq(&mouse_lock, flags);
     return changed;
+}
+
+void mouse_position(int32_t *x, int32_t *y)
+{
+    uint64_t flags = spin_lock_irq(&mouse_lock);
+
+    if (x)
+        *x = pos_x;
+    if (y)
+        *y = pos_y;
+    spin_unlock_irq(&mouse_lock, flags);
 }
 
 /* Der Bildschirm ist ein anderer geworden - der Zeiger darf nicht
  * ausserhalb stehenbleiben. */
 void mouse_set_limits(int32_t screen_w, int32_t screen_h)
 {
+    uint64_t flags = spin_lock_irq(&mouse_lock);
+
     limit_x = screen_w - 1;
     limit_y = screen_h - 1;
     pos_x = CLAMP(pos_x, 0, limit_x);
     pos_y = CLAMP(pos_y, 0, limit_y);
     dirty = true;
+    spin_unlock_irq(&mouse_lock, flags);
 }
 
 void mouse_set_position(int32_t x, int32_t y)
 {
+    uint64_t flags = spin_lock_irq(&mouse_lock);
+
     pos_x = CLAMP(x, 0, limit_x);
     pos_y = CLAMP(y, 0, limit_y);
     dirty = true;
+    spin_unlock_irq(&mouse_lock, flags);
 }

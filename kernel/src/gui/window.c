@@ -33,6 +33,7 @@
 #include "lang.h"
 #include "theme.h"
 #include "notify.h"
+#include "mouseutil.h"
 
 #define CURSOR_W 12
 #define CURSOR_H 19
@@ -1354,7 +1355,8 @@ NORETURN void gui_run(void)
 {
     struct mouse_state ms;
     struct key_event   ke;
-    bool     prev_left = false, prev_right = false;
+    bool     prev_left = false;
+    uint8_t  prev_buttons = 0;
     uint64_t last_tick = 0;
 
     for (;;) {
@@ -1380,24 +1382,37 @@ NORETURN void gui_run(void)
                 handle_mouse_move(cursor_x, cursor_y, prev_left);
             }
 
-            if (ms.left && !prev_left) {
-                uint64_t now = timer_ms();
-                bool dbl = (now - last_click_ms) < DOUBLE_CLICK_MS &&
-                           MAX(cursor_x - last_click_x, last_click_x - cursor_x) < 6 &&
-                           MAX(cursor_y - last_click_y, last_click_y - cursor_y) < 6;
+            /* Nicht der Zustand der Tasten entscheidet, sondern ihre
+             * Flanken: Zwischen zwei Durchlaeufen liegt ein ganzes Bild,
+             * und ein Klick ist kuerzer. Wer nur "unten oder oben" sieht,
+             * verpasst ihn - ausgerechnet in einer virtuellen Maschine,
+             * in der ein Bild laenger dauert. */
+            struct mouse_step steps[MOUSE_MAX_STEPS];
+            size_t n = mouse_button_steps(prev_buttons, ms.buttons,
+                                          ms.pressed, ms.released, steps);
 
-                last_click_ms = dbl ? 0 : now;
-                last_click_x  = cursor_x;
-                last_click_y  = cursor_y;
-                handle_mouse_down(cursor_x, cursor_y, MB_LEFT, dbl);
-            } else if (!ms.left && prev_left) {
-                handle_mouse_up(cursor_x, cursor_y, MB_LEFT);
+            for (size_t i = 0; i < n; i++) {
+                if (steps[i].button == MOUSE_BTN_LEFT) {
+                    if (steps[i].down) {
+                        uint64_t now = timer_ms();
+                        bool dbl = (now - last_click_ms) < DOUBLE_CLICK_MS &&
+                                   MAX(cursor_x - last_click_x, last_click_x - cursor_x) < 6 &&
+                                   MAX(cursor_y - last_click_y, last_click_y - cursor_y) < 6;
+
+                        last_click_ms = dbl ? 0 : now;
+                        last_click_x  = cursor_x;
+                        last_click_y  = cursor_y;
+                        handle_mouse_down(cursor_x, cursor_y, MB_LEFT, dbl);
+                    } else {
+                        handle_mouse_up(cursor_x, cursor_y, MB_LEFT);
+                    }
+                } else if (steps[i].button == MOUSE_BTN_RIGHT) {
+                    if (steps[i].down)
+                        handle_mouse_down(cursor_x, cursor_y, MB_RIGHT, false);
+                    else
+                        handle_mouse_up(cursor_x, cursor_y, MB_RIGHT);
+                }
             }
-
-            if (ms.right && !prev_right)
-                handle_mouse_down(cursor_x, cursor_y, MB_RIGHT, false);
-            else if (!ms.right && prev_right)
-                handle_mouse_up(cursor_x, cursor_y, MB_RIGHT);
 
             if (ms.scroll && !lock_active()) {
                 struct window *win = window_at(cursor_x, cursor_y);
@@ -1409,8 +1424,8 @@ NORETURN void gui_run(void)
                 }
             }
 
-            prev_left  = ms.left;
-            prev_right = ms.right;
+            prev_buttons = ms.buttons;
+            prev_left    = ms.left;
         }
 
         /* Zehn Mal pro Sekunde bekommt das aktive Fenster einen Taktimpuls -

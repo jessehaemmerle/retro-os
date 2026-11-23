@@ -904,8 +904,22 @@ static bool read_configuration(struct usb_device *dev)
             dev->info.interface_class = full[at + 5];
             dev->info.interface_subclass = full[at + 6];
             dev->info.interface_protocol = full[at + 7];
+            dev->info.hid_report_length = 0;
             have_interface = true;
             endpoint_address = 0;
+        } else if (type == USB_DESC_HID && length >= 9 && have_interface) {
+            /* Die HID-Beschreibung zaehlt die Deskriptoren auf, die das
+             * Geraet zusaetzlich hat: je Art und Laenge. Uns interessiert
+             * die Berichtsbeschreibung. */
+            uint8_t count = full[at + 5];
+
+            for (uint8_t i = 0; i < count && (size_t)6 + 3u * i + 3 <= length; i++) {
+                size_t entry = at + 6 + 3u * i;
+
+                if (full[entry] == USB_DESC_HID_REPORT)
+                    dev->info.hid_report_length =
+                        (uint16_t)(full[entry + 1] | (full[entry + 2] << 8));
+            }
         } else if (type == USB_DESC_ENDPOINT && length >= 7 && have_interface) {
             uint8_t address = full[at + 2];
             uint8_t attributes = full[at + 3];

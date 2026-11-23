@@ -36,6 +36,8 @@ struct usb_setup {
 #define USB_DESC_STRING        3
 #define USB_DESC_INTERFACE     4
 #define USB_DESC_ENDPOINT      5
+#define USB_DESC_HID           0x21
+#define USB_DESC_HID_REPORT    0x22
 
 #define USB_CLASS_HID          0x03
 #define HID_SUBCLASS_BOOT      0x01
@@ -63,6 +65,11 @@ struct usb_device_info {
     uint8_t  interface_subclass;
     uint8_t  interface_protocol;
     uint8_t  interface_number;
+    /* Wie lang die HID-Berichtsbeschreibung ist, die das Geraet auf
+     * Anfrage herausgibt; 0, wenn die Konfiguration keine meldet. Ein
+     * Geraet ohne Boot-Protokoll - ein Tablett - ist ohne sie nicht zu
+     * verstehen. */
+    uint16_t hid_report_length;
     uint16_t max_packet;
     uint8_t  port;
     uint8_t  speed;
@@ -94,6 +101,13 @@ bool usb_clear_halt(struct usb_device *dev, uint8_t endpoint);
 void usb_hid_attach(struct usb_device *dev);
 void usb_hid_poll_all(void);
 void usb_storage_attach(struct usb_device *dev);
+
+/* Welche Zeiger der HID-Treiber bedient. Gebraucht fuer die Diagnose:
+ * Wenn sich der Zeiger nicht bewegt, muss das System selbst sagen
+ * koennen, auf welchem Weg er ueberhaupt bedient wird. */
+size_t usb_hid_pointer_count(void);
+bool   usb_hid_has_tablet(void);
+bool   usb_hid_is_tablet(const struct usb_device *dev);
 
 /* Der Thread, der die Eingabegeraete abfragt. */
 void usb_start_polling(void);
