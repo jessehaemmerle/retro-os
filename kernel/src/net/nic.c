@@ -20,6 +20,7 @@ static const struct nic_driver *const drivers[] = {
     &e1000_driver,
     &rtl8169_driver,
     &rtl8139_driver,
+    &pcnet_driver,
 };
 
 static struct nic active;
@@ -34,8 +35,6 @@ static const char *known_unsupported(uint16_t vendor, uint16_t device)
 {
     if (vendor == 0x15AD && device == 0x07B0)
         return "VMware vmxnet3";
-    if (vendor == 0x1022 && device == 0x2000)
-        return "AMD PCnet";
     if (vendor == 0x10EC && device == 0x8125)
         return "Realtek RTL8125 (2,5 GBit)";
     return NULL;

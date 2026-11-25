@@ -48,6 +48,7 @@ tests/suche-test
 tests/oberflaeche-test
 tests/zeiger-test
 tests/usb-test
+tests/netzkarte-test
 tests/probe.zip
 tests/probe.zlib
 tests/probe.txt

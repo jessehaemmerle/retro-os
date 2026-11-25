@@ -68,5 +68,6 @@ extern const struct nic_driver e1000e_driver;
 extern const struct nic_driver e1000_driver;
 extern const struct nic_driver rtl8169_driver;
 extern const struct nic_driver rtl8139_driver;
+extern const struct nic_driver pcnet_driver;
 
 #endif /* NIC_H */
