@@ -980,6 +980,29 @@ static void to_client(const struct window *win, struct gui_event *ev,
     ev->y = y - client.y;
 }
 
+/* Ein Tastendruck im Fenster. Jeder Druck kommt als EV_MOUSE_DOWN an -
+ * auch der zweite eines Doppelklicks; der Doppelklick folgt als Zugabe.
+ *
+ * Frueher ersetzte er den zweiten Druck. Dann gingen aber alle
+ * Programme leer aus, die nur EV_MOUSE_DOWN kennen - und das sind fast
+ * alle: Wer zwei Schaltflaechen oder zwei Links schnell nacheinander
+ * anklickte, dem schluckte das Fenster den zweiten Klick. In einer
+ * virtuellen Maschine, in der Bilder lange dauern, reichen dafuer schon
+ * die vierhundert Millisekunden. */
+static void send_press(struct window *win, int32_t x, int32_t y,
+                       uint8_t button, bool dbl)
+{
+    struct gui_event ev = { .type = EV_MOUSE_DOWN, .button = button };
+
+    to_client(win, &ev, x, y);
+    send(win, &ev);
+
+    if (dbl) {
+        ev.type = EV_DOUBLE_CLICK;
+        send(win, &ev);
+    }
+}
+
 static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
 {
     if (lock_active()) {
@@ -1027,13 +1050,7 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
     /* Ein rahmenloses Fenster hat weder Leiste noch Knoepfe - jeder
      * Klick geht an den Inhalt. */
     if (win->flags & WF_BARE) {
-        struct gui_event ev = {
-            .type = dbl ? EV_DOUBLE_CLICK : EV_MOUSE_DOWN,
-            .button = button,
-        };
-
-        to_client(win, &ev, x, y);
-        send(win, &ev);
+        send_press(win, x, y, button, dbl);
         return;
     }
 
@@ -1102,12 +1119,7 @@ static void handle_mouse_down(int32_t x, int32_t y, uint8_t button, bool dbl)
 
     struct rect client = gui_client_rect(win);
     if (rect_contains(client, x, y)) {
-        struct gui_event ev = {
-            .type = dbl ? EV_DOUBLE_CLICK : EV_MOUSE_DOWN,
-            .button = button,
-        };
-        to_client(win, &ev, x, y);
-        send(win, &ev);
+        send_press(win, x, y, button, dbl);
     }
 }
 

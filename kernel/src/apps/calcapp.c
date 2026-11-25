@@ -194,7 +194,6 @@ static void calc_event(struct window *win, const struct gui_event *ev)
         return;
     }
     case EV_MOUSE_DOWN:
-    case EV_DOUBLE_CLICK:
         ui->pressed = hit(win, ev->x, ev->y);
         if (ui->pressed >= 0)
             calc_key(ui, action_at(ui->pressed));
