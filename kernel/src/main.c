@@ -86,6 +86,7 @@ NORETURN void kmain(void)
     pci_init();
     storage_init();
     xhci_init();
+    ehci_init();               /* vor OHCI: gibt langsame Geraete weiter */
     ohci_init();
 
     /* Grafik. Die Vergroesserung kommt hier noch automatisch zustande -

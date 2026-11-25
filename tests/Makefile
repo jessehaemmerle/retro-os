@@ -91,6 +91,7 @@ ZEIGER := zeiger_test.c shim.c \
 USB := usb_test.c shim.c \
        ../kernel/src/drivers/usbconfig.c \
        ../kernel/src/drivers/usbhub.c \
+       ../kernel/src/drivers/ehcihw.c \
        ../kernel/src/drivers/ohcihw.c
 
 NETZKARTE := netzkarte_test.c shim.c \

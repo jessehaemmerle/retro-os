@@ -7,8 +7,8 @@ Festplatte, einem TCP/IP-Stapel mit TLS 1.3 und einem Browser, der HTML,
 CSS, Bilder und JavaScript versteht.
 
 Unter der Haube ist RetroOS auf heutiger Hardware zu Hause: USB-Tastatur,
--Maus und -Sticks am xHCI-Controller (hinter einem Verteiler ebenso), Tastatur,
-Maus und Tablett auch am alten OHCI,
+-Maus und -Sticks am xHCI-Controller (hinter einem Verteiler ebenso), dazu
+EHCI und OHCI für ältere Chipsätze und VirtualBox' Standardeinstellung,
 NVMe-SSDs und SATA-Platten, GPT-Partitionen, APIC und MSI statt des
 Interruptcontrollers von 1976. Retro ist allein die Oberfläche – so soll
 es auch sein.
@@ -41,9 +41,9 @@ Long Mode startet und einen linearen Framebuffer bereitstellt.
 │  Seitenverwaltung · Heap      │                                      │
 ├───────────────────────────────┼──────────────────────────────────────┤
 │  Partitionen: GPT · MBR       │  Netzwerkkarten: virtio · Intel igb  │
-│  Blockgeräte: NVMe · AHCI ·   │  e1000e · e1000 · Realtek 8169/8139  │
+│  Blockgeräte: NVMe · AHCI ·   │  e1000e · Realtek · PCnet · vmxnet3  │
 │  ATA · USB-Speicher           ├──────────────────────────────────────┤
-│                               │  USB: xHCI · Verteiler · HID-Tastatur│
+│                               │  USB: xHCI · EHCI · OHCI · Hubs · HID│
 │                               │  und -Maus · Massenspeicher (SCSI)   │
 ├───────────────────────────────┴──────────────────────────────────────┤
 │  PS/2 (falls vorhanden) · RTC · UART · PCIe · ACPI                   │
@@ -81,7 +81,8 @@ sudo dd if=retroos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
 > Auf echter Hardware kommt RetroOS mit USB-Tastatur und -Maus an einem
 > xHCI-Controller zurecht – also mit dem, was ein heutiges Notebook
-> mitbringt –, an einem alten OHCI-Controller ebenfalls. Ist noch ein PS/2-Anschluss da, wird er ebenfalls benutzt;
+> mitbringt –, an einem EHCI- oder OHCI-Controller ebenfalls. Ist noch
+> ein PS/2-Anschluss da, wird er ebenfalls benutzt;
 > fehlt er, sagen das die ACPI-Tabellen und RetroOS klopft gar nicht erst
 > an. Als Datenträger dienen NVMe-SSDs, SATA-Platten am AHCI-Controller
 > oder ältere IDE-Laufwerke, jeweils mit GPT- oder MBR-Partitionstabelle.
@@ -467,7 +468,8 @@ also so, wie es ein Betriebssystem tut.
 | **Partitionen** | GPT samt Sicherungstabelle, MBR mit erweiterten Abschnitten, roher Datenträger |
 | **Installation** | Schreibt eine eigene GUID-Tabelle, formatiert EFI-Abschnitt und Ablage, kopiert Bootloader und Kernel und setzt den Startsektor für BIOS-Rechner |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
-| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte. **OHCI-Controller (USB 1.1)** für Tastatur, Maus und Tablett – das, was VirtualBox ab Werk anbietet: Steuerliste mit Aufzählung, periodische Liste mit je zwei Beschreibungen im Wechsel pro Endpunkt, Übernahme vom BIOS samt Bus-Reset (die Firmware hat Anschlüsse schon angefasst). Ebenfalls am OHCI: **Verteiler** (rekursiv abgesucht, Anschluss für Anschluss mit Strom, Reset und Geschwindigkeit aus dem Anschlusszustand) und **Massenspeicher** (Massenliste mit einem Ring aus 16 Beschreibungen je Endpunkt und 64-KiB-Zwischenpuffer; der Datenwechsel läuft über den Endpunkt weiter) |
+| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte. **OHCI-Controller (USB 1.1)** für Tastatur, Maus und Tablett – das, was VirtualBox ab Werk anbietet: Steuerliste mit Aufzählung, periodische Liste mit je zwei Beschreibungen im Wechsel pro Endpunkt, Übernahme vom BIOS samt Bus-Reset (die Firmware hat Anschlüsse schon angefasst).
+**EHCI-Controller (USB 2.0)** für High-Speed-Geräte – Sticks und Tablett an VirtualBox' „USB 2.0"-Einstellung: asynchrone Liste mit Steuer- und Massenköpfen (die Warteschlangenköpfe tragen ihren eigenen Arbeitsbereich, den der Controller beschreibt), periodische Liste für Unterbrechungsendpunkte, Übernahme vom BIOS über „USB Legacy Support“; alles Langsamere gibt er per Anschlussbesitz an den Begleiter (OHCI) ab – darum läuft `ehci_init` vor `ohci_init`. Verteiler am EHCI werden gemeldet, nicht abgesucht. Ebenfalls am OHCI: **Verteiler** (rekursiv abgesucht, Anschluss für Anschluss mit Strom, Reset und Geschwindigkeit aus dem Anschlusszustand) und **Massenspeicher** (Massenliste mit einem Ring aus 16 Beschreibungen je Endpunkt und 64-KiB-Zwischenpuffer; der Datenwechsel läuft über den Endpunkt weiter) |
 | **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; **USB-Tablett und jeder andere Zeiger ohne Boot-Protokoll** über die HID-Berichtsbeschreibung; Tastenflanken statt nur Zustand; vier Belegungen (de/us/uk/ch) inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift; Schadensverfolgung schickt nur geänderte Rechtecke an die Karte |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
@@ -492,7 +494,7 @@ also so, wie es ein Betriebssystem tut.
 | **Suche** | 32 Prüfungen: Treffen und Danebenliegen samt Grenzfällen, jede Regel der Bewertung einzeln (genau vor Anhang, Anfang vor Mitte, Wortanfang vor Wortmitte, kurz vor lang), stabiles Sortieren bei Gleichstand |
 | **Oberfläche** | 110 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten, das Blättern durch ein Menü über Trennlinien und blasse Zeilen hinweg – auch durch eines, in dem gar nichts wählbar ist, dazu der Fünf-Punkte-Filter der Kantenglättung samt Rändern und die Vertauschung von Rot und Blau zwischen RGB- und BGR-Panels |
 | **Zeiger** | 124 Prüfungen: die Berichtsbeschreibung eines Tabletts, einer gewöhnlichen Maus und einer mit Berichtsnummer, Tastatur und Zufall (20 000 zufällige und jede abgeschnittene Beschreibung, auch unter AddressSanitizer), Felder über Bytegrenzen und mit Vorzeichen, Umrechnung auf den Bildschirm samt Rand, PS/2-Pakete mit Überlauf und Rad, und für **jede** der 4096 Kombinationen aus Zustand und Flanken: nie eine doppelte Flanke, nie zu viele Schritte, Ende immer im gemeldeten Zustand |
-| **USB** | 125 Prüfungen: der Verteiler samt Anschlusszustand (Geschwindigkeit, Änderungsbits, Einschaltzeit, die Anfragen Byte für Byte) – dazu die Konfigurationsbeschreibung eines Tabletts, einer Tastatur, eines Speichers und eines Geräts mit zwei Schnittstellen oder einem Unterbrechungsausgang, kaputte und abgeschnittene Eingaben, 20 000 zufällige (auch unter AddressSanitizer) – dazu die OHCI-Worte Bit für Bit: Endpunkt, Transferbeschreibung samt „nicht angefasst“, Pufferende, übertragene Länge, Rahmenlänge, Anschlussstatus |
+| **USB** | 205 Prüfungen: die EHCI-Worte (Warteschlangenkopf, Transferbeschreibung, Seitenzeiger, Anschlussbits – mit `sizeof`/`offsetof` gegen die Spezifikation) und der Verteiler samt Anschlusszustand (Geschwindigkeit, Änderungsbits, Einschaltzeit, die Anfragen Byte für Byte) – dazu die Konfigurationsbeschreibung eines Tabletts, einer Tastatur, eines Speichers und eines Geräts mit zwei Schnittstellen oder einem Unterbrechungsausgang, kaputte und abgeschnittene Eingaben, 20 000 zufällige (auch unter AddressSanitizer) – dazu die OHCI-Worte Bit für Bit: Endpunkt, Transferbeschreibung samt „nicht angefasst“, Pufferende, übertragene Länge, Rahmenlänge, Anschlussstatus |
 | **Netzwerkkarten** | 120 Prüfungen: PCnet – negative Pufferlänge für alle 4095 Längen, Ringlogarithmus, der 28-Byte-Initialisierungsblock Byte für Byte, Deskriptorzustände; vmxnet3 – Speicheraufbau mit `sizeof` und `offsetof` gegen die VMware-Definition (720 Byte, Warteschlangen zu 256), Generationsbit über mehrere Umläufe, Sende-, Empfangs- und Meldungsworte Bit für Bit (auch unter AddressSanitizer) |
 | **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
@@ -1176,7 +1178,7 @@ kernel/
                       geteilter Speicher, Fenster für Programme
     drivers/          Framebuffer, Moduswechsel, PS/2, Tastatur, Maus,
                       RTC, UART, PCI,
-                      NVMe, AHCI, ATA, Blockgeräte, xHCI, OHCI, USB-HID,
+                      NVMe, AHCI, ATA, Blockgeräte, xHCI, EHCI, OHCI, USB-HID,
                       USB-Speicher, virtio-net, igb, e1000e, e1000,
                       RTL8169, RTL8139
     fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand,
@@ -1261,7 +1263,7 @@ welche, hängt davon ab, was die VM hat.
 *Mit USB-Tablett (empfohlen).* *System → Zeigegerät* bleibt auf
 `USB-Tablett` – so steht es ab Werk. Der Controller unter *USB* kann
 `USB 1.1 (OHCI)` bleiben, auch den spricht RetroOS jetzt, oder
-`USB 3.0 (xHCI)` sein. Ein Tablett meldet nicht, wie weit sich die Maus
+`USB 2.0 (EHCI)` oder `USB 3.0 (xHCI)` sein. Ein Tablett meldet nicht, wie weit sich die Maus
 bewegt hat, sondern *wo* der Zeiger steht: Der Zeiger im Gast liegt immer
 genau unter dem des Wirts, ohne dass die Maus eingefangen oder
 beschleunigt werden muss. Die Konsole meldet beim Start

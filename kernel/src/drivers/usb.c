@@ -3,7 +3,7 @@
  * Die Treiber darueber - HID, Speicher, Verteiler - sprechen ein
  * Geraet an und wissen nicht, an welchem Controller es haengt. Hier
  * wird entschieden, wohin der Aufruf geht: Gehoert das Geraet dem
- * OHCI-Treiber, zu ihm, sonst zu xHCI.
+ * OHCI- oder EHCI-Treiber, zu ihm, sonst zu xHCI.
  *
  * Massenendpunkte (Speicher) und Verteiler gibt es an beiden.
  */
@@ -15,6 +15,8 @@ bool usb_control(struct usb_device *dev, const struct usb_setup *setup,
 {
     if (ohci_owns(dev))
         return ohci_control(dev, setup, buffer);
+    if (ehci_owns(dev))
+        return ehci_control(dev, setup, buffer);
     return xhci_control(dev, setup, buffer);
 }
 
@@ -22,6 +24,8 @@ size_t usb_interrupt_poll(struct usb_device *dev, void *buffer, size_t size)
 {
     if (ohci_owns(dev))
         return ohci_interrupt_poll(dev, buffer, size);
+    if (ehci_owns(dev))
+        return ehci_interrupt_poll(dev, buffer, size);
     return xhci_interrupt_poll(dev, buffer, size);
 }
 
@@ -30,6 +34,8 @@ bool usb_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
 {
     if (ohci_owns(dev))
         return ohci_bulk(dev, endpoint, buffer, length, in, transferred);
+    if (ehci_owns(dev))
+        return ehci_bulk(dev, endpoint, buffer, length, in, transferred);
     return xhci_bulk(dev, endpoint, buffer, length, in, transferred);
 }
 
@@ -37,6 +43,8 @@ bool usb_setup_bulk_from_config(struct usb_device *dev)
 {
     if (ohci_owns(dev))
         return ohci_setup_bulk_from_config(dev);
+    if (ehci_owns(dev))
+        return ehci_setup_bulk_from_config(dev);
     return xhci_setup_bulk_from_config(dev);
 }
 
@@ -47,6 +55,8 @@ bool usb_clear_halt(struct usb_device *dev, uint8_t endpoint)
      * angehalten. */
     if (ohci_owns(dev))
         return ohci_clear_halt(dev, endpoint);
+    if (ehci_owns(dev))
+        return ehci_clear_halt(dev, endpoint);
 
     struct usb_setup setup = {
         .request_type = 0x02,               /* an den Endpunkt */
@@ -63,22 +73,27 @@ const struct usb_device_info *usb_device_details(struct usb_device *dev)
 {
     if (ohci_owns(dev))
         return ohci_device_details(dev);
+    if (ehci_owns(dev))
+        return ehci_device_details(dev);
     return xhci_device_details(dev);
 }
 
 size_t usb_device_count(void)
 {
-    return xhci_device_count() + ohci_device_count();
+    return xhci_device_count() + ehci_device_count() + ohci_device_count();
 }
 
-/* Erst die Geraete am xHCI, dann die am OHCI. */
+/* Erst die Geraete am xHCI, dann am EHCI, dann am OHCI. */
 struct usb_device *usb_device_at(size_t index)
 {
     size_t x = xhci_device_count();
+    size_t e = ehci_device_count();
 
     if (index < x)
         return xhci_device_at(index);
-    return ohci_device_at(index - x);
+    if (index < x + e)
+        return ehci_device_at(index - x);
+    return ohci_device_at(index - x - e);
 }
 
 const char *usb_speed_name(uint8_t speed)

@@ -83,6 +83,7 @@ const struct usb_device_info *usb_device_details(struct usb_device *dev);
 
 /* --- Einrichten --- */
 void xhci_init(void);
+void ehci_init(void);
 void ohci_init(void);
 size_t usb_device_count(void);
 struct usb_device *usb_device_at(size_t index);

@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "ehcihw.h"
 #include "ohcihw.h"
 #include "usbconfig.h"
 #include "usbhub.h"
@@ -399,6 +400,138 @@ static void test_verteiler(void)
     pruefe_zahl("Zustand: vier Byte", 4, s.length);
 }
 
+/* --- EHCI --------------------------------------------------------------- */
+
+static void test_ehci_kopf(void)
+{
+    printf("EHCI: Warteschlangenkopf\n");
+
+    pruefe_zahl("Geschwindigkeit Full", 0, ehci_speed_code(1));
+    pruefe_zahl("Geschwindigkeit Low", 1, ehci_speed_code(2));
+    pruefe_zahl("Geschwindigkeit High", 2, ehci_speed_code(3));
+    pruefe_zahl("unbekannt heisst Full", 0, ehci_speed_code(9));
+
+    uint32_t w = ehci_qh_chars(5, 2, 3, true, false, 512, false);
+
+    pruefe_zahl("Adresse", 5, w & 0x7F);
+    pruefe_zahl("Endpunkt", 2, (w >> 8) & 0xF);
+    pruefe_zahl("High Speed", 2, (w >> 12) & 3);
+    pruefe_zahl("Datenwechsel aus der qTD", 1, (w >> 14) & 1);
+    pruefe_zahl("kein Listenkopf", 0, (w >> 15) & 1);
+    pruefe_zahl("Paketgroesse", 512, (w >> 16) & 0x7FF);
+    pruefe_zahl("nicht untaetig", 0, (w >> 7) & 1);
+    pruefe_zahl("Steuerbit aus", 0, (w >> 27) & 1);
+
+    w = ehci_qh_chars(0, 0, 3, false, true, 64, false);
+    pruefe_zahl("Listenkopf", 1, (w >> 15) & 1);
+    pruefe_zahl("Datenwechsel im Kopf", 0, (w >> 14) & 1);
+
+    w = ehci_qh_chars(0xFF, 0xFF, 1, false, false, 0xFFFF, true);
+    pruefe_zahl("Adresse beschnitten", 0x7F, w & 0x7F);
+    pruefe_zahl("Endpunkt beschnitten", 0xF, (w >> 8) & 0xF);
+    pruefe_zahl("Full Speed", 0, (w >> 12) & 3);
+    pruefe_zahl("Paket beschnitten", 0x7FF, (w >> 16) & 0x7FF);
+    pruefe_zahl("Steuerbit fuer langsame", 1, (w >> 27) & 1);
+    pruefe_zahl("Nachladezahl bleibt null", 0, w >> 28);
+
+    w = ehci_qh_caps(0x01, 0x1C, 3, 4, 1);
+    pruefe_zahl("Teilnehmer", 0x01, w & 0xFF);
+    pruefe_zahl("Abschluss", 0x1C, (w >> 8) & 0xFF);
+    pruefe_zahl("Verteiler", 3, (w >> 16) & 0x7F);
+    pruefe_zahl("Anschluss", 4, (w >> 23) & 0x7F);
+    pruefe_zahl("Vielfachheit", 1, w >> 30);
+
+    pruefe_zahl("Warteschlangenkopf 128 Byte", 128, sizeof(struct ehci_qh));
+    pruefe_zahl("qTD 64 Byte", 64, sizeof(struct ehci_qtd));
+    pruefe_zahl("Arbeitsbereich ab Wort 4", 16, offsetof(struct ehci_qh, ov_next));
+    pruefe_zahl("Arbeitsbereich Status", 24, offsetof(struct ehci_qh, ov_token));
+    pruefe_zahl("qTD Status", 8, offsetof(struct ehci_qtd, token));
+    pruefe_zahl("qTD Puffer", 12, offsetof(struct ehci_qtd, buf));
+}
+
+static void test_ehci_qtd(void)
+{
+    printf("EHCI: Transferbeschreibung\n");
+
+    uint32_t t = ehci_qtd_token(EHCI_PID_IN, 512, true, true);
+
+    pruefe("aktiv", ehci_token_active(t));
+    pruefe("kein Fehler", !ehci_token_failed(t));
+    pruefe_zahl("Kennung", EHCI_PID_IN, (t >> 8) & 3);
+    pruefe_zahl("drei Fehlversuche", 3, (t >> 10) & 3);
+    pruefe_zahl("Meldung am Ende", 1, (t >> 15) & 1);
+    pruefe_zahl("Laenge", 512, (t >> 16) & 0x7FFF);
+    pruefe_zahl("Datenwechsel", 1, t >> 31);
+
+    t = ehci_qtd_token(EHCI_PID_SETUP, 8, false, false);
+    pruefe_zahl("Kennung SETUP", 2, (t >> 8) & 3);
+    pruefe_zahl("Datenwechsel null", 0, t >> 31);
+    pruefe_zahl("keine Meldung", 0, (t >> 15) & 1);
+
+    t = ehci_qtd_token(EHCI_PID_OUT, 0xFFFFFF, false, false);
+    pruefe_zahl("Laenge beschnitten", 0x7FFF, (t >> 16) & 0x7FFF);
+    pruefe_zahl("Laenge laeuft nicht in den Wechsel", 0, t >> 31);
+
+    /* Der Controller zaehlt die Laenge herunter und loescht Aktiv. */
+    uint32_t fertig = (512u - 512u) << 16;           /* alles uebertragen */
+    uint32_t kurz = 13u << 16;                        /* 13 Byte uebrig    */
+
+    pruefe("nicht mehr aktiv", !ehci_token_active(fertig));
+    pruefe_zahl("alles da", 512, ehci_transferred(512, fertig));
+    pruefe_zahl("kurz: 499 da", 499, ehci_transferred(512, kurz));
+    pruefe_zahl("Uebrig lesen", 13, ehci_token_remaining(kurz));
+    pruefe_zahl("mehr uebrig als bestellt gibt null", 0, ehci_transferred(8, 100u << 16));
+
+    pruefe("blockiert", ehci_token_failed(EHCI_TOKEN_HALTED));
+    pruefe("Puffer", ehci_token_failed(EHCI_TOKEN_DBERR));
+    pruefe("Uebertragung", ehci_token_failed(EHCI_TOKEN_XACT));
+    pruefe("zu viele Daten", ehci_token_failed(EHCI_TOKEN_BABBLE));
+    pruefe("Mikrorahmen verpasst ist kein Fehler", !ehci_token_failed(EHCI_TOKEN_MMF));
+    pruefe("Aktiv allein ist kein Fehler", !ehci_token_failed(EHCI_TOKEN_ACTIVE));
+
+    pruefe("Name blockiert", strcmp(ehci_token_error(EHCI_TOKEN_HALTED), "Endpunkt blockiert") == 0);
+    pruefe("Name Puffer", strcmp(ehci_token_error(EHCI_TOKEN_DBERR), "Datenpuffer") == 0);
+    pruefe("Name zu viele Daten", strcmp(ehci_token_error(EHCI_TOKEN_BABBLE), "zu viele Daten") == 0);
+    pruefe("Name Uebertragung", strcmp(ehci_token_error(EHCI_TOKEN_XACT), "Uebertragungsfehler") == 0);
+    pruefe("Name ohne Fehler", strcmp(ehci_token_error(0), "kein Fehler") == 0);
+}
+
+static void test_ehci_puffer(void)
+{
+    printf("EHCI: Seitenzeiger\n");
+
+    uint32_t b[EHCI_QTD_BUFFERS];
+
+    pruefe_zahl("eine Seite", 1, ehci_fill_buffers(b, 0x10000, 4096));
+    pruefe_zahl("Seite 0", 0x10000, b[0]);
+    pruefe_zahl("Seite 1 leer", 0, b[1]);
+
+    pruefe_zahl("sechzehn KiB", 4, ehci_fill_buffers(b, 0x20000, 16384));
+    pruefe_zahl("Seite 1", 0x21000, b[1]);
+    pruefe_zahl("Seite 2", 0x22000, b[2]);
+    pruefe_zahl("Seite 3", 0x23000, b[3]);
+    pruefe_zahl("Seite 4 leer", 0, b[4]);
+
+    /* Mit Versatz: Der erste Zeiger behaelt ihn, die folgenden nicht. */
+    pruefe_zahl("Versatz, drei Seiten", 3, ehci_fill_buffers(b, 0x30800, 8000));
+    pruefe_zahl("Zeiger 0 mit Versatz", 0x30800, b[0]);
+    pruefe_zahl("Zeiger 1 ohne", 0x31000, b[1]);
+    pruefe_zahl("Zeiger 2 ohne", 0x32000, b[2]);
+
+    pruefe_zahl("fuenf Seiten", 5, ehci_fill_buffers(b, 0x40000, 20480));
+    pruefe_zahl("sechs Seiten passen nicht", 0, ehci_fill_buffers(b, 0x40800, 20480));
+    pruefe_zahl("Zeiger bei Fehler leer", 0, b[0]);
+
+    pruefe_zahl("Laenge null", 1, ehci_fill_buffers(b, 0x50000, 0));
+    pruefe_zahl("ein Byte ueber die Grenze", 2, ehci_fill_buffers(b, 0x50FFF, 2));
+    pruefe_zahl("genau bis zur Grenze", 1, ehci_fill_buffers(b, 0x50800, 2048));
+
+    pruefe_zahl("Anschluss: Aenderungsbits", EHCI_PORT_CSC | EHCI_PORT_PEC | EHCI_PORT_OCC,
+                EHCI_PORT_CHANGES);
+    pruefe_zahl("Leitung K = 1", 1, (0x400u & EHCI_PORT_LS) >> 10);
+    pruefe_zahl("Anschluss 3", 0x44 + 12, EHCI_PORTSC(3));
+}
+
 int main(void)
 {
     printf("=== USB ===\n");
@@ -416,6 +549,9 @@ int main(void)
     test_rahmen();
     test_anschluss();
     test_verteiler();
+    test_ehci_kopf();
+    test_ehci_qtd();
+    test_ehci_puffer();
 
     printf("\n%d Pruefungen, %d Fehler\n", geprueft, fehler);
     return fehler ? 1 : 0;
