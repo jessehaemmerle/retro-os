@@ -11,7 +11,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <stddef.h>
+
 #include "pcnethw.h"
+#include "vmxnet3hw.h"
 
 static int fehler;
 static int geprueft;
@@ -134,6 +137,159 @@ static void test_pcnet_deskriptor(void)
     pruefe_zahl("groesster Rahmen", 4091, pcnet_rx_payload(0xFFF));
 }
 
+/* --- vmxnet3 ----------------------------------------------------------- */
+
+static void test_vmx_layout(void)
+{
+    printf("vmxnet3: Speicheraufbau\n");
+
+    /* Das Geraet liest die Beschreibung an festen Versaetzen. Die Zahlen
+     * sind die der VMware-Definition; ein Abweichen um vier Byte laesst
+     * das Geraet mit zufaelligen Ringgroessen arbeiten. */
+    pruefe_zahl("Treiberinfo", 16, sizeof(struct vmx_driver_info));
+    pruefe_zahl("Hauptkonfiguration", 72, sizeof(struct vmx_misc_conf));
+    pruefe_zahl("Unterbrechungen", 40, sizeof(struct vmx_intr_conf));
+    pruefe_zahl("Empfangsfilter", 528, sizeof(struct vmx_rx_filter_conf));
+    pruefe_zahl("laenge variable Beschreibung", 16, sizeof(struct vmx_var_conf));
+    pruefe_zahl("Geraetelesebereich", 688, sizeof(struct vmx_dev_read));
+    pruefe_zahl("Gesamtbeschreibung", 720, sizeof(struct vmx_shared));
+
+    pruefe_zahl("Magic", 0, offsetof(struct vmx_shared, magic));
+    pruefe_zahl("Lesebereich ab 8", 8, offsetof(struct vmx_shared, dev_read));
+    pruefe_zahl("Version", 8, offsetof(struct vmx_shared, dev_read.misc.info.version));
+    pruefe_zahl("Warteschlangenadresse", 8 + 32,
+                offsetof(struct vmx_shared, dev_read.misc.queue_desc_pa));
+    pruefe_zahl("MTU", 8 + 48, offsetof(struct vmx_shared, dev_read.misc.mtu));
+    pruefe_zahl("Sendewarteschlangen", 8 + 54,
+                offsetof(struct vmx_shared, dev_read.misc.num_tx_queues));
+    pruefe_zahl("Unterbrechungen ab 80", 80, offsetof(struct vmx_shared, dev_read.intr));
+    pruefe_zahl("Sperre", 80 + 28, offsetof(struct vmx_shared, dev_read.intr.intr_ctrl));
+    pruefe_zahl("Filter ab 120", 120, offsetof(struct vmx_shared, dev_read.rx_filter));
+    pruefe_zahl("Empfangsmodus", 120, offsetof(struct vmx_shared, dev_read.rx_filter.rx_mode));
+    pruefe_zahl("RSS ab 648", 648, offsetof(struct vmx_shared, dev_read.rss));
+    pruefe_zahl("Plugin ab 680", 680, offsetof(struct vmx_shared, dev_read.plugin));
+
+    pruefe_zahl("Sendewarteschlange 256", 256, sizeof(struct vmx_tx_queue_desc));
+    pruefe_zahl("Empfangswarteschlange 256", 256, sizeof(struct vmx_rx_queue_desc));
+    pruefe_zahl("Sendering-Adresse", 16, offsetof(struct vmx_tx_queue_desc, tx_ring_pa));
+    pruefe_zahl("Sendegroesse", 16 + 40, offsetof(struct vmx_tx_queue_desc, tx_ring_size));
+    pruefe_zahl("Sende-Unterbrechung", 16 + 56, offsetof(struct vmx_tx_queue_desc, intr_idx));
+    pruefe_zahl("Empfangsring-Adresse", 16, offsetof(struct vmx_rx_queue_desc, rx_ring_pa));
+    pruefe_zahl("Empfangsgroesse", 16 + 40, offsetof(struct vmx_rx_queue_desc, rx_ring_size));
+    pruefe_zahl("Empfangs-Unterbrechung", 16 + 56, offsetof(struct vmx_rx_queue_desc, intr_idx));
+}
+
+static void test_vmx_ring(void)
+{
+    printf("vmxnet3: Ringe\n");
+
+    struct vmx_ring r;
+
+    vmx_ring_init(&r, 32);
+    pruefe_zahl("beginnt bei null", 0, r.next);
+    pruefe_zahl("Generation beginnt bei eins", 1, r.gen);
+
+    for (int i = 0; i < 31; i++)
+        vmx_ring_advance(&r);
+    pruefe_zahl("vor dem Ende", 31, r.next);
+    pruefe_zahl("Generation unveraendert", 1, r.gen);
+
+    vmx_ring_advance(&r);
+    pruefe_zahl("Umlauf", 0, r.next);
+    pruefe_zahl("Generation gekippt", 0, r.gen);
+
+    for (int i = 0; i < 32; i++)
+        vmx_ring_advance(&r);
+    pruefe_zahl("zweiter Umlauf", 0, r.next);
+    pruefe_zahl("Generation wieder eins", 1, r.gen);
+
+    pruefe("64 erlaubt", vmx_ring_size_ok(64));
+    pruefe("32 erlaubt", vmx_ring_size_ok(32));
+    pruefe("4096 erlaubt", vmx_ring_size_ok(4096));
+    pruefe("0 nicht", !vmx_ring_size_ok(0));
+    pruefe("48 nicht", !vmx_ring_size_ok(48));
+    pruefe("4128 nicht", !vmx_ring_size_ok(4128));
+    pruefe("31 nicht", !vmx_ring_size_ok(31));
+}
+
+static void test_vmx_deskriptoren(void)
+{
+    printf("vmxnet3: Deskriptoren\n");
+
+    uint32_t d[4];
+
+    vmx_tx_desc(d, 0x1122334455667788ull, 1514, 1);
+    pruefe_zahl("Sende: Adresse unten", 0x55667788, d[0]);
+    pruefe_zahl("Sende: Adresse oben", 0x11223344, d[1]);
+    pruefe_zahl("Sende: Laenge", 1514, d[2] & 0x3FFF);
+    pruefe_zahl("Sende: Generation Bit 14", 1, (d[2] >> 14) & 1);
+    pruefe_zahl("Sende: sonst nichts im Wort", 0, d[2] >> 15);
+    pruefe_zahl("Sende: Ende und Meldung", (1 << 12) | (1 << 13), d[3]);
+
+    vmx_tx_desc(d, 0, 60, 0);
+    pruefe_zahl("Sende: Generation null", 0, (d[2] >> 14) & 1);
+
+    vmx_tx_desc(d, 0, 0xFFFF, 1);
+    pruefe_zahl("Sende: Laenge beschnitten", 0x3FFF, d[2] & 0x3FFF);
+    pruefe_zahl("Sende: Laenge lappt nicht in die Generation", 1, (d[2] >> 14) & 1);
+
+    vmx_rx_desc(d, 0xAABBCCDD00112233ull, 2048, 1);
+    pruefe_zahl("Empfang: Adresse unten", 0x00112233, d[0]);
+    pruefe_zahl("Empfang: Adresse oben", (long)0xAABBCCDDu, d[1]);
+    pruefe_zahl("Empfang: Laenge", 2048, d[2] & 0x3FFF);
+    pruefe_zahl("Empfang: Pufferart Kopf", 0, (d[2] >> 14) & 1);
+    pruefe_zahl("Empfang: Generation Bit 31", 1, d[2] >> 31);
+    pruefe_zahl("Empfang: Rest null", 0, d[3]);
+
+    vmx_rx_desc(d, 0, 2048, 0);
+    pruefe_zahl("Empfang: Generation null", 0, d[2] >> 31);
+
+    uint32_t c[4] = { 0, 0, 0, 0x80000000u };
+
+    pruefe_zahl("Meldung Generation 1", 1, vmx_comp_gen(c));
+    c[3] = 0x7FFFFFFFu;
+    pruefe_zahl("Meldung Generation 0", 0, vmx_comp_gen(c));
+
+    /* Eintrag 37, Anfang und Ende, Warteschlange 1, Laenge 1500. */
+    uint32_t r[4] = { 37u | (1u << 14) | (1u << 15) | (1u << 16), 0,
+                      1500u, 0x80000000u };
+    struct vmx_rx_comp info;
+
+    vmx_rx_comp_decode(r, &info);
+    pruefe_zahl("Meldung: Eintrag", 37, info.index);
+    pruefe_zahl("Meldung: Laenge", 1500, info.length);
+    pruefe_zahl("Meldung: Warteschlange", 1, info.queue_id);
+    pruefe("Meldung: Anfang", info.sop);
+    pruefe("Meldung: Ende", info.eop);
+    pruefe("Meldung: kein Fehler", !info.error);
+
+    /* Anfang und Ende einzeln: nur Bit 15 ist der Anfang, nur Bit 14 das Ende. */
+    r[0] = 5u | (1u << 15);
+    vmx_rx_comp_decode(r, &info);
+    pruefe("nur Anfang", info.sop && !info.eop);
+    r[0] = 5u | (1u << 14);
+    vmx_rx_comp_decode(r, &info);
+    pruefe("nur Ende", !info.sop && info.eop);
+
+    r[0] = 4095u;
+    r[2] = 60u | (1u << 14);
+    vmx_rx_comp_decode(r, &info);
+    pruefe_zahl("groesster Eintrag", 4095, info.index);
+    pruefe("Fehlerbit", info.error);
+    pruefe("weder Anfang noch Ende", !info.sop && !info.eop);
+
+    uint32_t t[4] = { 0xFFFFF000u | 63u, 0, 0, 0x80000000u };
+
+    pruefe_zahl("Sendemeldung: nur zwoelf Bit", 63, vmx_tx_comp_index(t));
+
+    pruefe_zahl("Gastsystem 64 Bit", 2, vmx_gos_word() & 3);
+    pruefe_zahl("Gastsystem Linux", 1, (vmx_gos_word() >> 2) & 15);
+
+    pruefe("Verbindung da", vmx_link_up(0x03E80001u));
+    pruefe("Verbindung weg", !vmx_link_up(0x03E80000u));
+    pruefe_zahl("Geschwindigkeit", 1000, vmx_link_speed(0x03E80001u));
+}
+
 int main(void)
 {
     printf("=== Netzwerkkarten ===\n");
@@ -142,6 +298,9 @@ int main(void)
     test_pcnet_ring();
     test_pcnet_block();
     test_pcnet_deskriptor();
+    test_vmx_layout();
+    test_vmx_ring();
+    test_vmx_deskriptoren();
 
     printf("\n%d Pruefungen, %d Fehler\n", geprueft, fehler);
     return fehler ? 1 : 0;

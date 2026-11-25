@@ -21,6 +21,7 @@ static const struct nic_driver *const drivers[] = {
     &rtl8169_driver,
     &rtl8139_driver,
     &pcnet_driver,
+    &vmxnet3_driver,
 };
 
 static struct nic active;
@@ -33,8 +34,6 @@ static size_t seen_count;
  * die Meldung soll dem Benutzer sagen, woran es liegt. */
 static const char *known_unsupported(uint16_t vendor, uint16_t device)
 {
-    if (vendor == 0x15AD && device == 0x07B0)
-        return "VMware vmxnet3";
     if (vendor == 0x10EC && device == 0x8125)
         return "Realtek RTL8125 (2,5 GBit)";
     return NULL;

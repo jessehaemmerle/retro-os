@@ -93,7 +93,8 @@ USB := usb_test.c shim.c \
        ../kernel/src/drivers/ohcihw.c
 
 NETZKARTE := netzkarte_test.c shim.c \
-             ../kernel/src/drivers/pcnethw.c
+             ../kernel/src/drivers/pcnethw.c \
+             ../kernel/src/drivers/vmxnet3hw.c
 
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c

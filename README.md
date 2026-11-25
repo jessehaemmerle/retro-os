@@ -88,7 +88,8 @@ sudo dd if=retroos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 > Beim Netzwerk sucht sich RetroOS aus, was auf dem PCI-Bus steckt:
 > virtio-net in virtuellen Maschinen, Intel igb (I210, I350, 82576),
 > Intel e1000e (82574L bis I219), die älteren 8254x sowie Realtek
-> RTL8169/8168/8111 und RTL8139.
+> RTL8169/8168/8111 und RTL8139, AMD PCnet (die VirtualBox-Karte für
+> ältere Gastsysteme) und VMware vmxnet3.
 
 ## Auf die Festplatte installieren
 
@@ -470,7 +471,7 @@ also so, wie es ein Betriebssystem tut.
 | **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; **USB-Tablett und jeder andere Zeiger ohne Boot-Protokoll** über die HID-Berichtsbeschreibung; Tastenflanken statt nur Zustand; vier Belegungen (de/us/uk/ch) inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift; Schadensverfolgung schickt nur geänderte Rechtecke an die Karte |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
-| **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
+| **Netzwerkkarten** | virtio-net (alte und neue Bauform), Intel igb, e1000e und 8254x, Realtek RTL8169/8168/8111 und RTL8139, AMD PCnet (die VirtualBox-Standardkarte älterer Gastsysteme), VMware vmxnet3 – hinter einer gemeinsamen Schnittstelle, der erste passende Treiber bekommt die Karte |
 | **Netzwerk** | Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, TCP, HTTP/1.1 |
 | **TCP** | Fenstersteuerung, Umsortierung, langsamer Start, Überlastvermeidung, schnelle Wiederholung; als Client *und* als Server mit Warteschlange, geschlossene Ports antworten mit RST |
 | **Kryptografie** | SHA-256/384/512, HMAC, HKDF, ChaCha20-Poly1305, AES-128/256-GCM, X25519, RSA, ECDSA P-256 |
@@ -492,6 +493,7 @@ also so, wie es ein Betriebssystem tut.
 | **Oberfläche** | 110 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten, das Blättern durch ein Menü über Trennlinien und blasse Zeilen hinweg – auch durch eines, in dem gar nichts wählbar ist, dazu der Fünf-Punkte-Filter der Kantenglättung samt Rändern und die Vertauschung von Rot und Blau zwischen RGB- und BGR-Panels |
 | **Zeiger** | 124 Prüfungen: die Berichtsbeschreibung eines Tabletts, einer gewöhnlichen Maus und einer mit Berichtsnummer, Tastatur und Zufall (20 000 zufällige und jede abgeschnittene Beschreibung, auch unter AddressSanitizer), Felder über Bytegrenzen und mit Vorzeichen, Umrechnung auf den Bildschirm samt Rand, PS/2-Pakete mit Überlauf und Rad, und für **jede** der 4096 Kombinationen aus Zustand und Flanken: nie eine doppelte Flanke, nie zu viele Schritte, Ende immer im gemeldeten Zustand |
 | **USB** | 78 Prüfungen: die Konfigurationsbeschreibung eines Tabletts, einer Tastatur, eines Speichers und eines Geräts mit zwei Schnittstellen oder einem Unterbrechungsausgang, kaputte und abgeschnittene Eingaben, 20 000 zufällige (auch unter AddressSanitizer) – dazu die OHCI-Worte Bit für Bit: Endpunkt, Transferbeschreibung samt „nicht angefasst“, Pufferende, übertragene Länge, Rahmenlänge, Anschlussstatus |
+| **Netzwerkkarten** | 120 Prüfungen: PCnet – negative Pufferlänge für alle 4095 Längen, Ringlogarithmus, der 28-Byte-Initialisierungsblock Byte für Byte, Deskriptorzustände; vmxnet3 – Speicheraufbau mit `sizeof` und `offsetof` gegen die VMware-Definition (720 Byte, Warteschlangen zu 256), Generationsbit über mehrere Umläufe, Sende-, Empfangs- und Meldungsworte Bit für Bit (auch unter AddressSanitizer) |
 | **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
