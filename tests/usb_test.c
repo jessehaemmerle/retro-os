@@ -16,6 +16,7 @@
 
 #include "ohcihw.h"
 #include "usbconfig.h"
+#include "usbhub.h"
 
 static int fehler;
 static int geprueft;
@@ -291,6 +292,113 @@ static void test_anschluss(void)
     pruefe_zahl("Low Speed", 2, ohci_port_speed(OHCI_PORT_CCS | OHCI_PORT_LSDA));
 }
 
+/* --- Verteiler ---------------------------------------------------------- */
+
+static void test_verteiler(void)
+{
+    printf("Verteiler\n");
+
+    /* Der Verteiler von QEMU: 8 Anschluesse, Einschaltzeit 50 * 2 ms. */
+    const uint8_t qemu[] = { 9, 0x29, 8, 0x0A, 0x00, 50, 0, 0, 0xFF };
+    struct usb_hub_info info;
+
+    pruefe("QEMU-Verteiler gelesen", usb_parse_hub_descriptor(qemu, sizeof(qemu), &info));
+    pruefe_zahl("Anschluesse", 8, info.ports);
+    pruefe_zahl("Einschaltzeit 100 ms", 100, info.power_good_ms);
+
+    const uint8_t schnell[] = { 9, 0x29, 4, 0, 0, 1, 0, 0, 0xFF };
+    pruefe("gelesen", usb_parse_hub_descriptor(schnell, sizeof(schnell), &info));
+    pruefe_zahl("zu kurze Zeit wird verlaengert", 20, info.power_good_ms);
+
+    const uint8_t langsam[] = { 9, 0x29, 4, 0, 0, 255, 0, 0, 0xFF };
+    pruefe("gelesen", usb_parse_hub_descriptor(langsam, sizeof(langsam), &info));
+    pruefe_zahl("zu lange Zeit wird gekappt", 250, info.power_good_ms);
+
+    const uint8_t leer[] = { 9, 0x29, 0, 0, 0, 50, 0, 0, 0xFF };
+    const uint8_t viele[] = { 9, 0x29, 16, 0, 0, 50, 0, 0, 0xFF };
+    const uint8_t falsch[] = { 9, 0x01, 4, 0, 0, 50, 0, 0, 0xFF };
+    const uint8_t kurz[] = { 9, 0x29, 4 };
+    const uint8_t winzig[] = { 5, 0x29, 4, 0, 0, 50, 0, 0, 0 };
+
+    pruefe("ohne Anschluss", !usb_parse_hub_descriptor(leer, sizeof(leer), &info));
+    pruefe("zu viele Anschluesse", !usb_parse_hub_descriptor(viele, sizeof(viele), &info));
+    pruefe("falsche Art", !usb_parse_hub_descriptor(falsch, sizeof(falsch), &info));
+    pruefe("zu kurz", !usb_parse_hub_descriptor(kurz, sizeof(kurz), &info));
+    pruefe("Laengenfeld zu klein", !usb_parse_hub_descriptor(winzig, sizeof(winzig), &info));
+    pruefe("ohne Beschreibung", !usb_parse_hub_descriptor(NULL, 0, &info));
+    pruefe("ohne Ausgabe", !usb_parse_hub_descriptor(qemu, sizeof(qemu), NULL));
+    pruefe_zahl("Ausgabe nach Fehler leer", 0, info.ports);
+
+    /* Anschlusszustand: angeschlossen, freigegeben, Strom - Full Speed. */
+    struct usb_hub_port p;
+    const uint8_t voll[4] = { 0x03, 0x01, 0x11, 0x00 };
+
+    usb_decode_hub_port(voll, &p);
+    pruefe("verbunden", p.connected);
+    pruefe("freigegeben", p.enabled);
+    pruefe("Strom", p.powered);
+    pruefe("nicht zuruecksetzend", !p.reset);
+    pruefe_zahl("Full Speed", 1, usb_hub_port_speed(&p));
+    pruefe("Verbindung geaendert", p.changed_connection);
+    pruefe("Reset beendet", p.changed_reset);
+    pruefe("Freigabe nicht geaendert", !p.changed_enable);
+
+    const uint8_t langsam_p[4] = { 0x03, 0x03, 0, 0 };
+
+    usb_decode_hub_port(langsam_p, &p);
+    pruefe("langsam", p.low_speed);
+    pruefe_zahl("Low Speed", 2, usb_hub_port_speed(&p));
+
+    const uint8_t hoch[4] = { 0x03, 0x05, 0, 0 };
+
+    usb_decode_hub_port(hoch, &p);
+    pruefe("schnell", p.high_speed && !p.low_speed);
+    pruefe_zahl("High Speed", 3, usb_hub_port_speed(&p));
+
+    const uint8_t zurueck[4] = { 0x13, 0x01, 0x00, 0x00 };
+
+    usb_decode_hub_port(zurueck, &p);
+    pruefe("Reset laeuft", p.reset);
+    pruefe("Aenderungsbits beim Reset noch leer", !p.changed_reset);
+
+    const uint8_t strom[4] = { 0x08, 0x01, 0, 0 };
+
+    usb_decode_hub_port(strom, &p);
+    pruefe("Ueberstrom", p.overcurrent);
+    pruefe("nicht verbunden", !p.connected);
+
+    const uint8_t stillgelegt[4] = { 0x07, 0x01, 0, 0 };
+
+    usb_decode_hub_port(stillgelegt, &p);
+    pruefe("ruhend", p.suspended);
+
+    /* Die Anfragen. */
+    struct usb_setup s;
+
+    usb_hub_get_descriptor_setup(&s);
+    pruefe_zahl("Beschreibung: Typ", 0xA0, s.request_type);
+    pruefe_zahl("Beschreibung: Anfrage", 6, s.request);
+    pruefe_zahl("Beschreibung: Wert", 0x2900, s.value);
+    pruefe_zahl("Beschreibung: Laenge", 9, s.length);
+
+    usb_hub_port_feature_setup(&s, 3, HUB_FEAT_PORT_RESET, true);
+    pruefe_zahl("Reset: Typ", 0x23, s.request_type);
+    pruefe_zahl("Reset: SET_FEATURE", 3, s.request);
+    pruefe_zahl("Reset: Merkmal", 4, s.value);
+    pruefe_zahl("Reset: Anschluss", 3, s.index);
+    pruefe_zahl("Reset: ohne Daten", 0, s.length);
+
+    usb_hub_port_feature_setup(&s, 2, HUB_FEAT_C_RESET, false);
+    pruefe_zahl("Loeschen: CLEAR_FEATURE", 1, s.request);
+    pruefe_zahl("Loeschen: Merkmal 20", 20, s.value);
+
+    usb_hub_port_status_setup(&s, 5);
+    pruefe_zahl("Zustand: Typ", 0xA3, s.request_type);
+    pruefe_zahl("Zustand: GET_STATUS", 0, s.request);
+    pruefe_zahl("Zustand: Anschluss", 5, s.index);
+    pruefe_zahl("Zustand: vier Byte", 4, s.length);
+}
+
 int main(void)
 {
     printf("=== USB ===\n");
@@ -307,6 +415,7 @@ int main(void)
     test_puffer();
     test_rahmen();
     test_anschluss();
+    test_verteiler();
 
     printf("\n%d Pruefungen, %d Fehler\n", geprueft, fehler);
     return fehler ? 1 : 0;

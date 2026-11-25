@@ -31,6 +31,10 @@ bool   ohci_owns(const struct usb_device *dev);
 bool   ohci_control(struct usb_device *dev, const struct usb_setup *setup,
                     void *buffer);
 size_t ohci_interrupt_poll(struct usb_device *dev, void *buffer, size_t size);
+bool   ohci_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
+                 uint32_t length, bool in, uint32_t *transferred);
+bool   ohci_setup_bulk_from_config(struct usb_device *dev);
+bool   ohci_clear_halt(struct usb_device *dev, uint8_t endpoint);
 const struct usb_device_info *ohci_device_details(struct usb_device *dev);
 size_t ohci_device_count(void);
 struct usb_device *ohci_device_at(size_t index);

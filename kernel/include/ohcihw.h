@@ -37,6 +37,7 @@
 #define OHCI_CTRL_CBSR_4_1   0x03u          /* vier Steuerauftraege je Masse */
 #define OHCI_CTRL_PLE        (1u << 2)      /* periodische Liste           */
 #define OHCI_CTRL_CLE        (1u << 4)      /* Steuerliste                 */
+#define OHCI_CTRL_BLE        (1u << 5)      /* Massenliste                 */
 #define OHCI_CTRL_HCFS_MASK  0xC0u
 #define OHCI_CTRL_HCFS_OPER  0x80u
 #define OHCI_CTRL_IR         (1u << 8)      /* Unterbrechungen gehen an SMM */
@@ -44,6 +45,7 @@
 /* HcCommandStatus */
 #define OHCI_CMD_HCR         (1u << 0)      /* Rechner zuruecksetzen */
 #define OHCI_CMD_CLF         (1u << 1)      /* Steuerliste gefuellt  */
+#define OHCI_CMD_BLF         (1u << 2)      /* Massenliste gefuellt  */
 #define OHCI_CMD_OCR         (1u << 3)      /* Besitz uebernehmen    */
 
 /* HcInterruptStatus */

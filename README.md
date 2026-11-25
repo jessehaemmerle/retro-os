@@ -467,7 +467,7 @@ also so, wie es ein Betriebssystem tut.
 | **Partitionen** | GPT samt Sicherungstabelle, MBR mit erweiterten Abschnitten, roher Datenträger |
 | **Installation** | Schreibt eine eigene GUID-Tabelle, formatiert EFI-Abschnitt und Ablage, kopiert Bootloader und Kernel und setzt den Startsektor für BIOS-Rechner |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
-| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte. **OHCI-Controller (USB 1.1)** für Tastatur, Maus und Tablett – das, was VirtualBox ab Werk anbietet: Steuerliste mit Aufzählung, periodische Liste mit je zwei Beschreibungen im Wechsel pro Endpunkt, Übernahme vom BIOS samt Bus-Reset (die Firmware hat Anschlüsse schon angefasst). Noch nicht am OHCI: Verteiler und Massenspeicher |
+| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte. **OHCI-Controller (USB 1.1)** für Tastatur, Maus und Tablett – das, was VirtualBox ab Werk anbietet: Steuerliste mit Aufzählung, periodische Liste mit je zwei Beschreibungen im Wechsel pro Endpunkt, Übernahme vom BIOS samt Bus-Reset (die Firmware hat Anschlüsse schon angefasst). Ebenfalls am OHCI: **Verteiler** (rekursiv abgesucht, Anschluss für Anschluss mit Strom, Reset und Geschwindigkeit aus dem Anschlusszustand) und **Massenspeicher** (Massenliste mit einem Ring aus 16 Beschreibungen je Endpunkt und 64-KiB-Zwischenpuffer; der Datenwechsel läuft über den Endpunkt weiter) |
 | **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; **USB-Tablett und jeder andere Zeiger ohne Boot-Protokoll** über die HID-Berichtsbeschreibung; Tastenflanken statt nur Zustand; vier Belegungen (de/us/uk/ch) inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift; Schadensverfolgung schickt nur geänderte Rechtecke an die Karte |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
@@ -492,7 +492,7 @@ also so, wie es ein Betriebssystem tut.
 | **Suche** | 32 Prüfungen: Treffen und Danebenliegen samt Grenzfällen, jede Regel der Bewertung einzeln (genau vor Anhang, Anfang vor Mitte, Wortanfang vor Wortmitte, kurz vor lang), stabiles Sortieren bei Gleichstand |
 | **Oberfläche** | 110 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten, das Blättern durch ein Menü über Trennlinien und blasse Zeilen hinweg – auch durch eines, in dem gar nichts wählbar ist, dazu der Fünf-Punkte-Filter der Kantenglättung samt Rändern und die Vertauschung von Rot und Blau zwischen RGB- und BGR-Panels |
 | **Zeiger** | 124 Prüfungen: die Berichtsbeschreibung eines Tabletts, einer gewöhnlichen Maus und einer mit Berichtsnummer, Tastatur und Zufall (20 000 zufällige und jede abgeschnittene Beschreibung, auch unter AddressSanitizer), Felder über Bytegrenzen und mit Vorzeichen, Umrechnung auf den Bildschirm samt Rand, PS/2-Pakete mit Überlauf und Rad, und für **jede** der 4096 Kombinationen aus Zustand und Flanken: nie eine doppelte Flanke, nie zu viele Schritte, Ende immer im gemeldeten Zustand |
-| **USB** | 78 Prüfungen: die Konfigurationsbeschreibung eines Tabletts, einer Tastatur, eines Speichers und eines Geräts mit zwei Schnittstellen oder einem Unterbrechungsausgang, kaputte und abgeschnittene Eingaben, 20 000 zufällige (auch unter AddressSanitizer) – dazu die OHCI-Worte Bit für Bit: Endpunkt, Transferbeschreibung samt „nicht angefasst“, Pufferende, übertragene Länge, Rahmenlänge, Anschlussstatus |
+| **USB** | 125 Prüfungen: der Verteiler samt Anschlusszustand (Geschwindigkeit, Änderungsbits, Einschaltzeit, die Anfragen Byte für Byte) – dazu die Konfigurationsbeschreibung eines Tabletts, einer Tastatur, eines Speichers und eines Geräts mit zwei Schnittstellen oder einem Unterbrechungsausgang, kaputte und abgeschnittene Eingaben, 20 000 zufällige (auch unter AddressSanitizer) – dazu die OHCI-Worte Bit für Bit: Endpunkt, Transferbeschreibung samt „nicht angefasst“, Pufferende, übertragene Länge, Rahmenlänge, Anschlussstatus |
 | **Netzwerkkarten** | 120 Prüfungen: PCnet – negative Pufferlänge für alle 4095 Längen, Ringlogarithmus, der 28-Byte-Initialisierungsblock Byte für Byte, Deskriptorzustände; vmxnet3 – Speicheraufbau mit `sizeof` und `offsetof` gegen die VMware-Definition (720 Byte, Warteschlangen zu 256), Generationsbit über mehrere Umläufe, Sende-, Empfangs- und Meldungsworte Bit für Bit (auch unter AddressSanitizer) |
 | **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
@@ -1265,11 +1265,8 @@ welche, hängt davon ab, was die VM hat.
 bewegt hat, sondern *wo* der Zeiger steht: Der Zeiger im Gast liegt immer
 genau unter dem des Wirts, ohne dass die Maus eingefangen oder
 beschleunigt werden muss. Die Konsole meldet beim Start
-`USB : Zeiger angemeldet (Tablett, absolut ...)`. Der OHCI-Treiber kennt
-nur Geräte, die direkt am Wurzelverteiler hängen – ein Tablett, eine
-Tastatur und eine Maus am Controller sind also in Ordnung, ein Verteiler
-dazwischen wird übersprungen (er steht dann im Protokoll). USB-Speicher
-gibt es am OHCI nicht; dafür bleibt der xHCI.
+`USB : Zeiger angemeldet (Tablett, absolut ...)`. Der OHCI-Treiber bedient
+Tastatur, Maus und Tablett, auch hinter einem Verteiler, und USB-Sticks.
 Geprüft sind beide Wege in QEMU (`-device pci-ohci -device usb-tablet` und
 `-device qemu-xhci -device usb-tablet`, jeweils auch mit Tastatur und Maus
 daneben); VirtualBox hat eigene Nachbildungen der Controller, und ob sie

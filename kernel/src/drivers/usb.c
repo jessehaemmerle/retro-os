@@ -5,10 +5,7 @@
  * wird entschieden, wohin der Aufruf geht: Gehoert das Geraet dem
  * OHCI-Treiber, zu ihm, sonst zu xHCI.
  *
- * Massenendpunkte (Speicher) gibt es nur am xHCI; am OHCI melden sie
- * "nicht moeglich", und der Speichertreiber laesst das Geraet
- * unbeachtet. Hubs ebenso: Hinter einem Verteiler am OHCI liegt nichts,
- * was erreichbar waere.
+ * Massenendpunkte (Speicher) und Verteiler gibt es an beiden.
  */
 
 #include "usb_hcd.h"
@@ -32,19 +29,25 @@ bool usb_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
               uint32_t length, bool in, uint32_t *transferred)
 {
     if (ohci_owns(dev))
-        return false;
+        return ohci_bulk(dev, endpoint, buffer, length, in, transferred);
     return xhci_bulk(dev, endpoint, buffer, length, in, transferred);
 }
 
 bool usb_setup_bulk_from_config(struct usb_device *dev)
 {
     if (ohci_owns(dev))
-        return false;
+        return ohci_setup_bulk_from_config(dev);
     return xhci_setup_bulk_from_config(dev);
 }
 
 bool usb_clear_halt(struct usb_device *dev, uint8_t endpoint)
 {
+    /* Am OHCI muss auch die Beschreibung im Speicher zurueckgesetzt
+     * werden, nicht nur das Geraet - sonst bleibt der Endpunkt
+     * angehalten. */
+    if (ohci_owns(dev))
+        return ohci_clear_halt(dev, endpoint);
+
     struct usb_setup setup = {
         .request_type = 0x02,               /* an den Endpunkt */
         .request = 0x01,                    /* CLEAR_FEATURE   */
