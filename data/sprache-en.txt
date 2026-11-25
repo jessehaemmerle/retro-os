@@ -831,9 +831,9 @@ Tablett (absolut)	Tablet (absolute)
 Tablett	Tablet
 keiner	none
 Es kommt nichts an.	Nothing is arriving.
-In VirtualBox: unter USB den Controller "USB 3.0 (xHCI)"	In VirtualBox: under USB, enable the "USB 3.0 (xHCI)" controller
-einschalten und als Zeigegeraet "USB-Tablett" waehlen -	and choose "USB Tablet" as the pointing device -
-oder unter System - Mainboard "PS/2-Maus".	or under System - Motherboard "PS/2 Mouse".
+In VirtualBox: unter System - Zeigegeraet "USB-Tablett"	In VirtualBox: under System - Pointing Device choose "USB Tablet"
+waehlen und unter USB einen Controller (OHCI oder xHCI)	and under USB enable a controller (OHCI or xHCI) -
+einschalten - oder unter Mainboard "PS/2-Maus".	or under Motherboard "PS/2 Mouse".
 In VirtualBox: System - Mainboard - Zeigegeraet auf "PS/2-Maus" stellen.	In VirtualBox: System - Motherboard - Pointing Device to "PS/2 Mouse".
 Zeigegeraet und woran es haengt	the pointing device and what it hangs on
 Bewegt sich der Zeiger nicht, steht hier, ob ueberhaupt Bytes\nankommen und ueber welchen Weg.	If the pointer does not move, this says whether any bytes arrive\nat all, and by which route.
@@ -1062,5 +1062,5 @@ etwas so ist - nicht, was dasteht.	why something is the way it is - not what it 
 Die Schriften stammen von DejaVu, Liberation, JetBrains, IBM,	The typefaces come from DejaVu, Liberation, JetBrains, IBM,
 Mozilla, Adobe, Ubuntu und anderen, die Symbole von Lucide.	Mozilla, Adobe, Ubuntu and others, the icons from Lucide.
 Ihre Lizenzen liegen unter third_party.	Their licenses live under third_party.
-Was sich ohne Bildschirm pruefen laesst, wird geprueft: ueber	What can be checked without a screen is checked: over 1600
-1600 Pruefungen in zweiundzwanzig Sammlungen.	checks in twenty-two collections.
+Was sich ohne Bildschirm pruefen laesst, wird geprueft: ueber	What can be checked without a screen is checked: over 1700
+1700 Pruefungen in dreiundzwanzig Sammlungen.	checks in twenty-three collections.

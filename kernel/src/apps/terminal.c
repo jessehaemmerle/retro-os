@@ -2735,11 +2735,11 @@ static void cmd_mouse(struct term_state *st)
         term_line(st, C_NORMAL, "");
         term_line(st, C_ERROR, tr("Es kommt nichts an."));
         term_line(st, C_NORMAL,
-                  tr("In VirtualBox: unter USB den Controller \"USB 3.0 (xHCI)\""));
+                  tr("In VirtualBox: unter System - Zeigegeraet \"USB-Tablett\""));
         term_line(st, C_NORMAL,
-                  tr("einschalten und als Zeigegeraet \"USB-Tablett\" waehlen -"));
+                  tr("waehlen und unter USB einen Controller (OHCI oder xHCI)"));
         term_line(st, C_NORMAL,
-                  tr("oder unter System - Mainboard \"PS/2-Maus\"."));
+                  tr("einschalten - oder unter Mainboard \"PS/2-Maus\"."));
     }
 }
 

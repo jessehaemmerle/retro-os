@@ -166,6 +166,33 @@ uint64_t pmm_alloc_pages(size_t count)
     return addr;
 }
 
+/* Fuer Geraete mit 32-Bit-Zeigern - OHCI zum Beispiel. Der Allokator
+ * sucht ohnehin von unten, und auf einem Rechner mit wenig Speicher
+ * liegt alles darunter; mit 16 GiB aber ist das nicht gesagt, und ein
+ * Controller, dem man eine Adresse ueber 4 GiB gibt, liest und
+ * beschreibt dann ganz woanders. Darum wird hier nur im erlaubten
+ * Bereich gesucht - und der Suchzeiger des gewoehnlichen Allokators
+ * bleibt, wo er war, damit dessen naechste Suche nicht von vorn
+ * beginnt. */
+uint64_t pmm_alloc_pages_below(size_t count, uint64_t limit)
+{
+    if (count == 0 || !bitmap)
+        return 0;
+
+    uint64_t end = limit / PAGE_SIZE;
+
+    if (end > bitmap_pages)
+        end = bitmap_pages;
+
+    uint64_t flags = spin_lock_irq(&pmm_lock);
+    uint64_t saved = last_index;
+    uint64_t addr = find_run(count, 0, end);
+
+    last_index = saved;
+    spin_unlock_irq(&pmm_lock, flags);
+    return addr;
+}
+
 uint64_t pmm_alloc_page(void)
 {
     return pmm_alloc_pages(1);

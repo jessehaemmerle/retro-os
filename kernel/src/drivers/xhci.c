@@ -16,6 +16,7 @@
  */
 
 #include "usb.h"
+#include "usbconfig.h"
 #include "arch.h"
 #include "kstring.h"
 #include "mm.h"
@@ -424,7 +425,7 @@ static uint32_t *endpoint_context(uint8_t *base, uint32_t endpoint,
 /* Steuerkanal                                                         */
 /* ------------------------------------------------------------------ */
 
-bool usb_control(struct usb_device *dev, const struct usb_setup *setup,
+bool xhci_control(struct usb_device *dev, const struct usb_setup *setup,
                  void *buffer)
 {
     if (!dev || !dev->used)
@@ -491,7 +492,7 @@ bool usb_control(struct usb_device *dev, const struct usb_setup *setup,
     return true;
 }
 
-size_t usb_interrupt_poll(struct usb_device *dev, void *buffer, size_t size)
+size_t xhci_interrupt_poll(struct usb_device *dev, void *buffer, size_t size)
 {
     if (!dev || !dev->used || !dev->interrupt_endpoint)
         return 0;
@@ -582,7 +583,7 @@ static bool setup_bulk(struct usb_device *dev, uint8_t in_endpoint,
     return true;
 }
 
-bool usb_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
+bool xhci_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
               uint32_t length, bool in, uint32_t *transferred)
 {
     if (!dev || !dev->used || !dev->bulk_in || length > 16 * PAGE_SIZE)
@@ -627,7 +628,7 @@ bool usb_bulk(struct usb_device *dev, uint8_t endpoint, void *buffer,
     return true;
 }
 
-bool usb_setup_bulk_from_config(struct usb_device *dev)
+bool xhci_setup_bulk_from_config(struct usb_device *dev)
 {
     if (!dev || !dev->found_bulk_in || !dev->found_bulk_out)
         return false;
@@ -635,27 +636,14 @@ bool usb_setup_bulk_from_config(struct usb_device *dev)
                       dev->found_bulk_out, dev->found_bulk_out_packet);
 }
 
-bool usb_clear_halt(struct usb_device *dev, uint8_t endpoint)
-{
-    struct usb_setup setup = {
-        .request_type = 0x02,               /* an den Endpunkt */
-        .request = 0x01,                    /* CLEAR_FEATURE   */
-        .value = 0,                         /* ENDPOINT_HALT   */
-        .index = endpoint,
-        .length = 0,
-    };
-
-    return usb_control(dev, &setup, NULL);
-}
-
-const struct usb_device_info *usb_device_details(struct usb_device *dev)
+const struct usb_device_info *xhci_device_details(struct usb_device *dev)
 {
     return dev ? &dev->info : NULL;
 }
 
-size_t usb_device_count(void) { return device_count; }
+size_t xhci_device_count(void) { return device_count; }
 
-struct usb_device *usb_device_at(size_t index)
+struct usb_device *xhci_device_at(size_t index)
 {
     size_t seen = 0;
 
@@ -667,18 +655,6 @@ struct usb_device *usb_device_at(size_t index)
         seen++;
     }
     return NULL;
-}
-
-const char *usb_speed_name(uint8_t speed)
-{
-    switch (speed) {
-    case 1: return "Full Speed";
-    case 2: return "Low Speed";
-    case 3: return "High Speed";
-    case 4: return "SuperSpeed";
-    case 5: return "SuperSpeed+";
-    default: return "unbekannt";
-    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -860,7 +836,7 @@ static bool get_descriptor(struct usb_device *dev, uint8_t type, uint8_t index,
         .length = length,
     };
 
-    return usb_control(dev, &setup, buffer);
+    return xhci_control(dev, &setup, buffer);
 }
 
 /* Sucht in der Konfiguration die erste Schnittstelle mit
@@ -882,70 +858,27 @@ static bool read_configuration(struct usb_device *dev)
     if (!get_descriptor(dev, USB_DESC_CONFIG, 0, full, total))
         return false;
 
-    uint8_t configuration = full[5];
-    size_t at = 0;
-    bool have_interface = false;
-    uint8_t endpoint_address = 0;
-    uint16_t endpoint_packet = 8;
-    uint8_t endpoint_interval = 8;
+    struct usb_config config;
 
-    while (at + 2 <= total) {
-        uint8_t length = full[at];
-        uint8_t type = full[at + 1];
-
-        if (length < 2 || at + length > total)
-            break;
-
-        if (type == USB_DESC_INTERFACE && length >= 9) {
-            if (have_interface && endpoint_address)
-                break;                   /* die erste taugliche genuegt */
-
-            dev->info.interface_number = full[at + 2];
-            dev->info.interface_class = full[at + 5];
-            dev->info.interface_subclass = full[at + 6];
-            dev->info.interface_protocol = full[at + 7];
-            dev->info.hid_report_length = 0;
-            have_interface = true;
-            endpoint_address = 0;
-        } else if (type == USB_DESC_HID && length >= 9 && have_interface) {
-            /* Die HID-Beschreibung zaehlt die Deskriptoren auf, die das
-             * Geraet zusaetzlich hat: je Art und Laenge. Uns interessiert
-             * die Berichtsbeschreibung. */
-            uint8_t count = full[at + 5];
-
-            for (uint8_t i = 0; i < count && (size_t)6 + 3u * i + 3 <= length; i++) {
-                size_t entry = at + 6 + 3u * i;
-
-                if (full[entry] == USB_DESC_HID_REPORT)
-                    dev->info.hid_report_length =
-                        (uint16_t)(full[entry + 1] | (full[entry + 2] << 8));
-            }
-        } else if (type == USB_DESC_ENDPOINT && length >= 7 && have_interface) {
-            uint8_t address = full[at + 2];
-            uint8_t attributes = full[at + 3];
-            uint16_t packet = (uint16_t)((full[at + 4] |
-                                          (full[at + 5] << 8)) & 0x7FF);
-
-            if ((attributes & 3) == 3 && (address & 0x80)) {
-                endpoint_address = address;
-                endpoint_packet = packet;
-                endpoint_interval = full[at + 6];
-            } else if ((attributes & 3) == 2) {
-                /* Massenendpunkt - zwei davon braucht ein Speicher. */
-                if (address & 0x80) {
-                    dev->found_bulk_in = address & 0x0F;
-                    dev->found_bulk_in_packet = packet;
-                } else {
-                    dev->found_bulk_out = address & 0x0F;
-                    dev->found_bulk_out_packet = packet;
-                }
-            }
-        }
-        at += length;
-    }
-
-    if (!have_interface)
+    if (!usb_parse_config(full, total, &config))
         return false;
+
+    dev->info.interface_number = config.interface_number;
+    dev->info.interface_class = config.interface_class;
+    dev->info.interface_subclass = config.interface_subclass;
+    dev->info.interface_protocol = config.interface_protocol;
+    dev->info.hid_report_length = config.hid_report_length;
+
+    /* Merken, was ein Speichergeraet spaeter braucht. */
+    dev->found_bulk_in = config.bulk_in;
+    dev->found_bulk_in_packet = config.bulk_in_packet;
+    dev->found_bulk_out = config.bulk_out;
+    dev->found_bulk_out_packet = config.bulk_out_packet;
+
+    uint8_t configuration = config.configuration;
+    uint8_t endpoint_address = config.int_address;
+    uint16_t endpoint_packet = config.int_packet;
+    uint8_t endpoint_interval = config.int_interval;
 
     /* Die Konfiguration auswaehlen. */
     struct usb_setup setup = {
@@ -956,7 +889,7 @@ static bool read_configuration(struct usb_device *dev)
         .length = 0,
     };
 
-    if (!usb_control(dev, &setup, NULL))
+    if (!xhci_control(dev, &setup, NULL))
         return false;
 
     if (endpoint_address) {
@@ -1012,7 +945,7 @@ static bool hub_feature(struct usb_device *hub, uint8_t port, uint16_t feature,
         .length = 0,
     };
 
-    return usb_control(hub, &setup, NULL);
+    return xhci_control(hub, &setup, NULL);
 }
 
 static bool hub_port_status(struct usb_device *hub, uint8_t port,
@@ -1027,7 +960,7 @@ static bool hub_port_status(struct usb_device *hub, uint8_t port,
         .length = 4,
     };
 
-    if (!usb_control(hub, &setup, data))
+    if (!xhci_control(hub, &setup, data))
         return false;
 
     *status = (uint32_t)data[0] | ((uint32_t)data[1] << 8) |
@@ -1051,7 +984,7 @@ static void enumerate_hub(struct usb_device *hub)
         .length = sizeof(descriptor),
     };
 
-    if (!usb_control(hub, &setup, descriptor))
+    if (!xhci_control(hub, &setup, descriptor))
         return;
 
     uint8_t ports = descriptor[2];

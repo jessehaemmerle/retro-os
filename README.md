@@ -7,7 +7,8 @@ Festplatte, einem TCP/IP-Stapel mit TLS 1.3 und einem Browser, der HTML,
 CSS, Bilder und JavaScript versteht.
 
 Unter der Haube ist RetroOS auf heutiger Hardware zu Hause: USB-Tastatur,
--Maus und -Sticks am xHCI-Controller, auch hinter einem Verteiler,
+-Maus und -Sticks am xHCI-Controller (hinter einem Verteiler ebenso), Tastatur,
+Maus und Tablett auch am alten OHCI,
 NVMe-SSDs und SATA-Platten, GPT-Partitionen, APIC und MSI statt des
 Interruptcontrollers von 1976. Retro ist allein die Oberfläche – so soll
 es auch sein.
@@ -80,7 +81,7 @@ sudo dd if=retroos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
 > Auf echter Hardware kommt RetroOS mit USB-Tastatur und -Maus an einem
 > xHCI-Controller zurecht – also mit dem, was ein heutiges Notebook
-> mitbringt. Ist noch ein PS/2-Anschluss da, wird er ebenfalls benutzt;
+> mitbringt –, an einem alten OHCI-Controller ebenfalls. Ist noch ein PS/2-Anschluss da, wird er ebenfalls benutzt;
 > fehlt er, sagen das die ACPI-Tabellen und RetroOS klopft gar nicht erst
 > an. Als Datenträger dienen NVMe-SSDs, SATA-Platten am AHCI-Controller
 > oder ältere IDE-Laufwerke, jeweils mit GPT- oder MBR-Partitionstabelle.
@@ -465,7 +466,7 @@ also so, wie es ein Betriebssystem tut.
 | **Partitionen** | GPT samt Sicherungstabelle, MBR mit erweiterten Abschnitten, roher Datenträger |
 | **Installation** | Schreibt eine eigene GUID-Tabelle, formatiert EFI-Abschnitt und Ablage, kopiert Bootloader und Kernel und setzt den Startsektor für BIOS-Rechner |
 | **Dateisystem** | FAT32 mit langen Dateinamen – lesen, schreiben, anlegen, umbenennen, löschen, formatieren |
-| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte |
+| **USB** | xHCI-Controller: Befehls-, Ereignis- und Übertragungsringe, Geräteaufzählung über mehrere Verteiler hinweg, Unterbrechungs- und Massenendpunkte. **OHCI-Controller (USB 1.1)** für Tastatur, Maus und Tablett – das, was VirtualBox ab Werk anbietet: Steuerliste mit Aufzählung, periodische Liste mit je zwei Beschreibungen im Wechsel pro Endpunkt, Übernahme vom BIOS samt Bus-Reset (die Firmware hat Anschlüsse schon angefasst). Noch nicht am OHCI: Verteiler und Massenspeicher |
 | **Eingabe** | PS/2-Tastatur und -Maus am 8042 samt Erkennung, ob an Port 2 überhaupt eine hängt; USB-Tastatur und -Maus im Boot-Protokoll; **USB-Tablett und jeder andere Zeiger ohne Boot-Protokoll** über die HID-Berichtsbeschreibung; Tastenflanken statt nur Zustand; vier Belegungen (de/us/uk/ch) inkl. AltGr |
 | **Grafik** | 32-Bit-Framebuffer, Backbuffer, Clipping, Verläufe, 3D-Kanten, frei skalierbare Bitmapschrift; Schadensverfolgung schickt nur geänderte Rechtecke an die Karte |
 | **Bilder** | eigener DEFLATE-Entpacker, PNG (alle Farbtypen, Adam7), JPEG (Grundverfahren), GIF, BMP |
@@ -490,6 +491,7 @@ also so, wie es ein Betriebssystem tut.
 | **Suche** | 32 Prüfungen: Treffen und Danebenliegen samt Grenzfällen, jede Regel der Bewertung einzeln (genau vor Anhang, Anfang vor Mitte, Wortanfang vor Wortmitte, kurz vor lang), stabiles Sortieren bei Gleichstand |
 | **Oberfläche** | 110 Prüfungen: die Randstunden des automatischen Dunkelmodus, Umschalten und Festhalten, die Schlüssel der Einstellungsdatei hin und zurück, kanalweises Abdunkeln ohne Überlauf, der Ring der Meldungen samt Überlauf und abgeschnittenen Texten, das Blättern durch ein Menü über Trennlinien und blasse Zeilen hinweg – auch durch eines, in dem gar nichts wählbar ist, dazu der Fünf-Punkte-Filter der Kantenglättung samt Rändern und die Vertauschung von Rot und Blau zwischen RGB- und BGR-Panels |
 | **Zeiger** | 124 Prüfungen: die Berichtsbeschreibung eines Tabletts, einer gewöhnlichen Maus und einer mit Berichtsnummer, Tastatur und Zufall (20 000 zufällige und jede abgeschnittene Beschreibung, auch unter AddressSanitizer), Felder über Bytegrenzen und mit Vorzeichen, Umrechnung auf den Bildschirm samt Rand, PS/2-Pakete mit Überlauf und Rad, und für **jede** der 4096 Kombinationen aus Zustand und Flanken: nie eine doppelte Flanke, nie zu viele Schritte, Ende immer im gemeldeten Zustand |
+| **USB** | 78 Prüfungen: die Konfigurationsbeschreibung eines Tabletts, einer Tastatur, eines Speichers und eines Geräts mit zwei Schnittstellen oder einem Unterbrechungsausgang, kaputte und abgeschnittene Eingaben, 20 000 zufällige (auch unter AddressSanitizer) – dazu die OHCI-Worte Bit für Bit: Endpunkt, Transferbeschreibung samt „nicht angefasst“, Pufferende, übertragene Länge, Rahmenlänge, Anschlussstatus |
 | **Bildschirm** | 186 Prüfungen: Zerlegen von `1280x800` samt Grenzfällen, wie weit sich vergrößern lässt, Grafikspeicher, Fenster zurück in einen kleiner gewordenen Schirm, Kachelgitter zu Rechtecken – jede geänderte Kachel genau einmal, keine vergessen |
 | **Konsole** | 104 Prüfungen: Namensmuster samt Rücksetzen, Rechenausdrücke mit Vorrang und Grenzfällen, Wochentage nach Zeller, Kalenderspalten, Vollständigkeit der Befehlstabelle |
 | **Paketfilter** | Regeltabelle je Richtung mit Protokoll, Adresse samt Maske und Portbereich; erste passende Regel entscheidet, sonst die Grundeinstellung. Hängt in `ip_receive` und `ip_send_via` – kein Protokoll darüber weiß davon |
@@ -567,7 +569,7 @@ dafür zwei Fassungen gebaut werden müssten:
 | Unterbrechungen | lokaler APIC und IOAPIC | 8259A-PIC |
 | Unterbrechung eines PCIe-Geräts | MSI oder MSI-X | Leitung im IOAPIC bzw. PIC |
 | Systemtakt | Zeitgeber des lokalen APIC | PIT |
-| Eingabe | USB-HID am xHCI | PS/2 am 8042 |
+| Eingabe | USB-HID am xHCI oder OHCI | PS/2 am 8042 |
 | Datenträger | NVMe | AHCI, dann ATA-PIO, dann USB-Speicher |
 | Aufteilung | GPT | MBR, sonst roher Datenträger |
 
@@ -1172,7 +1174,7 @@ kernel/
                       geteilter Speicher, Fenster für Programme
     drivers/          Framebuffer, Moduswechsel, PS/2, Tastatur, Maus,
                       RTC, UART, PCI,
-                      NVMe, AHCI, ATA, Blockgeräte, xHCI, USB-HID,
+                      NVMe, AHCI, ATA, Blockgeräte, xHCI, OHCI, USB-HID,
                       USB-Speicher, virtio-net, igb, e1000e, e1000,
                       RTL8169, RTL8139
     fs/               Dateibaum, FAT32, Partitionstabellen, Startbestand,
@@ -1255,16 +1257,21 @@ und das Einstellungsfenster schreibt *(fest)* daneben.
 welche, hängt davon ab, was die VM hat.
 
 *Mit USB-Tablett (empfohlen).* *System → Zeigegerät* bleibt auf
-`USB-Tablett`, und unter *USB* wird der Controller **`USB 3.0 (xHCI)`**
-eingeschaltet. Ab Werk steht dort `USB 1.1 (OHCI)`, und den spricht
-RetroOS nicht – der Controller muss also gewechselt werden. Ein Tablett
-meldet nicht, wie weit sich die Maus bewegt hat, sondern *wo* der Zeiger
-steht: Der Zeiger im Gast liegt immer genau unter dem des Wirts, ohne
-dass die Maus eingefangen oder beschleunigt werden muss. Die Konsole
-meldet beim Start `USB : Zeiger angemeldet (Tablett, absolut ...)`.
-Geprüft ist dieser Weg in QEMU (`-device qemu-xhci -device usb-tablet`);
-VirtualBox hat eine eigene xHCI-Nachbildung, und ob sie sich ebenso
-verhält, zeigt der Befehl `maus` – bitte dort nachsehen.
+`USB-Tablett` – so steht es ab Werk. Der Controller unter *USB* kann
+`USB 1.1 (OHCI)` bleiben, auch den spricht RetroOS jetzt, oder
+`USB 3.0 (xHCI)` sein. Ein Tablett meldet nicht, wie weit sich die Maus
+bewegt hat, sondern *wo* der Zeiger steht: Der Zeiger im Gast liegt immer
+genau unter dem des Wirts, ohne dass die Maus eingefangen oder
+beschleunigt werden muss. Die Konsole meldet beim Start
+`USB : Zeiger angemeldet (Tablett, absolut ...)`. Der OHCI-Treiber kennt
+nur Geräte, die direkt am Wurzelverteiler hängen – ein Tablett, eine
+Tastatur und eine Maus am Controller sind also in Ordnung, ein Verteiler
+dazwischen wird übersprungen (er steht dann im Protokoll). USB-Speicher
+gibt es am OHCI nicht; dafür bleibt der xHCI.
+Geprüft sind beide Wege in QEMU (`-device pci-ohci -device usb-tablet` und
+`-device qemu-xhci -device usb-tablet`, jeweils auch mit Tastatur und Maus
+daneben); VirtualBox hat eigene Nachbildungen der Controller, und ob sie
+sich ebenso verhalten, zeigt der Befehl `maus` – bitte dort nachsehen.
 
 *Mit PS/2-Maus.* *System → Mainboard → Zeigegerät* auf `PS/2-Maus`.
 Das geht ohne weitere Einstellung, die Maus wird aber *eingefangen*: Ein

@@ -8,6 +8,10 @@
 void     pmm_init(void);
 uint64_t pmm_alloc_page(void);              /* 0 = kein Speicher mehr */
 uint64_t pmm_alloc_pages(size_t count);
+/* Wie pmm_alloc_pages, aber der ganze Bereich liegt unterhalb von limit
+ * (exklusiv). Fuer Geraete, die nur 32-Bit-Adressen kennen. 0 = nichts
+ * Passendes frei. */
+uint64_t pmm_alloc_pages_below(size_t count, uint64_t limit);
 void     pmm_free_page(uint64_t phys);
 void     pmm_free_pages(uint64_t phys, size_t count);
 

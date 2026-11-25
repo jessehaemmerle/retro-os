@@ -88,6 +88,10 @@ ZEIGER := zeiger_test.c shim.c \
           ../kernel/src/drivers/hidparse.c \
           ../kernel/src/drivers/mouseutil.c
 
+USB := usb_test.c shim.c \
+       ../kernel/src/drivers/usbconfig.c \
+       ../kernel/src/drivers/ohcihw.c
+
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c
 
@@ -125,11 +129,11 @@ BAUM := dom_test.c shim.c \
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
         protokoll netzfilter kaefig konsole sprache bildschirm rechner \
-        pngschreiben packen archiv winkel suche oberflaeche zeiger \
+        pngschreiben packen archiv winkel suche oberflaeche zeiger usb \
         testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
      netzfilter kaefig konsole sprache bildschirm rechner pngschreiben \
-     packen archiv winkel suche oberflaeche zeiger
+     packen archiv winkel suche oberflaeche zeiger usb
 
 krypto: krypto-test
 	@./krypto-test
@@ -209,6 +213,12 @@ zeiger: zeiger-test
 
 zeiger-test: $(ZEIGER)
 	@$(CC) $(CFLAGS) $(ZEIGER) -o $@
+
+usb: usb-test
+	@./usb-test
+
+usb-test: $(USB)
+	@$(CC) $(CFLAGS) $(USB) -o $@
 
 suche: suche-test
 	@./suche-test

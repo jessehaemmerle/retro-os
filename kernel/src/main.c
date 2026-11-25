@@ -86,6 +86,7 @@ NORETURN void kmain(void)
     pci_init();
     storage_init();
     xhci_init();
+    ohci_init();
 
     /* Grafik. Die Vergroesserung kommt hier noch automatisch zustande -
      * was in der Einstellungsdatei steht, ist erst nach fs_init()

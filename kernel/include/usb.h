@@ -1,9 +1,13 @@
 /* usb.h - der USB-Stapel von RetroOS.
  *
  * Ein heutiger Rechner hat oft gar keinen PS/2-Anschluss mehr; Tastatur
- * und Maus haengen am USB-Bus. Umgesetzt ist der xHCI-Controller, wie
- * ihn jeder Chipsatz seit etwa 2010 mitbringt, dazu die Aufzaehlung der
+ * und Maus haengen am USB-Bus. Umgesetzt sind zwei Controller - xHCI,
+ * wie ihn jeder Chipsatz seit etwa 2010 mitbringt, und OHCI, den aeltere
+ * Chipsaetze und VirtualBox haben -, dazu die Aufzaehlung der
  * angeschlossenen Geraete und das Boot-Protokoll fuer Tastatur und Maus.
+ *
+ * Die Funktionen hier gelten fuer beide; welcher Controller dahinter
+ * steht, entscheidet usb.c (siehe usb_hcd.h).
  */
 #ifndef USB_H
 #define USB_H
@@ -79,6 +83,7 @@ const struct usb_device_info *usb_device_details(struct usb_device *dev);
 
 /* --- Einrichten --- */
 void xhci_init(void);
+void ohci_init(void);
 size_t usb_device_count(void);
 struct usb_device *usb_device_at(size_t index);
 
