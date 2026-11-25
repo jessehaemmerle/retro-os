@@ -67,4 +67,30 @@ struct mouse_step {
 size_t mouse_button_steps(uint8_t prev, uint8_t now, uint8_t pressed,
                           uint8_t released, struct mouse_step *out);
 
+/* --- Doppelklick ---------------------------------------------------- */
+
+#define DOUBLE_CLICK_DEFAULT_MS 400
+#define DOUBLE_CLICK_MIN_MS     150
+#define DOUBLE_CLICK_MAX_MS     1500
+/* Wie weit der Zeiger zwischen den Klicks wandern darf, in Bildpunkten.
+ * Ein Tablett zittert nicht, eine Hand schon. */
+#define DOUBLE_CLICK_SLOP       6
+
+/* Ob ein Druck der zweite eines Doppelklicks ist. last_ms == 0 heisst:
+ * Es gab keinen ersten (oder er wurde schon verbraucht - ein dritter
+ * Klick zaehlt als neuer erster, nicht als zweiter Doppelklick). */
+bool mouse_is_double_click(uint64_t now_ms, uint64_t last_ms,
+                           int32_t x, int32_t y, int32_t last_x, int32_t last_y,
+                           uint32_t window_ms);
+
+/* Bringt einen Wert aus der Einstellungsdatei in den erlaubten Bereich;
+ * Unsinn (null, riesig) ergibt die Werkseinstellung statt eines
+ * Doppelklicks, der nie oder immer gilt. */
+uint32_t mouse_double_click_sane(uint32_t ms);
+
+/* Die Stufen der Einstellung, reihum: delta > 0 weiter, sonst zurueck.
+ * Steht der Wert zwischen zwei Stufen, geht es zur naechsten in der
+ * gewuenschten Richtung. */
+uint32_t mouse_double_click_step(uint32_t ms, int delta);
+
 #endif /* MOUSEUTIL_H */

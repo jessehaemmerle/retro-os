@@ -1,6 +1,6 @@
 /* settings.c - das Einstellungsfenster.
  *
- * Zehn Dinge lassen sich hier aendern; alle landen in derselben
+ * Dreizehn Dinge lassen sich hier aendern; alle landen in derselben
  * Textdatei auf der Festplatte. Ohne Festplatte gilt jede Aenderung
  * nur bis zum Ausschalten - das sagt das Fenster dann auch.
  *
@@ -17,6 +17,7 @@
 #include "font.h"
 #include "user.h"
 #include "keymap.h"
+#include "mouseutil.h"
 #include "kstring.h"
 #include "mm.h"
 #include "net.h"
@@ -44,6 +45,7 @@ enum row_id {
     ROW_WALLPAPER,
     ROW_FONT,
     ROW_SMOOTHING,
+    ROW_DOUBLECLICK,
     ROW_HOSTNAME,
     ROW_COUNT
 };
@@ -225,6 +227,9 @@ static void row_value(int row, char *out, size_t size)
     case ROW_SMOOTHING:
         strlcpy(out, tr(font_smoothing_name(c->smoothing)), size);
         break;
+    case ROW_DOUBLECLICK:
+        ksnprintf(out, size, "%u ms", (unsigned)c->double_click_ms);
+        break;
     case ROW_HOSTNAME:
         strlcpy(out, c->hostname, size);
         break;
@@ -248,6 +253,7 @@ static const char *row_label(int row)
     case ROW_WALLPAPER:  return tr("Hintergrundbild");
     case ROW_FONT:       return tr("Schrift");
     case ROW_SMOOTHING:  return tr("Kantenglaettung");
+    case ROW_DOUBLECLICK: return tr("Doppelklick");
     case ROW_HOSTNAME:   return tr("Rechnername");
     default:             return "";
     }
@@ -420,6 +426,15 @@ static void row_step(struct settings_ui *ui, int row, int delta)
         gui_invalidate();
         break;
     }
+    case ROW_DOUBLECLICK:
+        /* Wirkt sofort: Gleich nach dem Umstellen laesst sich im
+         * Fenster selbst ausprobieren, ob die Zeit passt. */
+        c->double_click_ms = mouse_double_click_step(c->double_click_ms, delta);
+        gui_set_double_click_ms(c->double_click_ms);
+        strlcpy(ui->status,
+                tr("So lange darf der zweite Klick eines Doppelklicks dauern."),
+                sizeof(ui->status));
+        break;
     case ROW_FONT: {
         size_t count = font_count();
         size_t next = (font_current() + count +
@@ -628,7 +643,7 @@ void app_settings(void)
         strlcpy(ui->status, tr("Ohne Festplatte bleibt nichts gespeichert."),
                 sizeof(ui->status));
 
-    struct window *win = gui_create_window(tr("Einstellungen"), 0, 0, 620, 502,
+    struct window *win = gui_create_window(tr("Einstellungen"), 0, 0, 620, 534,
                                            WF_CENTER, ICON_SETTINGS);
     if (!win) {
         kfree(ui);

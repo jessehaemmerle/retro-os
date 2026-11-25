@@ -547,6 +547,47 @@ static void test_alle_flanken(void)
     pruefe_zahl("endet immer im gemeldeten Zustand", 0, endet_falsch);
 }
 
+/* --- Doppelklick ------------------------------------------------------ */
+
+static void test_doppelklick(void)
+{
+    printf("Doppelklick\n");
+
+    pruefe("kein erster Klick", !mouse_is_double_click(100, 0, 5, 5, 5, 5, 400));
+    pruefe("innerhalb der Zeit", mouse_is_double_click(1300, 1000, 5, 5, 5, 5, 400));
+    pruefe("genau an der Grenze nicht", !mouse_is_double_click(1400, 1000, 5, 5, 5, 5, 400));
+    pruefe("zu spaet", !mouse_is_double_click(2000, 1000, 5, 5, 5, 5, 400));
+    pruefe("Uhr zurueck", !mouse_is_double_click(900, 1000, 5, 5, 5, 5, 400));
+    pruefe("fuenf Punkte daneben", mouse_is_double_click(1100, 1000, 10, 5, 5, 5, 400));
+    pruefe("sechs Punkte daneben", !mouse_is_double_click(1100, 1000, 11, 5, 5, 5, 400));
+    pruefe("sechs nach links", !mouse_is_double_click(1100, 1000, 0, 5, 6, 5, 400));
+    pruefe("sechs nach oben", !mouse_is_double_click(1100, 1000, 5, 0, 5, 6, 400));
+    pruefe("laengere Zeit gilt", mouse_is_double_click(1900, 1000, 5, 5, 5, 5, 1000));
+    pruefe("kuerzere Zeit gilt", !mouse_is_double_click(1300, 1000, 5, 5, 5, 5, 200));
+
+    pruefe_zahl("Unsinn null", 400, mouse_double_click_sane(0));
+    pruefe_zahl("Unsinn riesig", 400, mouse_double_click_sane(1000000));
+    pruefe_zahl("zu kurz", 400, mouse_double_click_sane(149));
+    pruefe_zahl("Untergrenze", 150, mouse_double_click_sane(150));
+    pruefe_zahl("Obergrenze", 1500, mouse_double_click_sane(1500));
+    pruefe_zahl("zu lang", 400, mouse_double_click_sane(1501));
+
+    pruefe_zahl("weiter von 400", 500, mouse_double_click_step(400, +1));
+    pruefe_zahl("zurueck von 400", 300, mouse_double_click_step(400, -1));
+    pruefe_zahl("Kreis oben", 200, mouse_double_click_step(1000, +1));
+    pruefe_zahl("Kreis unten", 1000, mouse_double_click_step(200, -1));
+    pruefe_zahl("zwischen den Stufen weiter", 500, mouse_double_click_step(450, +1));
+    pruefe_zahl("zwischen den Stufen zurueck", 400, mouse_double_click_step(450, -1));
+    pruefe_zahl("Unsinn startet bei 400", 500, mouse_double_click_step(0, +1));
+
+    /* Jeder Wert im Kreis kommt nach sieben Schritten wieder an. */
+    uint32_t v = 400;
+
+    for (int i = 0; i < 7; i++)
+        v = mouse_double_click_step(v, +1);
+    pruefe_zahl("Kreis schliesst sich", 400, v);
+}
+
 int main(void)
 {
     printf("=== Zeiger ===\n");
@@ -564,6 +605,7 @@ int main(void)
     test_rad();
     test_flanken();
     test_alle_flanken();
+    test_doppelklick();
 
     printf("\n%d Pruefungen, %d Fehler\n", geprueft, fehler);
     return fehler ? 1 : 0;

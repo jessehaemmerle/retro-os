@@ -192,6 +192,10 @@ void desktop_paint_taskbar(struct canvas *c);
 /* Die Einblendung liegt ueber allem ausser Menue und Mauszeiger. */
 void desktop_paint_notification(struct canvas *c);
 bool desktop_notification_click(int32_t x, int32_t y);
+/* Wie lange der zweite Klick eines Doppelklicks hoechstens auf sich
+ * warten laesst. */
+void gui_set_double_click_ms(uint32_t ms);
+
 bool desktop_mouse(int32_t x, int32_t y, uint8_t button, bool down, bool dbl);
 void desktop_tick(void);
 int32_t desktop_work_height(void);   /* Bildschirmhoehe ohne Taskleiste */

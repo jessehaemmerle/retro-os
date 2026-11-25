@@ -37,7 +37,6 @@
 
 #define CURSOR_W 12
 #define CURSOR_H 19
-#define DOUBLE_CLICK_MS 400
 
 /* ' ' durchsichtig, '.' schwarze Kontur, 'W' weisse Fuellung */
 static const char *cursor_shape[CURSOR_H] = {
@@ -88,6 +87,7 @@ static void             *menu_user;
 static bool              menu_active;
 static int               menu_hover = -1;
 
+static uint32_t double_click_ms = DOUBLE_CLICK_DEFAULT_MS;
 static uint64_t last_click_ms;
 static int32_t  last_click_x, last_click_y;
 
@@ -1407,9 +1407,10 @@ NORETURN void gui_run(void)
                 if (steps[i].button == MOUSE_BTN_LEFT) {
                     if (steps[i].down) {
                         uint64_t now = timer_ms();
-                        bool dbl = (now - last_click_ms) < DOUBLE_CLICK_MS &&
-                                   MAX(cursor_x - last_click_x, last_click_x - cursor_x) < 6 &&
-                                   MAX(cursor_y - last_click_y, last_click_y - cursor_y) < 6;
+                        bool dbl = mouse_is_double_click(now, last_click_ms,
+                                                         cursor_x, cursor_y,
+                                                         last_click_x, last_click_y,
+                                                         double_click_ms);
 
                         last_click_ms = dbl ? 0 : now;
                         last_click_x  = cursor_x;
@@ -1467,4 +1468,9 @@ NORETURN void gui_run(void)
         if (!activity)
             thread_sleep(4);
     }
+}
+
+void gui_set_double_click_ms(uint32_t ms)
+{
+    double_click_ms = mouse_double_click_sane(ms);
 }

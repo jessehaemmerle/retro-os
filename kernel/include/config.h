@@ -21,6 +21,7 @@
  *     erscheinungsbild = dunkel
  *     kantenglaettung = rgb
  *     willkommen = ja
+ *     doppelklick = 400
  *
  * Textform, weil man sie dann mit dem Editor des Systems selbst
  * reparieren kann - und von einem anderen Rechner aus ebenso.
@@ -55,6 +56,7 @@ struct config {
     enum theme_mode appearance;      /* hell, dunkel, automatisch   */
     enum font_smoothing smoothing;   /* Kantenglaettung der Schrift  */
     bool            welcome;         /* Begruessung beim Start zeigen */
+    uint32_t        double_click_ms; /* Zeitfenster fuer den Doppelklick */
 };
 
 /* Die aktuellen Werte. Aendern und danach config_save() rufen. */

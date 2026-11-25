@@ -94,3 +94,54 @@ size_t mouse_button_steps(uint8_t prev, uint8_t now, uint8_t pressed,
     }
     return n;
 }
+
+/* ------------------------------------------------------------------ */
+/* Doppelklick                                                          */
+/* ------------------------------------------------------------------ */
+
+static int32_t distance(int32_t a, int32_t b)
+{
+    return a > b ? a - b : b - a;
+}
+
+bool mouse_is_double_click(uint64_t now_ms, uint64_t last_ms,
+                           int32_t x, int32_t y, int32_t last_x, int32_t last_y,
+                           uint32_t window_ms)
+{
+    if (last_ms == 0 || now_ms < last_ms)
+        return false;
+
+    return now_ms - last_ms < window_ms &&
+           distance(x, last_x) < DOUBLE_CLICK_SLOP &&
+           distance(y, last_y) < DOUBLE_CLICK_SLOP;
+}
+
+uint32_t mouse_double_click_sane(uint32_t ms)
+{
+    if (ms < DOUBLE_CLICK_MIN_MS || ms > DOUBLE_CLICK_MAX_MS)
+        return DOUBLE_CLICK_DEFAULT_MS;
+    return ms;
+}
+
+static const uint32_t click_steps[] = { 200, 300, 400, 500, 600, 800, 1000 };
+
+uint32_t mouse_double_click_step(uint32_t ms, int delta)
+{
+    size_t count = sizeof(click_steps) / sizeof(click_steps[0]);
+
+    ms = mouse_double_click_sane(ms);
+
+    if (delta > 0) {
+        for (size_t i = 0; i < count; i++) {
+            if (click_steps[i] > ms)
+                return click_steps[i];
+        }
+        return click_steps[0];                  /* im Kreis */
+    }
+
+    for (size_t i = count; i > 0; i--) {
+        if (click_steps[i - 1] < ms)
+            return click_steps[i - 1];
+    }
+    return click_steps[count - 1];
+}
