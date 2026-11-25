@@ -1062,7 +1062,9 @@ etwas so ist - nicht, was dasteht.	why something is the way it is - not what it 
 Die Schriften stammen von DejaVu, Liberation, JetBrains, IBM,	The typefaces come from DejaVu, Liberation, JetBrains, IBM,
 Mozilla, Adobe, Ubuntu und anderen, die Symbole von Lucide.	Mozilla, Adobe, Ubuntu and others, the icons from Lucide.
 Ihre Lizenzen liegen unter third_party.	Their licenses live under third_party.
-Was sich ohne Bildschirm pruefen laesst, wird geprueft: ueber	What can be checked without a screen is checked: over 1900
-1900 Pruefungen in vierundzwanzig Sammlungen.	checks in twenty-four collections.
+Was sich ohne Bildschirm pruefen laesst, wird geprueft: ueber	What can be checked without a screen is checked: over 2100
+2100 Pruefungen in fuenfundzwanzig Sammlungen.	checks in twenty-five collections.
 Doppelklick	Double click
 So lange darf der zweite Klick eines Doppelklicks dauern.	How long the second click of a double click may take.
+Das Formular ist zu gross zum Abschicken.	The form is too large to submit.
+Die Adresse des Formulars ist zu lang.	The form's address is too long.

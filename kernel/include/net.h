@@ -176,9 +176,20 @@ struct http_response {
     char     error[96];
     char     security[64];  /* leer bei http, sonst die Verschluesselung */
     bool     truncated;     /* der Rumpf ist kuerzer als angekuendigt    */
+    char     final_url[512]; /* wohin die Weiterleitungen gefuehrt haben  */
 };
 
 bool http_get(const char *url, struct http_response *out);
+
+/* Schickt einen Rumpf mit (Formulare). content_type darf NULL sein, dann gilt
+ * application/x-www-form-urlencoded. */
+bool http_post(const char *url, const char *body, uint32_t body_length,
+               const char *content_type, struct http_response *out);
+
+/* Die allgemeine Form: GET, POST ... */
+bool http_request(const char *method, const char *url, const char *body,
+                  uint32_t body_length, const char *content_type,
+                  struct http_response *out);
 void http_response_free(struct http_response *response);
 
 /* Zerlegt eine Adresse in ihre Bestandteile. secure meldet, ob es sich um

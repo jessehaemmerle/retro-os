@@ -1,9 +1,10 @@
 /* http.c - HTTP/1.1-Client fuer den Browser.
  *
- * Beherrscht GET, Weiterleitungen und in Stuecken uebertragene Antworten
- * ("chunked"). Verschluesselte Verbindungen (HTTPS) sind nicht enthalten -
- * dafuer waere eine vollstaendige TLS-Umsetzung mit Zertifikatspruefung
- * noetig, die den Rahmen dieses Systems sprengt.
+ * Beherrscht GET und POST, Weiterleitungen, in Stuecken uebertragene
+ * Antworten ("chunked"), gzip und deflate sowie Cookies. HTTPS laeuft
+ * ueber tls.c. Das Rechnen darum herum - Adressen, Kopfzeilen,
+ * Stueckelung, Cookies - steht in httputil.c und cookiejar.c und ist auf
+ * dem Entwicklungsrechner geprueft.
  */
 
 #include "net.h"
@@ -11,6 +12,10 @@
 #include "kstring.h"
 #include "mm.h"
 #include "tls.h"
+#include "httputil.h"
+#include "cookiejar.h"
+#include "inflate.h"
+#include "spinlock.h"
 
 #define HTTP_MAX_BODY     (512 * 1024)
 #define HTTP_CHUNK        8192
@@ -20,120 +25,25 @@
  * erreicht ist - wird abgebrochen. */
 #define HTTP_TIMEOUT_MS   8000
 #define HTTP_TOTAL_MS     60000
-#define HTTP_MAX_REDIRECT 4
+#define HTTP_MAX_REDIRECT 6
+/* Entpackt darf eine Antwort hoechstens so gross sein - sonst wird aus
+ * einer kleinen Antwort ein Speicherfresser. */
+#define HTTP_MAX_INFLATED (4 * 1024 * 1024)
+#define HTTP_REQUEST_MAX  4096
 
-bool url_split(const char *url, char *host, size_t host_size,
-               uint16_t *port, char *path, size_t path_size, bool *secure)
+/* Alle Fenster teilen sich einen Vorrat an Cookies; jedes hat aber ihren
+ * eigenen Arbeits-Thread. */
+static struct cookie_jar jar;
+static struct spinlock   jar_lock;
+static bool              jar_ready;
+
+static void jar_use(void)
 {
-    const char *p = url;
-    bool https = false;
-
-    if (strncmp(p, "http://", 7) == 0) {
-        p += 7;
-    } else if (strncmp(p, "https://", 8) == 0) {
-        p += 8;
-        https = true;
+    if (!jar_ready) {
+        cookie_jar_init(&jar);
+        spin_init(&jar_lock, "cookies");
+        jar_ready = true;
     }
-
-    *port = https ? 443 : 80;
-    if (secure)
-        *secure = https;
-
-    size_t n = 0;
-    while (*p && *p != '/' && *p != ':' && n + 1 < host_size)
-        host[n++] = *p++;
-    host[n] = '\0';
-
-    if (n == 0)
-        return false;
-
-    if (*p == ':') {
-        p++;
-        uint32_t value = 0;
-        while (*p >= '0' && *p <= '9')
-            value = value * 10 + (uint32_t)(*p++ - '0');
-        if (value == 0 || value > 65535)
-            return false;
-        *port = (uint16_t)value;
-    }
-
-    if (*p == '\0') {
-        strlcpy(path, "/", path_size);
-    } else {
-        strlcpy(path, p, path_size);
-    }
-    return true;
-}
-
-/* Sucht eine Kopfzeile und kopiert ihren Wert. */
-static bool header_value(const char *headers, const char *name, char *out,
-                         size_t size)
-{
-    size_t name_length = strlen(name);
-    const char *line = headers;
-
-    while (*line) {
-        if (strncasecmp(line, name, name_length) == 0 &&
-            line[name_length] == ':') {
-            const char *value = line + name_length + 1;
-
-            while (*value == ' ')
-                value++;
-
-            size_t n = 0;
-            while (value[n] && value[n] != '\r' && value[n] != '\n' &&
-                   n + 1 < size) {
-                out[n] = value[n];
-                n++;
-            }
-            out[n] = '\0';
-            return true;
-        }
-
-        const char *newline = strchr(line, '\n');
-        if (!newline)
-            break;
-        line = newline + 1;
-    }
-    return false;
-}
-
-/* Loest die Stueckelung auf: <Groesse in hex>\r\n<Daten>\r\n ... 0\r\n */
-static uint32_t decode_chunked(char *body, uint32_t length)
-{
-    uint32_t read = 0, write = 0;
-
-    while (read < length) {
-        uint32_t size = 0;
-        bool digits = false;
-
-        while (read < length && body[read] != '\r' && body[read] != '\n') {
-            char c = body[read++];
-            uint32_t digit;
-
-            if (c >= '0' && c <= '9')      digit = (uint32_t)(c - '0');
-            else if (c >= 'a' && c <= 'f') digit = (uint32_t)(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F') digit = (uint32_t)(c - 'A' + 10);
-            else break;                     /* Erweiterungen ignorieren */
-
-            size = size * 16 + digit;
-            digits = true;
-        }
-
-        while (read < length && body[read] != '\n')
-            read++;
-        read++;                             /* Zeilenende ueberspringen */
-
-        if (!digits || size == 0)
-            break;
-        if (read + size > length)
-            size = length - read;
-
-        memmove(body + write, body + read, size);
-        write += size;
-        read  += size + 2;                  /* Daten plus CRLF */
-    }
-    return write;
 }
 
 /* Ein Kanal ist entweder eine schlichte TCP-Verbindung oder eine
@@ -174,14 +84,19 @@ static void channel_close(struct channel *channel)
         tcp_close(channel->socket);
 }
 
-static bool fetch_once(const char *url, struct http_response *out,
-                       char *redirect, size_t redirect_size)
+/* Eine Anfrage. Kommt eine Weiterleitung zurueck, steht ihr Ziel in
+ * redirect und redirect_status nennt den Code; sonst ist redirect leer. */
+static bool fetch_once(const char *method, const char *url, const char *body_in,
+                       uint32_t body_in_length, const char *content_type_in,
+                       struct http_response *out, char *redirect,
+                       size_t redirect_size, int *redirect_status)
 {
     char host[128], path[512];
     uint16_t port;
     bool secure = false;
 
     redirect[0] = '\0';
+    *redirect_status = 0;
 
     if (!url_split(url, host, sizeof(host), &port, path, sizeof(path),
                    &secure)) {
@@ -221,17 +136,68 @@ static bool fetch_once(const char *url, struct http_response *out,
                 sizeof(out->security));
     }
 
-    char request[768];
-    int request_length = ksnprintf(request, sizeof(request),
-        "GET %s HTTP/1.1\r\n"
+    /* Die Anfrage - gross genug fuer Cookies. */
+    char *request = kmalloc(HTTP_REQUEST_MAX);
+
+    if (!request) {
+        channel_close(&channel);
+        strlcpy(out->error, "Zu wenig Speicher.", sizeof(out->error));
+        return false;
+    }
+
+    char cookies[1536];
+
+    jar_use();
+    spin_lock(&jar_lock);
+    cookie_jar_header(&jar, host, path, secure, timer_ms(), cookies,
+                      sizeof(cookies));
+    spin_unlock(&jar_lock);
+
+    int request_length = ksnprintf(request, HTTP_REQUEST_MAX,
+        "%s %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "User-Agent: RetroOS/1.0\r\n"
-        "Accept: text/html,text/plain\r\n"
-        "Accept-Encoding: identity\r\n"
-        "Connection: close\r\n"
-        "\r\n", path, host);
+        "Accept: text/html,text/plain,*/*;q=0.5\r\n"
+        "Accept-Encoding: gzip, deflate\r\n"
+        "Connection: close\r\n",
+        method, path, host);
 
-    if (channel_send(&channel, request, (uint32_t)request_length) < 0) {
+    if (cookies[0])
+        request_length += ksnprintf(request + request_length,
+                                    HTTP_REQUEST_MAX - (size_t)request_length,
+                                    "Cookie: %s\r\n", cookies);
+
+    if (body_in) {
+        request_length += ksnprintf(request + request_length,
+                                    HTTP_REQUEST_MAX - (size_t)request_length,
+                                    "Content-Type: %s\r\n"
+                                    "Content-Length: %u\r\n",
+                                    content_type_in
+                                        ? content_type_in
+                                        : "application/x-www-form-urlencoded",
+                                    (unsigned)body_in_length);
+    }
+    request_length += ksnprintf(request + request_length,
+                                HTTP_REQUEST_MAX - (size_t)request_length,
+                                "\r\n");
+
+    if (request_length <= 0 || (size_t)request_length >= HTTP_REQUEST_MAX ||
+        (body_in && (size_t)request_length + body_in_length >= HTTP_REQUEST_MAX)) {
+        kfree(request);
+        channel_close(&channel);
+        strlcpy(out->error, "Die Anfrage ist zu lang.", sizeof(out->error));
+        return false;
+    }
+
+    if (body_in) {
+        memcpy(request + request_length, body_in, body_in_length);
+        request_length += (int)body_in_length;
+    }
+
+    int sent = channel_send(&channel, request, (uint32_t)request_length);
+
+    kfree(request);
+    if (sent < 0) {
         channel_close(&channel);
         strlcpy(out->error, "Die Anfrage konnte nicht gesendet werden.",
                 sizeof(out->error));
@@ -296,16 +262,7 @@ static bool fetch_once(const char *url, struct http_response *out,
 
     buffer[MIN(length, capacity - 1)] = '\0';
 
-    /* Statuszeile */
-    int status = 0;
-    if (strncmp(buffer, "HTTP/1.", 7) == 0) {
-        const char *space = strchr(buffer, ' ');
-
-        if (space) {
-            status = (int)((space[1] - '0') * 100 + (space[2] - '0') * 10 +
-                           (space[3] - '0'));
-        }
-    }
+    int status = http_status_code(buffer);
 
     /* Kopf und Rumpf trennen */
     char *separator = NULL;
@@ -328,31 +285,50 @@ static bool fetch_once(const char *url, struct http_response *out,
     char    *body = separator + 4;
     uint32_t body_length = length - (uint32_t)(body - buffer);
 
+    /* Cookies merken - auch die einer Weiterleitung. Sie kommen als
+     * mehrere gleichnamige Kopfzeilen. */
+    {
+        char line[COOKIE_NAME_MAX + COOKIE_VALUE_MAX + 256];
+
+        spin_lock(&jar_lock);
+        for (unsigned i = 0; i < 32 &&
+             http_header_get(buffer, "Set-Cookie", i, line, sizeof(line)); i++)
+            cookie_jar_store(&jar, host, path, secure, line, timer_ms());
+        spin_unlock(&jar_lock);
+    }
+
     if (status >= 300 && status < 400) {
         char location[512];
 
-        if (header_value(buffer, "Location", location, sizeof(location))) {
+        if (http_header_get(buffer, "Location", 0, location, sizeof(location))) {
             strlcpy(redirect, location, redirect_size);
+            *redirect_status = status;
             kfree(buffer);
             return false;
         }
     }
 
     char encoding[64];
-    if (header_value(buffer, "Transfer-Encoding", encoding, sizeof(encoding)) &&
-        strcasecmp(encoding, "chunked") == 0)
-        body_length = decode_chunked(body, body_length);
+    bool chunked = http_header_get(buffer, "Transfer-Encoding", 0, encoding,
+                                   sizeof(encoding)) &&
+                   strcasecmp(encoding, "chunked") == 0;
 
-    if (!header_value(buffer, "Content-Type", out->content_type,
-                      sizeof(out->content_type)))
+    if (chunked)
+        body_length = http_decode_chunked(body, body_length);
+
+    if (!http_header_get(buffer, "Content-Type", 0, out->content_type,
+                         sizeof(out->content_type)))
         strlcpy(out->content_type, "text/html", sizeof(out->content_type));
 
     /* Sagt der Kopf, wie lang der Rumpf sein sollte, wird nachgezaehlt.
      * Eine abgeschnittene Seite als vollstaendig auszugeben waere die
-     * unangenehmere Art von Fehler: Man sieht sie nicht. */
+     * unangenehmere Art von Fehler: Man sieht sie nicht. (Gilt fuer die
+     * uebertragene, also die gepackte Laenge.) */
     char announced[32];
 
-    if (header_value(buffer, "Content-Length", announced, sizeof(announced))) {
+    if (!chunked &&
+        http_header_get(buffer, "Content-Length", 0, announced,
+                        sizeof(announced))) {
         uint32_t expected = 0;
 
         for (const char *d = announced; *d >= '0' && *d <= '9'; d++)
@@ -362,10 +338,39 @@ static bool fetch_once(const char *url, struct http_response *out,
             cut_short = true;
     }
 
+    /* Gepackt? Dann entpacken - mit Grenze. */
+    enum http_encoding coding = http_content_encoding(buffer);
+    char *unpacked = NULL;
+
+    if (coding == ENC_GZIP || coding == ENC_DEFLATE) {
+        size_t inflated_length = 0;
+
+        unpacked = inflate_auto_limited((const uint8_t *)body, body_length,
+                                        &inflated_length, HTTP_MAX_INFLATED);
+        if (!unpacked) {
+            /* Eine abgeschnittene Antwort entpackt sich nicht - das ist
+             * dann kein Fehler des Servers. */
+            kfree(buffer);
+            strlcpy(out->error, cut_short
+                        ? "Die Antwort wurde unterbrochen."
+                        : "Die Antwort laesst sich nicht entpacken.",
+                    sizeof(out->error));
+            return false;
+        }
+        body = unpacked;
+        body_length = (uint32_t)inflated_length;
+    } else if (coding == ENC_UNKNOWN) {
+        kfree(buffer);
+        strlcpy(out->error, "Unbekannte Kodierung der Antwort.",
+                sizeof(out->error));
+        return false;
+    }
+
     /* Rumpf in einen eigenen Puffer umziehen, damit der Kopf freigegeben
      * werden kann. */
     char *result = kmalloc(body_length + 1);
     if (!result) {
+        kfree(unpacked);
         kfree(buffer);
         strlcpy(out->error, "Zu wenig Speicher fuer die Seite.",
                 sizeof(out->error));
@@ -374,6 +379,7 @@ static bool fetch_once(const char *url, struct http_response *out,
 
     memcpy(result, body, body_length);
     result[body_length] = '\0';
+    kfree(unpacked);
     kfree(buffer);
 
     out->status      = status;
@@ -383,49 +389,60 @@ static bool fetch_once(const char *url, struct http_response *out,
     return true;
 }
 
-bool http_get(const char *url, struct http_response *out)
+bool http_request(const char *method, const char *url, const char *body,
+                  uint32_t body_length, const char *content_type,
+                  struct http_response *out)
 {
     char current[512];
     char redirect[512];
+    char verb[8];
 
     memset(out, 0, sizeof(*out));
     strlcpy(current, url, sizeof(current));
+    strlcpy(verb, method, sizeof(verb));
 
     for (int hop = 0; hop < HTTP_MAX_REDIRECT; hop++) {
-        if (fetch_once(current, out, redirect, sizeof(redirect)))
+        int status = 0;
+
+        if (fetch_once(verb, current, body, body_length, content_type, out,
+                       redirect, sizeof(redirect), &status)) {
+            strlcpy(out->final_url, current, sizeof(out->final_url));
             return true;
+        }
 
         if (!redirect[0])
             return false;
 
-        /* Eine Weiterleitung ohne Rechnername bezieht sich auf denselben. */
-        if (redirect[0] == '/') {
-            char host[128], path[512];
-            uint16_t port;
-            bool secure = false;
-
-            if (!url_split(current, host, sizeof(host), &port, path,
-                           sizeof(path), &secure))
-                return false;
-
-            const char *scheme = secure ? "https" : "http";
-            uint16_t standard = secure ? 443 : 80;
-            char combined[512];
-
-            if (port == standard)
-                ksnprintf(combined, sizeof(combined), "%s://%s%s", scheme,
-                          host, redirect);
-            else
-                ksnprintf(combined, sizeof(combined), "%s://%s:%u%s", scheme,
-                          host, port, redirect);
-            strlcpy(current, combined, sizeof(current));
-        } else {
-            strlcpy(current, redirect, sizeof(current));
+        /* 301, 302 und 303 machen aus einem POST ein GET ohne Rumpf; 307
+         * und 308 behalten beides. */
+        if (status == 301 || status == 302 || status == 303) {
+            if (strcmp(verb, "GET") != 0) {
+                strlcpy(verb, "GET", sizeof(verb));
+                body = NULL;
+                body_length = 0;
+            }
         }
+
+        char next[512];
+
+        url_resolve(current, redirect, next, sizeof(next));
+        strlcpy(current, next, sizeof(current));
     }
 
     strlcpy(out->error, "Zu viele Weiterleitungen.", sizeof(out->error));
     return false;
+}
+
+bool http_get(const char *url, struct http_response *out)
+{
+    return http_request("GET", url, NULL, 0, NULL, out);
+}
+
+bool http_post(const char *url, const char *body, uint32_t body_length,
+               const char *content_type, struct http_response *out)
+{
+    return http_request("POST", url, body ? body : "", body_length,
+                        content_type, out);
 }
 
 void http_response_free(struct http_response *response)

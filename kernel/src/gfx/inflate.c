@@ -33,6 +33,7 @@ struct sink {
     size_t   length;
     size_t   capacity;
     bool     error;
+    size_t   limit;             /* groesser darf die Ausgabe nicht werden */
 };
 
 /* ------------------------------------------------------------------ */
@@ -72,15 +73,19 @@ static bool sink_reserve(struct sink *s, size_t extra)
     if (s->length + extra <= s->capacity)
         return true;
 
+    /* Die Grenze schuetzt vor Archivbomben: ein paar Kilobyte, die zu
+     * Gigabyte werden. */
+    if (s->length + extra > s->limit) {
+        s->error = true;
+        return false;
+    }
+
     size_t want = s->capacity ? s->capacity : 4096;
 
-    while (want < s->length + extra) {
-        if (want > (64u << 20)) {   /* 64 MiB sind genug fuer eine Seite */
-            s->error = true;
-            return false;
-        }
+    while (want < s->length + extra)
         want *= 2;
-    }
+    if (want > s->limit && s->length + extra <= s->limit)
+        want = s->limit;
 
     uint8_t *bigger = krealloc(s->data, want);
 
@@ -317,10 +322,13 @@ static bool dynamic_trees(struct bitstream *bs, struct huffman *lit,
 /* Oeffentliche Schnittstelle                                          */
 /* ------------------------------------------------------------------ */
 
-void *inflate_raw(const uint8_t *data, size_t length, size_t *out_length)
+#define INFLATE_DEFAULT_LIMIT (64u << 20)   /* 64 MiB sind genug fuer eine Seite */
+
+static void *inflate_raw_limited(const uint8_t *data, size_t length,
+                                 size_t *out_length, size_t limit)
 {
     struct bitstream bs = { data, length, 0, 0, 0, false };
-    struct sink out = { NULL, 0, 0, false };
+    struct sink out = { NULL, 0, 0, false, limit };
     struct huffman lit, dist;
     bool done = false;
 
@@ -365,7 +373,8 @@ void *inflate_raw(const uint8_t *data, size_t length, size_t *out_length)
     return out.data ? out.data : kmalloc(1);
 }
 
-void *inflate_zlib(const uint8_t *data, size_t length, size_t *out_length)
+static void *zlib_limited(const uint8_t *data, size_t length,
+                          size_t *out_length, size_t limit)
 {
     if (length < 6)
         return NULL;
@@ -379,10 +388,11 @@ void *inflate_zlib(const uint8_t *data, size_t length, size_t *out_length)
     if (flg & 0x20)                     /* Vorgabewoerterbuch koennen wir nicht */
         return NULL;
 
-    return inflate_raw(data + 2, length - 2, out_length);
+    return inflate_raw_limited(data + 2, length - 2, out_length, limit);
 }
 
-void *inflate_gzip(const uint8_t *data, size_t length, size_t *out_length)
+static void *gzip_limited(const uint8_t *data, size_t length,
+                          size_t *out_length, size_t limit)
 {
     if (length < 18 || data[0] != 0x1F || data[1] != 0x8B || data[2] != 8)
         return NULL;
@@ -404,15 +414,37 @@ void *inflate_gzip(const uint8_t *data, size_t length, size_t *out_length)
     if (pos >= length)
         return NULL;
 
-    return inflate_raw(data + pos, length - pos, out_length);
+    return inflate_raw_limited(data + pos, length - pos, out_length, limit);
+}
+
+void *inflate_auto_limited(const uint8_t *data, size_t length,
+                           size_t *out_length, size_t limit)
+{
+    if (length >= 2 && data[0] == 0x1F && data[1] == 0x8B)
+        return gzip_limited(data, length, out_length, limit);
+    if (length >= 2 && (data[0] & 0x0F) == 8 &&
+        ((data[0] << 8) | data[1]) % 31 == 0)
+        return zlib_limited(data, length, out_length, limit);
+    return inflate_raw_limited(data, length, out_length, limit);
+}
+
+void *inflate_raw(const uint8_t *data, size_t length, size_t *out_length)
+{
+    return inflate_raw_limited(data, length, out_length, INFLATE_DEFAULT_LIMIT);
+}
+
+void *inflate_zlib(const uint8_t *data, size_t length, size_t *out_length)
+{
+    return zlib_limited(data, length, out_length, INFLATE_DEFAULT_LIMIT);
+}
+
+void *inflate_gzip(const uint8_t *data, size_t length, size_t *out_length)
+{
+    return gzip_limited(data, length, out_length, INFLATE_DEFAULT_LIMIT);
 }
 
 void *inflate_auto(const uint8_t *data, size_t length, size_t *out_length)
 {
-    if (length >= 2 && data[0] == 0x1F && data[1] == 0x8B)
-        return inflate_gzip(data, length, out_length);
-    if (length >= 2 && (data[0] & 0x0F) == 8 &&
-        ((data[0] << 8) | data[1]) % 31 == 0)
-        return inflate_zlib(data, length, out_length);
-    return inflate_raw(data, length, out_length);
+    return inflate_auto_limited(data, length, out_length,
+                                INFLATE_DEFAULT_LIMIT);
 }

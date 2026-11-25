@@ -37,12 +37,15 @@
 #include "theme.h"
 #include "widgets.h"
 #include "lang.h"
+#include "formutil.h"
+#include "httputil.h"
 
 #define BR_TOOLBAR_H 34
 #define BR_STATUS_H  24
 #define BR_MARGIN    10
 #define BR_LINE      18
-#define BR_URL_MAX   255
+#define BR_URL_MAX   511
+#define BR_POST_MAX  2048
 #define BR_HISTORY   16
 #define BR_RESOURCES 32
 #define BR_SHEET_MAX 65536
@@ -80,6 +83,9 @@ struct load_job {
     volatile int state;
     int32_t  resource;          /* -1 = die Seite selbst */
     bool     download;          /* nicht anzeigen, sondern ablegen */
+    bool     post;              /* ein Formular abschicken, nicht abholen */
+    uint32_t post_length;
+    char     post_body[BR_POST_MAX + 1];
 
     struct http_response response;
     bool     ok;
@@ -139,6 +145,12 @@ struct br_state {
     /* Der Browser darf sich selbst eine neue Adresse geben. */
     char     pending_url[BR_URL_MAX + 1];
     bool     has_pending;
+
+    /* Ein Formular, das mit der naechsten Navigation abgeschickt werden
+     * soll (POST). */
+    bool     post_next;
+    uint32_t post_next_length;
+    char     post_next_body[BR_POST_MAX + 1];
 };
 
 static void browser_navigate(struct window *win, const char *url,
@@ -206,38 +218,9 @@ static void resolve_url(const char *base, const char *href, char *out,
         return;
     }
 
-    char host[128], path[512];
-    uint16_t port;
-    bool secure = false;
-
-    if (!url_split(base, host, sizeof(host), &port, path, sizeof(path),
-                   &secure)) {
-        strlcpy(out, href, size);
-        return;
-    }
-
-    const char *scheme = secure ? "https" : "http";
-    uint16_t standard = secure ? 443 : 80;
-    char prefix[160];
-
-    if (port == standard)
-        ksnprintf(prefix, sizeof(prefix), "%s://%s", scheme, host);
-    else
-        ksnprintf(prefix, sizeof(prefix), "%s://%s:%u", scheme, host, port);
-
-    if (href[0] == '/') {
-        ksnprintf(out, size, "%s%s", prefix, href);
-        return;
-    }
-
-    char *slash = strrchr(path, '/');
-
-    if (slash)
-        slash[1] = '\0';
-    else
-        strlcpy(path, "/", sizeof(path));
-
-    ksnprintf(out, size, "%s%s%s", prefix, path, href);
+    /* Alles Uebrige sind Adressen im Netz: die Regeln dafuer stehen in
+     * httputil.c, mit "..", Anfragen und Marken. */
+    url_resolve(base, href, out, size);
 }
 
 /* ------------------------------------------------------------------ */
@@ -396,6 +379,8 @@ static void on_script_navigate(void *context, const char *url)
     strlcpy(st->pending_url, url, sizeof(st->pending_url));
     st->has_pending = true;
 }
+
+static void init_form_state(struct node *n);
 
 static void run_scripts(struct window *win)
 {
@@ -759,6 +744,17 @@ static bool finish_http(struct br_state *st)
 
     reset_document(st);
 
+    /* Nach einer Weiterleitung steht die Seite woanders, als man sie
+     * aufgerufen hat. Die Adresse ist dann die neue - sonst loesen sich
+     * relative Verweise gegen die falsche Seite auf, und der Server sieht
+     * den falschen Rechnernamen. */
+    if (response->final_url[0] && strcmp(response->final_url, st->url) != 0 &&
+        strlen(response->final_url) <= BR_URL_MAX) {
+        strlcpy(st->url, response->final_url, sizeof(st->url));
+        strlcpy(st->address, response->final_url, sizeof(st->address));
+        st->address_cursor = (int32_t)strlen(st->address);
+    }
+
     if (strncasecmp(response->content_type, "text/plain", 10) == 0 ||
         strncasecmp(response->content_type, "application/json", 16) == 0)
         html_build_plain(&st->doc, response->body, response->body_length);
@@ -817,7 +813,12 @@ static void browser_worker(void *argument)
         }
 
         st->job.state = JOB_RUNNING;
-        st->job.ok = http_get(st->job.url, &st->job.response);
+        if (st->job.post)
+            st->job.ok = http_post(st->job.url, st->job.post_body,
+                                   st->job.post_length, NULL,
+                                   &st->job.response);
+        else
+            st->job.ok = http_get(st->job.url, &st->job.response);
         st->job.state = JOB_DONE;
     }
 
@@ -851,6 +852,7 @@ static bool post_next_resource(struct window *win)
         }
 
         r->state = RES_BUSY;
+        st->job.post = false;
         strlcpy(st->job.url, r->url, sizeof(st->job.url));
         st->job.resource = (int32_t)i;
         st->job.state = JOB_REQUESTED;
@@ -894,6 +896,7 @@ static void after_document(struct window *win)
     struct br_state *st = win->user;
 
     scan_node(st, st->doc.root);
+    init_form_state(st->doc.root);
 
     st->phase = PHASE_BESTANDTEILE;
     if (!post_next_resource(win))
@@ -1016,6 +1019,17 @@ static void browser_navigate(struct window *win, const char *url, bool remember)
 
     strlcpy(st->job.url, full, sizeof(st->job.url));
     st->job.resource = -1;
+
+    /* Ein Formular mit POST geht als Rumpf mit; jede andere Navigation
+     * ist ein einfaches Abholen. */
+    st->job.post = st->post_next;
+    st->job.post_length = 0;
+    if (st->post_next) {
+        memcpy(st->job.post_body, st->post_next_body, st->post_next_length);
+        st->job.post_body[st->post_next_length] = '\0';
+        st->job.post_length = st->post_next_length;
+    }
+    st->post_next = false;
     st->job.state = JOB_REQUESTED;
     wake_one(&st->job);
 
@@ -1065,6 +1079,212 @@ static struct node *enclosing_link(struct node *node)
             strcmp(n->name, "a") == 0 && node_attribute(n, "href"))
             return n;
     return NULL;
+}
+
+/* ------------------------------------------------------------------ */
+/* Formulare                                                           */
+/* ------------------------------------------------------------------ */
+
+static struct node *enclosing_form(struct node *node)
+{
+    for (struct node *n = node; n; n = n->parent)
+        if (n->kind == NODE_ELEMENT && n->name && strcmp(n->name, "form") == 0)
+            return n;
+    return NULL;
+}
+
+/* Schaltflaeche, die abschickt: <input type=submit|image> oder <button>
+ * ohne oder mit type=submit. */
+static bool is_submit_control(const struct node *n)
+{
+    if (n->kind != NODE_ELEMENT || !n->name)
+        return false;
+
+    const char *type = node_attribute(n, "type");
+
+    if (strcmp(n->name, "button") == 0)
+        return !type || strcasecmp(type, "submit") == 0;
+    if (strcmp(n->name, "input") == 0)
+        return type && (strcasecmp(type, "submit") == 0 ||
+                        strcasecmp(type, "image") == 0);
+    return false;
+}
+
+static struct node *first_submit(struct node *form)
+{
+    for (struct node *c = form->first; c; c = c->next) {
+        if (is_submit_control(c))
+            return c;
+
+        struct node *inner = first_submit(c);
+
+        if (inner)
+            return inner;
+    }
+    return NULL;
+}
+
+/* Der Wert eines Auswahlfeldes: die gewaehlte Zeile, sonst die erste. */
+static const struct node *selected_option(const struct node *select)
+{
+    const struct node *first = NULL;
+
+    for (const struct node *c = select->first; c; c = c->next) {
+        if (c->kind != NODE_ELEMENT || !c->name)
+            continue;
+        if (strcmp(c->name, "optgroup") == 0) {
+            const struct node *inner = selected_option(c);
+
+            if (inner && node_attribute(inner, "selected"))
+                return inner;
+            if (!first)
+                first = inner;
+        } else if (strcmp(c->name, "option") == 0) {
+            if (node_attribute(c, "selected"))
+                return c;
+            if (!first)
+                first = c;
+        }
+    }
+    return first;
+}
+
+/* Sammelt die Felder eines Formulars - in der Reihenfolge, in der sie im
+ * Dokument stehen. */
+static void collect_fields(const struct node *n, const struct node *submitter,
+                           char *query, size_t size, bool *ok)
+{
+    for (const struct node *c = n->first; c && *ok; c = c->next) {
+        if (c->kind != NODE_ELEMENT || !c->name)
+            continue;
+
+        const char *name = node_attribute(c, "name");
+        const char *type = node_attribute(c, "type");
+        char text[512];
+
+        if (node_attribute(c, "disabled")) {
+            collect_fields(c, submitter, query, size, ok);
+            continue;
+        }
+
+        if (strcmp(c->name, "input") == 0 && name && *name) {
+            const char *value = c->value ? c->value : node_attribute(c, "value");
+
+            if (type && (strcasecmp(type, "button") == 0 ||
+                         strcasecmp(type, "reset") == 0 ||
+                         strcasecmp(type, "file") == 0)) {
+                /* schickt nichts */
+            } else if (type && (strcasecmp(type, "submit") == 0 ||
+                                strcasecmp(type, "image") == 0)) {
+                if (c == submitter)
+                    *ok = form_append(query, size, name, value ? value : "");
+            } else if (type && (strcasecmp(type, "checkbox") == 0 ||
+                                strcasecmp(type, "radio") == 0)) {
+                if (c->checked)
+                    *ok = form_append(query, size, name, value ? value : "on");
+            } else {
+                *ok = form_append(query, size, name, value ? value : "");
+            }
+        } else if (strcmp(c->name, "textarea") == 0 && name && *name) {
+            if (c->value) {
+                *ok = form_append(query, size, name, c->value);
+            } else {
+                dom_text_content(c, text, sizeof(text));
+                *ok = form_append(query, size, name, text);
+            }
+        } else if (strcmp(c->name, "select") == 0 && name && *name) {
+            const struct node *option = selected_option(c);
+
+            if (option) {
+                const char *value = node_attribute(option, "value");
+
+                if (!value) {
+                    dom_text_content(option, text, sizeof(text));
+                    value = text;
+                }
+                *ok = form_append(query, size, name, value);
+            }
+        } else if (strcmp(c->name, "button") == 0 && name && *name) {
+            if (c == submitter) {
+                const char *value = node_attribute(c, "value");
+
+                *ok = form_append(query, size, name, value ? value : "");
+            }
+        }
+
+        /* Felder koennen in Tabellen und Absaetzen stehen. */
+        if (strcmp(c->name, "select") != 0 && strcmp(c->name, "textarea") != 0)
+            collect_fields(c, submitter, query, size, ok);
+    }
+}
+
+/* Schickt ein Formular ab. submitter ist die Schaltflaeche, die gedrueckt
+ * wurde - beim Druck auf Enter in einem Textfeld die erste des Formulars. */
+static void submit_form(struct window *win, struct node *form,
+                        struct node *submitter)
+{
+    struct br_state *st = win->user;
+    char query[BR_POST_MAX + 1];
+    bool ok = true;
+
+    if (!submitter)
+        submitter = first_submit(form);
+
+    query[0] = '\0';
+    collect_fields(form, submitter, query, sizeof(query), &ok);
+    if (!ok) {
+        strlcpy(st->status, tr("Das Formular ist zu gross zum Abschicken."),
+                sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+
+    const char *action = node_attribute(form, "action");
+    const char *method = node_attribute(form, "method");
+    char target[BR_URL_MAX + 1];
+
+    resolve_url(st->url, action && *action ? action : st->url, target,
+                sizeof(target));
+
+    if (method && strcasecmp(method, "post") == 0) {
+        size_t n = strlen(query);
+
+        memcpy(st->post_next_body, query, n + 1);
+        st->post_next_length = (uint32_t)n;
+        st->post_next = true;
+        browser_navigate(win, target, true);
+        return;
+    }
+
+    char url[BR_URL_MAX + 1];
+
+    if (!form_get_url(url, sizeof(url), target, query)) {
+        strlcpy(st->status, tr("Die Adresse des Formulars ist zu lang."),
+                sizeof(st->status));
+        gui_invalidate();
+        return;
+    }
+    browser_navigate(win, url, true);
+}
+
+/* Beim Laden eines Dokuments: Haken, die im Quelltext gesetzt sind, und
+ * Textfelder mit Vorgabewert. Ohne das schickte jedes Formular den
+ * Vorgabewert nur, solange niemand etwas getippt hat - und Haken gar nicht. */
+static void init_form_state(struct node *n)
+{
+    for (struct node *c = n->first; c; c = c->next) {
+        if (c->kind != NODE_ELEMENT || !c->name)
+            continue;
+        if (strcmp(c->name, "input") == 0) {
+            const char *type = node_attribute(c, "type");
+
+            if (type && (strcasecmp(type, "checkbox") == 0 ||
+                         strcasecmp(type, "radio") == 0) &&
+                node_attribute(c, "checked"))
+                c->checked = true;
+        }
+        init_form_state(c);
+    }
 }
 
 static void paint_border(struct canvas *c, const struct fragment *f)
@@ -1537,6 +1757,14 @@ static void field_key(struct window *win, const struct gui_event *ev)
         if (st->js)
             js_dispatch_event(st->js, node, "change");
         st->focused = NULL;
+
+        /* Enter in einem einzeiligen Feld schickt das Formular ab. */
+        struct node *form = enclosing_form(node);
+
+        if (form && strcmp(node->name, "textarea") != 0) {
+            submit_form(win, form, NULL);
+            return;
+        }
     } else if (ev->ascii >= 32 && (unsigned char)ev->ascii != 127) {
         char *bigger = kmalloc(length + 2);
 
@@ -1605,6 +1833,14 @@ static void click_node(struct window *win, struct node *node)
             st->needs_layout = true;
         } else if (strcmp(node->name, "input") == 0 ||
                    strcmp(node->name, "textarea") == 0) {
+            /* Ein Feld mit Vorgabewert behaelt ihn beim Tippen: Der Wert
+             * aus dem Quelltext wird zum Text des Feldes. */
+            if (!node->value && !is_submit_control(node)) {
+                const char *initial = node_attribute(node, "value");
+
+                if (initial && strcmp(node->name, "input") == 0)
+                    node->value = kstrdup(initial);
+            }
             st->focused = node;
         }
     }
@@ -1616,6 +1852,21 @@ static void click_node(struct window *win, struct node *node)
         resolve_url(st->url, st->pending_url, target, sizeof(target));
         browser_navigate(win, target, true);
         return;
+    }
+
+    /* Eine Schaltflaeche, die abschickt: Das Formular geht raus, auch wenn
+     * ein Skript sich den Klick angesehen hat. */
+    for (struct node *n = node; n; n = n->parent) {
+        if (!is_submit_control(n))
+            continue;
+
+        struct node *form = enclosing_form(n);
+
+        if (form) {
+            submit_form(win, form, n);
+            return;
+        }
+        break;
     }
 
     if (handled) {

@@ -13,4 +13,10 @@ void *inflate_gzip(const uint8_t *data, size_t length, size_t *out_length);
 /* Erkennt zlib- und gzip-Huellen selbst. */
 void *inflate_auto(const uint8_t *data, size_t length, size_t *out_length);
 
+/* Wie inflate_auto, aber die Ausgabe darf hoechstens limit Byte lang
+ * werden - sonst kommt NULL. Fuer Daten aus dem Netz: Eine kleine
+ * Antwort kann sich zu Gigabyte entpacken. */
+void *inflate_auto_limited(const uint8_t *data, size_t length,
+                           size_t *out_length, size_t limit);
+
 #endif /* INFLATE_H */

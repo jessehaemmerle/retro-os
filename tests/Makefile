@@ -98,6 +98,11 @@ NETZKARTE := netzkarte_test.c shim.c \
              ../kernel/src/drivers/pcnethw.c \
              ../kernel/src/drivers/vmxnet3hw.c
 
+WEB := web_test.c shim.c \
+      ../kernel/src/net/httputil.c \
+      ../kernel/src/net/cookiejar.c \
+      ../kernel/src/net/formutil.c
+
 KAEFIG := kaefig_test.c shim.c \
           ../kernel/src/proc/sandbox.c
 
@@ -135,11 +140,11 @@ BAUM := dom_test.c shim.c \
 
 .PHONY: all krypto bilder skript baum tabelle schreiben rechte aufgaben \
         protokoll netzfilter kaefig konsole sprache bildschirm rechner \
-        pngschreiben packen archiv winkel suche oberflaeche zeiger usb netzkarte \
+        pngschreiben packen archiv winkel suche oberflaeche zeiger usb netzkarte web \
         testbilder clean
 all: krypto bilder skript baum tabelle schreiben rechte aufgaben protokoll \
      netzfilter kaefig konsole sprache bildschirm rechner pngschreiben \
-     packen archiv winkel suche oberflaeche zeiger usb netzkarte
+     packen archiv winkel suche oberflaeche zeiger usb netzkarte web
 
 krypto: krypto-test
 	@./krypto-test
@@ -219,6 +224,12 @@ zeiger: zeiger-test
 
 zeiger-test: $(ZEIGER)
 	@$(CC) $(CFLAGS) $(ZEIGER) -o $@
+
+web: web-test
+	@./web-test
+
+web-test: $(WEB)
+	@$(CC) $(CFLAGS) $(WEB) -o $@
 
 netzkarte: netzkarte-test
 	@./netzkarte-test
